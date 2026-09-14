@@ -3,6 +3,7 @@ import Metal
 import QuartzCore
 import simd
 import DinoCraftCore
+@testable import DinoCraftGame
 
 /// Encodes the voxel world: frustum-culled opaque and cutout chunk passes,
 /// the procedural sky (drawn only where no geometry was written), then
@@ -70,7 +71,7 @@ final class WorldRenderer {
 
         visible.removeAll(keepingCapacity: true)
         for (pos, slot) in world.slots {
-            guard let mesh = slot.mesh, mesh.buffer != nil else { continue }
+            guard let mesh = slot.mesh as? ChunkMesh, mesh.buffer != nil else { continue }
             let ox = Double(pos.originX) - camera.position.x
             let oz = Double(pos.originZ) - camera.position.z
             let oy = -camera.position.y

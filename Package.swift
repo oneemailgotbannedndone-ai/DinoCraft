@@ -7,6 +7,8 @@
 //   DinoCraftCore      Platform-independent game logic: math, noise, blocks, items,
 //                      world data, terrain generation, meshing, lighting, physics,
 //                      inventory, crafting, persistence, settings, logging.
+//   DinoCraftGame      The shared game used by both apps: world streaming, player,
+//                      creatures, items, survival, containers, weather, commands.
 //   DinoCraft          The macOS application: AppKit shell, Metal renderer, UI,
 //                      audio, input, Discord Rich Presence, game state machine.
 //   DinoCraftSelfTest  Headless verification suite for the core (runs without
@@ -25,6 +27,15 @@ var targets: [Target] = [
         path: "Sources/DinoCraftCore",
         swiftSettings: optimizedCore
     ),
+    // The shared game: world streaming, player, creatures, items, survival, containers,
+    // crops, weather, advancements and commands. Built for both apps, which use
+    // `@testable import DinoCraftGame` so the game code keeps Swift's default access level.
+    .target(
+        name: "DinoCraftGame",
+        dependencies: ["DinoCraftCore"],
+        path: "Sources/DinoCraftGame",
+        swiftSettings: optimizedCore + [.unsafeFlags(["-enable-testing"])]
+    ),
     .executableTarget(
         name: "DinoCraftSelfTest",
         dependencies: ["DinoCraftCore"],
@@ -38,7 +49,7 @@ products.append(.executable(name: "DinoCraft", targets: ["DinoCraft"]))
 targets += [
     .executableTarget(
         name: "DinoCraft",
-        dependencies: ["DinoCraftCore"],
+        dependencies: ["DinoCraftCore", "DinoCraftGame"],
         path: "Sources/DinoCraft",
         swiftSettings: optimizedCore
     ),
@@ -59,7 +70,7 @@ targets += [
     .systemLibrary(name: "CSDL3", path: "Sources/CSDL3"),
     .executableTarget(
         name: "DinoCraftWin",
-        dependencies: ["DinoCraftCore", "CSDL3"],
+        dependencies: ["DinoCraftCore", "DinoCraftGame", "CSDL3"],
         path: "Sources/DinoCraftWin",
         swiftSettings: optimizedCore
     ),

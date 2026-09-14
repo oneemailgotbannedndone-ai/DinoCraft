@@ -1,6 +1,7 @@
 import AppKit
 import Metal
 import DinoCraftCore
+@testable import DinoCraftGame
 
 /// Global descriptor used by the signal handler (must be async-signal-safe).
 nonisolated(unsafe) var crashLogFD: Int32 = -1

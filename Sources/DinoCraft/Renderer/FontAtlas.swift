@@ -3,6 +3,7 @@ import CoreText
 import Metal
 import simd
 import DinoCraftCore
+@testable import DinoCraftGame
 
 enum FontFace: Int {
     case body = 0      // SF Pro Rounded Semibold

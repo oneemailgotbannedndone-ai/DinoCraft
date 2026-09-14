@@ -1,5 +1,6 @@
 import Foundation
 import DinoCraftCore
+@testable import DinoCraftGame
 
 /// Facts about what the player is doing, reported by the game every frame.
 /// The presence layer — not gameplay code — decides how to phrase it.

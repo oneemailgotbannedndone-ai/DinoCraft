@@ -3,6 +3,7 @@ import MetalKit
 import Network
 import simd
 import DinoCraftCore
+@testable import DinoCraftGame
 
 /// Top-level coordinator: owns the renderer, input, audio, Discord presence,
 /// job system, registries, the screen stack and the active game session, and
@@ -11,6 +12,8 @@ final class GameEngine: NSObject, MTKViewDelegate {
     let window: GameWindow
     let view: GameView
     let device: MTLDevice
+    /// Creates Metal buffers for chunk meshes built by the shared world.
+    lazy var meshFactory = MetalChunkMeshFactory(device: device)
     let settingsStore: SettingsStore
     let options: LaunchOptions
 
@@ -202,7 +205,7 @@ final class GameEngine: NSObject, MTKViewDelegate {
         let spawn = generator.findSpawnColumn()
         let info = generator.columnInfo(x: spawn.x, z: spawn.z)
         menuAnchor = DVec3(Double(spawn.x) + 0.5, Double(max(info.height, WorldConst.seaLevel)) + 30, Double(spawn.z) + 0.5)
-        menuWorld = World(registry: blocks, generator: generator, storage: nil, worldID: nil, device: device, jobs: jobs,
+        menuWorld = World(registry: blocks, generator: generator, storage: nil, worldID: nil, meshFactory: meshFactory, jobs: jobs,
                           renderDistance: min(settings.renderDistance, 12))
     }
 
@@ -248,7 +251,7 @@ final class GameEngine: NSObject, MTKViewDelegate {
         screens.removeAll()
         menuWorld?.shutdown()
         menuWorld = nil
-        let s = GameSession(meta: meta, isNew: isNew, storage: storage, blocks: blocks, items: items, device: device, jobs: jobs,
+        let s = GameSession(meta: meta, isNew: isNew, storage: storage, blocks: blocks, items: items, meshFactory: meshFactory, jobs: jobs,
                             renderDistance: settings.renderDistance)
         s.onSound = { [weak self] name, volume, pitch in self?.audio.play(name, volume: volume, pitch: pitch) }
         s.onToast = { [weak self] text in self?.showToast(text) }
@@ -487,7 +490,7 @@ final class GameEngine: NSObject, MTKViewDelegate {
                                  gameMode: GameMode(rawValue: w.gameMode) ?? .survival, difficulty: Difficulty(rawValue: w.difficulty) ?? .normal,
                                  createdAt: now, lastPlayed: now, playTimeSeconds: 0, worldTime: w.worldTime,
                                  spawnX: Int(floor(w.x)), spawnY: Int(floor(w.y)), spawnZ: Int(floor(w.z)))
-        let s = GameSession(meta: meta, isNew: false, storage: storage, blocks: blocks, items: items, device: device, jobs: jobs,
+        let s = GameSession(meta: meta, isNew: false, storage: storage, blocks: blocks, items: items, meshFactory: meshFactory, jobs: jobs,
                             renderDistance: settings.renderDistance, remote: true)
         s.onSound = { [weak self] name, volume, pitch in self?.audio.play(name, volume: volume, pitch: pitch) }
         s.onToast = { [weak self] text in self?.showToast(text) }
@@ -906,5 +909,13 @@ final class GameEngine: NSObject, MTKViewDelegate {
             s.windowWidth = Int(size.width)
             s.windowHeight = Int(size.height)
         }
+    }
+}
+
+extension GameEngine: CommandHost {
+    var isClient: Bool { client != nil }
+
+    func give(playerNamed name: String, item: String, count: Int) -> Bool {
+        server?.give(playerNamed: name, item: item, count: count) ?? false
     }
 }

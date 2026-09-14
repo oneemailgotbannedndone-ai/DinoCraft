@@ -1,6 +1,7 @@
 import AppKit
 import simd
 import DinoCraftCore
+@testable import DinoCraftGame
 
 /// Collects raw input events between frames and exposes per-frame state:
 /// held keys/buttons, edges (pressed / released this frame), mouse deltas,
@@ -232,6 +233,11 @@ final class Input {
         CGWarpMouseCursorPosition(center)
         mouse = SIMD2(Float(view.bounds.width / 2), Float(view.bounds.height / 2))
     }
+}
+
+extension Input: GameInput {
+    var hotbarKeyPressed: Int? { KeyCode.digits.firstIndex { keysPressed.contains($0) } }
+    var dropWholeStack: Bool { modifiers.contains(.command) || modifiers.contains(.option) }
 }
 
 enum KeyCode {

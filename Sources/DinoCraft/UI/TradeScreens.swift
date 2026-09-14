@@ -1,6 +1,7 @@
 import AppKit
 import simd
 import DinoCraftCore
+@testable import DinoCraftGame
 
 /// Trading with a villager: each offer swaps items from the inventory for goods.
 final class TradeScreen: Screen {

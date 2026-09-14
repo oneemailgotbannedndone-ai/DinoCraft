@@ -2,6 +2,7 @@ import Foundation
 import Metal
 import simd
 import DinoCraftCore
+@testable import DinoCraftGame
 
 struct PostUniforms {
     var params: SIMD4<Float>   // preset, time, width, height

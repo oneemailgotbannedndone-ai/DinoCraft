@@ -4,6 +4,7 @@ import CoreGraphics
 import ImageIO
 import simd
 import DinoCraftCore
+@testable import DinoCraftGame
 
 /// Draws the targeted-block outline and the progressive break cracks.
 final class OverlayRenderer {

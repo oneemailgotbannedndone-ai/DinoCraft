@@ -1,6 +1,7 @@
 import Foundation
-import Metal
+#if canImport(simd) && !DINOCRAFT_PORTABLE_SIMD
 import simd
+#endif
 import DinoCraftCore
 
 /// One loaded singleplayer world: terrain streaming for the current dimension,
@@ -16,7 +17,7 @@ final class GameSession {
     let player: PlayerController
     let inventory: Inventory
     let isNewWorld: Bool
-    private let device: MTLDevice
+    private let meshFactory: ChunkMeshFactory
     private let jobs: JobSystem
     private var renderDistance: Int
 
@@ -115,7 +116,7 @@ final class GameSession {
     private var explorationTimer = 1.0
 
     init(meta: WorldMetadata, isNew: Bool, storage: WorldStorage, blocks: BlockRegistry, items: ItemRegistry,
-         device: MTLDevice, jobs: JobSystem, renderDistance: Int, remote: Bool = false) {
+         meshFactory: ChunkMeshFactory, jobs: JobSystem, renderDistance: Int, remote: Bool = false) {
         self.meta = meta
         self.isRemote = remote
         variants = BlockVariants(blocks: blocks)
@@ -123,7 +124,7 @@ final class GameSession {
         self.storage = storage
         self.blocks = blocks
         self.items = items
-        self.device = device
+        self.meshFactory = meshFactory
         self.jobs = jobs
         self.renderDistance = renderDistance
 
@@ -133,7 +134,7 @@ final class GameSession {
         let overworld = TerrainGenerator(seed: meta.numericSeed)
         let generator: WorldGenerator = dim == .overworld ? overworld : dim.makeGenerator(seed: meta.numericSeed)
         world = World(registry: blocks, generator: generator, storage: remote ? nil : storage, worldID: remote ? nil : meta.id,
-                      device: device, jobs: jobs, renderDistance: renderDistance)
+                      meshFactory: meshFactory, jobs: jobs, renderDistance: renderDistance)
         inventory = Inventory(registry: items)
         worldTime = meta.worldTime
         spectator = meta.hardcoreDead ?? false
@@ -287,7 +288,7 @@ final class GameSession {
 
     // MARK: Frame update
 
-    func update(dt: Double, input: Input?, settings: GameSettings, paused: Bool) {
+    func update(dt: Double, input: GameInput?, settings: GameSettings, paused: Bool) {
         if isLoading { updateLoading(dt); return }
         if isRemote { liftOutOfTerrain() }
         explorationTimer -= dt
@@ -372,7 +373,7 @@ final class GameSession {
         }
     }
 
-    private func applyLook(_ input: Input, _ s: GameSettings) {
+    private func applyLook(_ input: GameInput, _ s: GameSettings) {
         let sens = 0.0022 * (0.25 + s.mouseSensitivity * 1.5)
         player.yaw -= input.mouseDelta.x * sens
         player.pitch -= input.mouseDelta.y * sens * (s.invertY ? -1 : 1)
@@ -380,7 +381,7 @@ final class GameSession {
         player.yaw = player.yaw.truncatingRemainder(dividingBy: 2 * .pi)
     }
 
-    private func movement(_ input: Input, _ s: GameSettings) -> MovementInput {
+    private func movement(_ input: GameInput, _ s: GameSettings) -> MovementInput {
         var m = MovementInput()
         m.forward = (input.isDown(s.binding(for: .forward)) ? 1 : 0) - (input.isDown(s.binding(for: .backward)) ? 1 : 0)
         m.strafe = (input.isDown(s.binding(for: .right)) ? 1 : 0) - (input.isDown(s.binding(for: .left)) ? 1 : 0)
@@ -391,8 +392,8 @@ final class GameSession {
         return m
     }
 
-    private func hotbar(_ input: Input) {
-        for (i, code) in KeyCode.digits.enumerated() where input.keyPressed(code) { inventory.selected = i }
+    private func hotbar(_ input: GameInput) {
+        if let slot = input.hotbarKeyPressed { inventory.selected = slot }
         scrollAccumulator += input.scroll
         while scrollAccumulator >= 1 { inventory.selected -= 1; scrollAccumulator -= 1 }
         while scrollAccumulator <= -1 { inventory.selected += 1; scrollAccumulator += 1 }
@@ -426,7 +427,7 @@ final class GameSession {
         return tool.kind == info.tool && tool.level >= info.toolLevel
     }
 
-    private func interact(_ dt: Double, _ input: Input, _ s: GameSettings) {
+    private func interact(_ dt: Double, _ input: GameInput, _ s: GameSettings) {
         let creative = player.gameMode == .creative
         let reach = creative ? 6.5 : 5.0
         target = VoxelPhysics.raycast(world, origin: player.eyePosition, direction: player.lookDirection, maxDistance: reach)
@@ -534,7 +535,7 @@ final class GameSession {
         }
 
         if input.wasPressed(s.binding(for: .drop)), let stack = inventory.selectedStack {
-            let whole = input.modifiers.contains(.command) || input.modifiers.contains(.option)
+            let whole = input.dropWholeStack
             var dropped = stack
             dropped.count = whole ? stack.count : 1
             inventory.consumeSelected(dropped.count)
@@ -1002,7 +1003,7 @@ final class GameSession {
         dimension = target
         let generator: WorldGenerator = target.makeGenerator(seed: meta.numericSeed)
         world = World(registry: blocks, generator: generator, storage: isRemote ? nil : storage, worldID: isRemote ? nil : meta.id,
-                      device: device, jobs: jobs, renderDistance: renderDistance)
+                      meshFactory: meshFactory, jobs: jobs, renderDistance: renderDistance)
         world.onBlockChanged = blockObserver
         world.remoteRequest = remoteChunkRequester
         entities.clear()

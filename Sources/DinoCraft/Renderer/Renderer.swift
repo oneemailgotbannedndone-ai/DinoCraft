@@ -3,6 +3,7 @@ import Metal
 import MetalKit
 import simd
 import DinoCraftCore
+@testable import DinoCraftGame
 
 struct FrameUniforms {
     var viewProj = matrix_identity_float4x4

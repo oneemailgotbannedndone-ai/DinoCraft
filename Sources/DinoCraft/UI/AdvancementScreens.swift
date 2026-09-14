@@ -1,6 +1,7 @@
 import AppKit
 import simd
 import DinoCraftCore
+@testable import DinoCraftGame
 
 /// All advancements, grouped by category, with progress.
 final class AdvancementsScreen: Screen {

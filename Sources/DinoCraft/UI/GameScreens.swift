@@ -1,6 +1,7 @@
 import Foundation
 import simd
 import DinoCraftCore
+@testable import DinoCraftGame
 
 // MARK: - Pause
 

@@ -1,56 +1,21 @@
 import Foundation
-import Metal
-import QuartzCore
+#if canImport(simd) && !DINOCRAFT_PORTABLE_SIMD
 import simd
+#endif
 import DinoCraftCore
-
-/// GPU mesh for one chunk: a single shared-storage buffer holding the opaque,
-/// cutout and translucent vertex segments back to back.
-final class ChunkMesh {
-    let buffer: MTLBuffer?
-    let opaqueQuads: Int
-    let cutoutQuads: Int
-    let translucentQuads: Int
-    let cutoutOffset: Int
-    let translucentOffset: Int
-    let maxY: Int
-    /// Light of this chunk (`sky << 4 | block`), used to light entities and the held item.
-    let light: [UInt8]
-    let lightHeight: Int
-
-    init(device: MTLDevice, buffers: MeshBuffers, maxY: Int, light: [UInt8], lightHeight: Int, label: String) {
-        self.light = light
-        self.lightHeight = lightHeight
-        let o = buffers.opaque.count, c = buffers.cutout.count, t = buffers.translucent.count
-        let stride = MemoryLayout<ChunkVertex>.stride
-        opaqueQuads = o / 4; cutoutQuads = c / 4; translucentQuads = t / 4
-        cutoutOffset = o * stride
-        translucentOffset = (o + c) * stride
-        self.maxY = maxY
-        let total = (o + c + t) * stride
-        if total > 0, let buf = device.makeBuffer(length: total, options: [.storageModeShared, .cpuCacheModeWriteCombined]) {
-            let dst = buf.contents()
-            buffers.opaque.withUnsafeBytes { dst.copyMemory(from: $0.baseAddress!, byteCount: $0.count) }
-            buffers.cutout.withUnsafeBytes { if $0.count > 0 { (dst + o * stride).copyMemory(from: $0.baseAddress!, byteCount: $0.count) } }
-            buffers.translucent.withUnsafeBytes { if $0.count > 0 { (dst + (o + c) * stride).copyMemory(from: $0.baseAddress!, byteCount: $0.count) } }
-            buf.label = label
-            buffer = buf
-        } else {
-            buffer = nil
-        }
-    }
-
-    var memoryBytes: Int { buffer?.length ?? 0 }
-}
 
 /// Streams chunks around a moving point: loads saved chunks or generates new
 /// ones on worker threads, schedules lighting + meshing once all neighbours
 /// exist, integrates results on the main thread within a time budget, and
-/// unloads (saving if modified) chunks that fall out of range.
+/// unloads (saving if modified) chunks that fall out of range. Chunk meshes are
+/// created by the platform renderer through a `ChunkMeshFactory`.
 final class World: BlockSource {
     final class Slot {
         let chunk: Chunk
-        var mesh: ChunkMesh?
+        var mesh: ChunkMeshHandle?
+        /// Light of this chunk (`sky << 4 | block`) from its last mesh, used to light entities and the held item.
+        var light: [UInt8] = []
+        var lightHeight = 0
         var needsMesh = true
         var urgentMesh = false
         var meshInFlight = false
@@ -60,11 +25,20 @@ final class World: BlockSource {
         init(chunk: Chunk) { self.chunk = chunk }
     }
 
+    private struct MeshResult {
+        let pos: ChunkPos
+        let token: UInt64
+        let prepared: PreparedChunkMesh
+        let light: [UInt8]
+        let lightHeight: Int
+        let seconds: Double
+    }
+
     /// Results written by workers, drained by the main thread.
     private final class Inbox: @unchecked Sendable {
         let lock = NSLock()
         var generated: [(Chunk, Double, Bool)] = []          // chunk, seconds, fromDisk
-        var meshed: [(ChunkPos, UInt64, ChunkMesh, Double)] = []
+        var meshed: [MeshResult] = []
         var cancelled = false
     }
 
@@ -84,7 +58,7 @@ final class World: BlockSource {
     let generator: WorldGenerator
     let storage: WorldStorage?
     let worldID: String?
-    let device: MTLDevice
+    let meshFactory: ChunkMeshFactory
     let jobs: JobSystem
 
     private(set) var slots: [ChunkPos: Slot] = [:]
@@ -107,18 +81,20 @@ final class World: BlockSource {
     private var remoteRequestedAt: [ChunkPos: Double] = [:]
 
     init(registry: BlockRegistry, generator: WorldGenerator, storage: WorldStorage?, worldID: String?,
-         device: MTLDevice, jobs: JobSystem, renderDistance: Int) {
+         meshFactory: ChunkMeshFactory, jobs: JobSystem, renderDistance: Int) {
         self.registry = registry
         self.generator = generator
         self.storage = storage
         self.worldID = worldID
-        self.device = device
+        self.meshFactory = meshFactory
         self.jobs = jobs
         self.renderDistance = renderDistance
         jobGroup = World.nextGroup
         World.nextGroup += 1
         rebuildOffsets()
     }
+
+    private static func now() -> Double { Date.timeIntervalSinceReferenceDate }
 
     private func rebuildOffsets() {
         let r = Int32(renderDistance + 2)
@@ -168,9 +144,9 @@ final class World: BlockSource {
     func light(at p: DVec3) -> (sky: Float, block: Float) {
         let x = Int(floor(p.x)), y = Int(floor(p.y)), z = Int(floor(p.z))
         guard y >= 0 else { return (0, 0) }
-        guard let mesh = slots[ChunkPos(Int32(x >> 4), Int32(z >> 4))]?.mesh else { return (1, 0) }
-        guard y < mesh.lightHeight else { return (1, 0) }
-        let v = mesh.light[(y * 16 + (z & 15)) * 16 + (x & 15)]
+        guard let s = slots[ChunkPos(Int32(x >> 4), Int32(z >> 4))], !s.light.isEmpty else { return (1, 0) }
+        guard y < s.lightHeight else { return (1, 0) }
+        let v = s.light[(y * 16 + (z & 15)) * 16 + (x & 15)]
         return (Float(v >> 4) / 15, Float(v & 15) / 15)
     }
 
@@ -208,7 +184,7 @@ final class World: BlockSource {
 
     /// Call once per frame. `budget` bounds main-thread integration time (seconds).
     func update(focus: DVec3, budget: Double = 0.004) {
-        let start = CFAbsoluteTimeGetCurrent()
+        let start = World.now()
         center = ChunkPos(Int32(floor(focus.x / 16)), Int32(floor(focus.z / 16)))
 
         integrateResults(deadline: start + budget)
@@ -230,25 +206,31 @@ final class World: BlockSource {
         inbox.meshed.removeAll(keepingCapacity: true)
         inbox.lock.unlock()
 
-        // Apply meshes first (cheap pointer swaps).
-        for (pos, token, mesh, seconds) in meshed {
-            inFlightMeshes -= 1
-            stats.avgMeshMs = stats.avgMeshMs * 0.95 + seconds * 1000 * 0.05
+        // Apply meshes first.
+        for result in meshed {
+            inFlightMeshes = max(0, inFlightMeshes - 1)
+            stats.avgMeshMs = stats.avgMeshMs * 0.95 + result.seconds * 1000 * 0.05
             stats.meshedTotal += 1
-            guard let s = slots[pos] else { continue }
+            guard let s = slots[result.pos] else { continue }
             s.meshInFlight = false
-            guard token == s.meshToken else { continue }
-            gpuBytes -= s.mesh?.memoryBytes ?? 0
+            guard result.token == s.meshToken else { continue }
+            let mesh = meshFactory.finish(result.prepared)
+            if let old = s.mesh {
+                gpuBytes -= old.memoryBytes
+                meshFactory.release(old)
+            }
             s.mesh = mesh
-            if s.firstMeshTime < 0 { s.firstMeshTime = CACurrentMediaTime() }
-            gpuBytes += mesh.memoryBytes
+            s.light = result.light
+            s.lightHeight = result.lightHeight
+            if s.firstMeshTime < 0 { s.firstMeshTime = meshFactory.clock }
+            gpuBytes += mesh?.memoryBytes ?? 0
         }
         meshed.removeAll()
 
         var index = 0
         let radius = Int32(renderDistance + 2)
         while index < generated.count {
-            let (chunk, seconds, fromDisk) = generated[index]
+            let (chunk, seconds, _) = generated[index]
             index += 1
             pendingGeneration.remove(chunk.pos)
             stats.avgGenerationMs = stats.avgGenerationMs * 0.95 + seconds * 1000 * 0.05
@@ -256,15 +238,13 @@ final class World: BlockSource {
             let dx = chunk.pos.x - center.x, dz = chunk.pos.z - center.z
             if dx * dx + dz * dz > (radius + 1) * (radius + 1) && !chunk.needsSave { continue }
             guard slots[chunk.pos] == nil else { continue }
-            let slot = Slot(chunk: chunk)
-            slots[chunk.pos] = slot
-            _ = fromDisk
+            slots[chunk.pos] = Slot(chunk: chunk)
             for dz2: Int32 in -1...1 {
                 for dx2: Int32 in -1...1 where !(dx2 == 0 && dz2 == 0) {
                     slots[ChunkPos(chunk.pos.x + dx2, chunk.pos.z + dz2)]?.needsMesh = true
                 }
             }
-            if CFAbsoluteTimeGetCurrent() > deadline { break }
+            if World.now() > deadline { break }
         }
         if index < generated.count {
             // Put back what we didn't integrate this frame.
@@ -284,14 +264,17 @@ final class World: BlockSource {
         }
         for pos in toRemove {
             guard let s = slots.removeValue(forKey: pos) else { continue }
-            gpuBytes -= s.mesh?.memoryBytes ?? 0
+            if let mesh = s.mesh {
+                gpuBytes -= mesh.memoryBytes
+                meshFactory.release(mesh)
+            }
             if s.chunk.needsSave { saveChunk(s.chunk) }
         }
     }
 
     private func scheduleGeneration() {
         if let remoteRequest {
-            let now = CFAbsoluteTimeGetCurrent()
+            let now = World.now()
             let radius = Int32(renderDistance + 2)
             var batch: [ChunkPos] = []
             for (dx, dz) in offsets {
@@ -320,7 +303,7 @@ final class World: BlockSource {
             let folder = generator.dimension.storageFolder
             jobs.submit(priority: priority, group: jobGroup) { _ in
                 guard !inbox.cancelled else { return }
-                let t0 = CFAbsoluteTimeGetCurrent()
+                let t0 = World.now()
                 var chunk: Chunk? = nil
                 var fromDisk = false
                 if let storage, let worldID {
@@ -328,7 +311,7 @@ final class World: BlockSource {
                     fromDisk = chunk != nil
                 }
                 let result = chunk ?? generator.generate(pos)
-                let dt = CFAbsoluteTimeGetCurrent() - t0
+                let dt = World.now() - t0
                 inbox.lock.lock()
                 inbox.generated.append((result, dt, fromDisk))
                 inbox.lock.unlock()
@@ -367,18 +350,18 @@ final class World: BlockSource {
         s.meshInFlight = true
         s.meshToken &+= 1
         inFlightMeshes += 1
-        let token = s.meshToken, device = self.device, inbox = self.inbox
+        let token = s.meshToken, factory = self.meshFactory, inbox = self.inbox
         let label = "Chunk \(pos.x),\(pos.z)"
         jobs.submit(priority: priority, group: jobGroup) { ctx in
-            let t0 = CFAbsoluteTimeGetCurrent()
+            let t0 = World.now()
             let mesher = ctx.mesher
             mesher.build(neighborhood: hood)
             let (light, lightHeight) = mesher.centerLight()
-            let mesh = ChunkMesh(device: device, buffers: mesher.out, maxY: hood[4].maxHeight, light: light,
-                                 lightHeight: lightHeight, label: label)
-            let dt = CFAbsoluteTimeGetCurrent() - t0
+            let prepared = factory.prepare(buffers: mesher.out, maxY: hood[4].maxHeight, label: label)
+            let result = MeshResult(pos: pos, token: token, prepared: prepared, light: light, lightHeight: lightHeight,
+                                    seconds: World.now() - t0)
             inbox.lock.lock()
-            inbox.meshed.append((pos, token, mesh, dt))
+            inbox.meshed.append(result)
             inbox.lock.unlock()
         }
     }
@@ -398,6 +381,20 @@ final class World: BlockSource {
         inbox.lock.unlock()
     }
 
+    /// Drops every chunk (a multiplayer host moved to another dimension).
+    func resetRemote() {
+        for (_, s) in slots { if let mesh = s.mesh { meshFactory.release(mesh) } }
+        slots.removeAll()
+        pendingGeneration.removeAll()
+        remoteRequestedAt.removeAll()
+        inbox.lock.lock()
+        inbox.generated.removeAll()
+        inbox.meshed.removeAll()
+        inbox.lock.unlock()
+        inFlightMeshes = 0
+        gpuBytes = 0
+    }
+
     /// Forces every loaded chunk to rebuild its mesh (e.g. graphics quality changed).
     func invalidateAllMeshes() {
         for (_, s) in slots { s.needsMesh = true }
@@ -413,7 +410,7 @@ final class World: BlockSource {
                 t += 1
                 if let s = slots[ChunkPos(pos.x + dx, pos.z + dz)] {
                     g += 1
-                    if s.mesh != nil { m += 1 }
+                    if s.firstMeshTime >= 0 { m += 1 }
                 }
             }
         }
@@ -423,7 +420,10 @@ final class World: BlockSource {
     // MARK: Saving
 
     private func saveChunk(_ chunk: Chunk) {
-        guard let storage, let worldID else { return }
+        guard let storage, let worldID else {
+            chunk.needsSave = false
+            return
+        }
         let copy = Chunk(pos: chunk.pos)
         copy.blocks.update(from: chunk.blocks, count: WorldConst.blocksPerChunk)
         chunk.needsSave = false
@@ -459,6 +459,7 @@ final class World: BlockSource {
         jobs.cancel(group: jobGroup)
         saveModifiedChunks()
         flushSaves()
+        for (_, s) in slots { if let mesh = s.mesh { meshFactory.release(mesh) } }
         slots.removeAll()
         gpuBytes = 0
     }

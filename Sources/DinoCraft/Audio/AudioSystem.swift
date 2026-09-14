@@ -2,6 +2,7 @@ import Foundation
 import AVFoundation
 import QuartzCore
 import DinoCraftCore
+@testable import DinoCraftGame
 
 /// AVAudioEngine-based audio: a pool of pitched one-shot voices for effects,
 /// fading ambience loops on their own bus, and streamed music tracks.

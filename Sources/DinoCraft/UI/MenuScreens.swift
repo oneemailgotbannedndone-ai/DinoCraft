@@ -1,6 +1,7 @@
 import Foundation
 import simd
 import DinoCraftCore
+@testable import DinoCraftGame
 
 /// Base class for full-screen menus and overlays managed by the engine's screen stack.
 class Screen {

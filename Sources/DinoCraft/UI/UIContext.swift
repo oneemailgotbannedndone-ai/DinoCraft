@@ -1,6 +1,7 @@
 import AppKit
 import simd
 import DinoCraftCore
+@testable import DinoCraftGame
 
 enum Theme {
     static let deep = Color(hex: 0x140E24)

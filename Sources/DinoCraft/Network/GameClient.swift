@@ -2,6 +2,7 @@ import Foundation
 import QuartzCore
 import simd
 import DinoCraftCore
+@testable import DinoCraftGame
 
 /// Joins a friend's hosted world: receives chunks, block edits, players,
 /// creatures and dropped items, and sends this player's state and actions.

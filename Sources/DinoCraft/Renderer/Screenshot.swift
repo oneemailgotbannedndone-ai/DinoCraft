@@ -4,6 +4,7 @@ import CoreGraphics
 import ImageIO
 import UniformTypeIdentifiers
 import DinoCraftCore
+@testable import DinoCraftGame
 
 enum Screenshot {
     /// Copies `texture` into a CPU-readable texture inside `commandBuffer` and

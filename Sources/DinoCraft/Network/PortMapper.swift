@@ -1,5 +1,6 @@
 import Foundation
 import DinoCraftCore
+@testable import DinoCraftGame
 
 /// Asks the home router to forward the game port so friends on other networks
 /// can join. Tries NAT-PMP / PCP-style mapping first (Apple and many modern

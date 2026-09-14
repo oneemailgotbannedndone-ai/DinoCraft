@@ -1,6 +1,7 @@
 import AppKit
 import simd
 import DinoCraftCore
+@testable import DinoCraftGame
 
 /// Plays back a timed command script for automated end-to-end testing:
 ///

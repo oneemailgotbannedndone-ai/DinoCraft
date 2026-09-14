@@ -2,6 +2,7 @@ import Foundation
 import Metal
 import simd
 import DinoCraftCore
+@testable import DinoCraftGame
 
 struct ModelVertex {
     var px: Float, py: Float, pz: Float

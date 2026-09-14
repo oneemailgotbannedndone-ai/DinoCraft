@@ -1,6 +1,7 @@
 import AppKit
 import simd
 import DinoCraftCore
+@testable import DinoCraftGame
 
 /// Shared drawing for item slots, tooltips and the carried ("cursor") stack.
 enum SlotView {

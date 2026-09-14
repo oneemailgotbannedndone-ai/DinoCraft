@@ -1,6 +1,7 @@
 import AppKit
 import simd
 import DinoCraftCore
+@testable import DinoCraftGame
 
 /// Chest and furnace UI: the container's slots above the player's backpack and hotbar.
 final class ContainerScreen: Screen {

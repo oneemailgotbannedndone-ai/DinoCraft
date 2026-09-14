@@ -2,6 +2,7 @@ import Foundation
 import Metal
 import simd
 import DinoCraftCore
+@testable import DinoCraftGame
 
 /// Linear-space RGBA colour for UI drawing. Construct from sRGB hex values.
 struct Color: Equatable {

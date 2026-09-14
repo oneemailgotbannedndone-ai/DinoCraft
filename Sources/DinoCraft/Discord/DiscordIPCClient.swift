@@ -1,6 +1,7 @@
 import Foundation
 import Darwin
 import DinoCraftCore
+@testable import DinoCraftGame
 
 /// Minimal native client for Discord's local RPC socket (no SDK, no network).
 ///

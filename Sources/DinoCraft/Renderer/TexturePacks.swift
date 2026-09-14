@@ -1,5 +1,6 @@
 import Foundation
 import DinoCraftCore
+@testable import DinoCraftGame
 
 /// A set of block/item textures. Packs may be partial: any texture they don't
 /// provide falls back to DinoCraft's default art.

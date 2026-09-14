@@ -1,5 +1,6 @@
 import Foundation
 import DinoCraftCore
+@testable import DinoCraftGame
 
 /// Fades to night-blue while the player sleeps, then wakes them at dawn.
 final class SleepScreen: Screen {

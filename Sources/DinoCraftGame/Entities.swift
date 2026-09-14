@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(simd) && !DINOCRAFT_PORTABLE_SIMD
 import simd
+#endif
 import DinoCraftCore
 
 /// A stack of items lying in the world.

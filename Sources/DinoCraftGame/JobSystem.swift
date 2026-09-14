@@ -37,8 +37,12 @@ final class JobSystem: @unchecked Sendable {
             contexts.append(ctx)
             let thread = Thread { [unowned self] in self.workerLoop(ctx) }
             thread.name = "DinoCraft Worker \(i + 1)"
+            #if canImport(ObjectiveC)
             thread.qualityOfService = .userInitiated
             thread.stackSize = 1 << 21
+            #else
+            thread.stackSize = 1 << 22
+            #endif
             threads.append(thread)
             thread.start()
         }
@@ -55,11 +59,16 @@ final class JobSystem: @unchecked Sendable {
                 (queue[i].priority == queue[best].priority && queue[i].sequence < queue[best].sequence) {
                 best = i
             }
-            let job = queue.swapRemove(at: best)
+            queue.swapAt(best, queue.count - 1)
+            let job = queue.removeLast()
             active += 1
             condition.unlock()
 
+            #if canImport(ObjectiveC)
             autoreleasepool { job.work(ctx) }
+            #else
+            job.work(ctx)
+            #endif
 
             condition.lock()
             active -= 1
@@ -117,12 +126,5 @@ final class JobSystem: @unchecked Sendable {
         condition.lock()
         contexts.forEach(body)
         condition.unlock()
-    }
-}
-
-private extension Array {
-    mutating func swapRemove(at i: Int) -> Element {
-        swapAt(i, count - 1)
-        return removeLast()
     }
 }

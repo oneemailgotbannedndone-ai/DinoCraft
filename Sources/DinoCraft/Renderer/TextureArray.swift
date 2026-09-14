@@ -3,6 +3,7 @@ import Metal
 import CoreGraphics
 import ImageIO
 import DinoCraftCore
+@testable import DinoCraftGame
 
 /// Loads a set of same-sized PNG images into one `texture2d_array` with a
 /// gamma-correct, premultiplied mip chain. Alpha-tested textures (leaves,

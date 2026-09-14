@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(simd) && !DINOCRAFT_PORTABLE_SIMD
 import simd
+#endif
 import DinoCraftCore
 
 struct CommandSuggestion {
@@ -83,7 +85,7 @@ enum Commands {
 
     // MARK: Running
 
-    static func run(_ input: String, engine e: GameEngine) {
+    static func run(_ input: String, engine e: CommandHost) {
         let text = input.trimmingCharacters(in: .whitespaces)
         let args = text.dropFirst().split(separator: " ").map(String.init)
         guard var name = args.first?.lowercased(), let s = e.session else { return }
@@ -102,7 +104,7 @@ enum Commands {
         name = command.name
 
         if !command.readOnly {
-            if e.client != nil { return reply("Only the host can use /\(name).") }
+            if e.isClient { return reply("Only the host can use /\(name).") }
             if s.meta.isHardcore { return reply("Commands are turned off in Hardcore worlds.") }
             if !s.meta.commandsAllowed { return reply("Commands are turned off in this world. Turn them on from the pause menu.") }
         }
@@ -143,7 +145,7 @@ enum Commands {
             }
             let count = max(1, min(64 * 36, Int(params.dropFirst(words).first ?? "") ?? 1))
             if let targetPlayer, targetPlayer.lowercased() != e.settings.username.lowercased() {
-                guard let server = e.server, server.give(playerNamed: targetPlayer, item: info.name, count: count) else {
+                guard e.give(playerNamed: targetPlayer, item: info.name, count: count) else {
                     return reply("Couldn't find a player named \(targetPlayer).")
                 }
                 return reply("Gave \(count) × \(info.displayName) to \(targetPlayer).")
@@ -424,7 +426,7 @@ enum Commands {
         return (spec(first) ?? closest(first, in: allNames).flatMap { spec($0) })?.usage
     }
 
-    static func suggestions(for text: String, engine e: GameEngine) -> [CommandSuggestion] {
+    static func suggestions(for text: String, engine e: CommandHost) -> [CommandSuggestion] {
         guard text.hasPrefix("/") else { return [] }
         var tokens = String(text.dropFirst()).split(separator: " ", omittingEmptySubsequences: false).map(String.init)
         let current = tokens.popLast() ?? ""
@@ -443,7 +445,7 @@ enum Commands {
         return rank(current, pool).prefix(8).map { CommandSuggestion(label: $0, detail: nil, completion: head + $0 + (more ? " " : "")) }
     }
 
-    private static func candidates(_ arg: Arg, previous: [String], engine e: GameEngine) -> [String] {
+    private static func candidates(_ arg: Arg, previous: [String], engine e: CommandHost) -> [String] {
         let players = e.remotePlayers.map { $0.name }
         switch arg {
         case .items: return e.items.all.map { $0.name }
@@ -520,14 +522,14 @@ enum Commands {
         return tie ? nil : best?.name
     }
 
-    private static func item(named raw: String, _ e: GameEngine) -> ItemID? {
+    private static func item(named raw: String, _ e: CommandHost) -> ItemID? {
         let key = raw.lowercased().replacingOccurrences(of: "minecraft:", with: "")
         if let id = e.items.id(named: key) { return id }
         return e.items.all.first { $0.displayName.lowercased().replacingOccurrences(of: " ", with: "_") == key }?.id
     }
 
     /// Longest run of words naming an item (so "iron pickaxe 2" works), with typo correction as a fallback.
-    private static func resolveItem(_ words: [String], _ e: GameEngine, note: (String) -> Void) -> (ItemID, Int)? {
+    private static func resolveItem(_ words: [String], _ e: CommandHost, note: (String) -> Void) -> (ItemID, Int)? {
         for n in stride(from: words.count, through: 1, by: -1) where Int(words[n - 1]) == nil {
             if let id = item(named: words.prefix(n).joined(separator: "_"), e) { return (id, n) }
         }
@@ -542,7 +544,7 @@ enum Commands {
         return nil
     }
 
-    private static func resolveBlock(_ raw: String, _ e: GameEngine, note: (String) -> Void) -> BlockID? {
+    private static func resolveBlock(_ raw: String, _ e: CommandHost, note: (String) -> Void) -> BlockID? {
         let key = raw.lowercased()
         if let id = e.blocks.id(named: key) { return id }
         if let id = item(named: key, e), let b = e.items[id]?.block { return b }
