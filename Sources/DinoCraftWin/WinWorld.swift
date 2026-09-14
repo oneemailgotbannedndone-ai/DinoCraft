@@ -126,8 +126,9 @@ final class WinWorld: BlockSource {
 
     let registry: BlockRegistry
     let generator: WorldGenerator
-    let storage: WorldStorage
-    let worldID: String
+    /// nil when playing on a friend's world (nothing is saved locally).
+    let storage: WorldStorage?
+    let worldID: String?
     let jobs: WinJobSystem
 
     private(set) var slots: [ChunkPos: Slot] = [:]
@@ -137,6 +138,9 @@ final class WinWorld: BlockSource {
     private var inFlightMeshes = 0
     private var offsets: [(Int32, Int32)] = []
     private(set) var center = ChunkPos(0, 0)
+    /// Multiplayer: chunks are requested from the host instead of generated.
+    var remoteRequest: (([ChunkPos]) -> Void)?
+    private var remoteRequestedAt: [ChunkPos: Double] = [:]
 
     var renderDistance: Int { didSet { if renderDistance != oldValue { rebuildOffsets() } } }
     /// Uploads a finished mesh (main thread, with the GL context current).
@@ -144,7 +148,7 @@ final class WinWorld: BlockSource {
     /// Frees a mesh's GL objects.
     var releaseMesh: (GPUMesh) -> Void = { _ in }
 
-    init(registry: BlockRegistry, generator: WorldGenerator, storage: WorldStorage, worldID: String, jobs: WinJobSystem, renderDistance: Int) {
+    init(registry: BlockRegistry, generator: WorldGenerator, storage: WorldStorage?, worldID: String?, jobs: WinJobSystem, renderDistance: Int) {
         self.registry = registry
         self.generator = generator
         self.storage = storage
@@ -225,7 +229,7 @@ final class WinWorld: BlockSource {
         inbox.lock.unlock()
 
         for (pos, token, payload) in meshed {
-            inFlightMeshes -= 1
+            inFlightMeshes = max(0, inFlightMeshes - 1)
             guard let s = slots[pos] else { continue }
             s.meshInFlight = false
             guard token == s.meshToken else { continue }
@@ -274,6 +278,22 @@ final class WinWorld: BlockSource {
     }
 
     private func scheduleGeneration() {
+        if let remoteRequest {
+            let now = Date.timeIntervalSinceReferenceDate
+            let radius = Int32(renderDistance + 2)
+            var batch: [ChunkPos] = []
+            for (dx, dz) in offsets {
+                if batch.count >= 48 { break }
+                if dx * dx + dz * dz > radius * radius + radius { continue }
+                let pos = ChunkPos(center.x + dx, center.z + dz)
+                if slots[pos] != nil { continue }
+                if let t = remoteRequestedAt[pos], now - t < 6 { continue }
+                remoteRequestedAt[pos] = now
+                batch.append(pos)
+            }
+            if !batch.isEmpty { remoteRequest(batch) }
+            return
+        }
         let maxQueued = jobs.workerCount * 3
         guard pendingGeneration.count < maxQueued else { return }
         let genRadius = Int32(renderDistance + 2)
@@ -287,7 +307,8 @@ final class WinWorld: BlockSource {
             let folder = generator.dimension.storageFolder
             jobs.submit(priority: Int(dx * dx + dz * dz) * 4, group: jobGroup) { _ in
                 guard !inbox.cancelled else { return }
-                let chunk = storage.loadChunk(worldID: worldID, pos: pos, dimension: folder) ?? generator.generate(pos)
+                let saved = worldID.flatMap { id in storage?.loadChunk(worldID: id, pos: pos, dimension: folder) }
+                let chunk = saved ?? generator.generate(pos)
                 inbox.lock.lock()
                 inbox.generated.append(chunk)
                 inbox.lock.unlock()
@@ -347,13 +368,47 @@ final class WinWorld: BlockSource {
         return (m, t)
     }
 
+    // MARK: Multiplayer
+
+    /// Integrates a chunk sent by the host.
+    func receiveRemoteChunk(_ chunk: Chunk) {
+        remoteRequestedAt[chunk.pos] = nil
+        if let existing = slots[chunk.pos] {
+            existing.chunk.blocks.update(from: chunk.blocks, count: WorldConst.blocksPerChunk)
+            existing.chunk.recomputeHeights()
+            for dz: Int32 in -1...1 {
+                for dx: Int32 in -1...1 { slots[ChunkPos(chunk.pos.x + dx, chunk.pos.z + dz)]?.needsMesh = true }
+            }
+            return
+        }
+        inbox.lock.lock()
+        inbox.generated.append(chunk)
+        inbox.lock.unlock()
+    }
+
+    /// Drops every chunk (the host moved to another dimension).
+    func resetRemote() {
+        for (_, s) in slots { if let mesh = s.mesh { releaseMesh(mesh) } }
+        slots.removeAll()
+        pendingGeneration.removeAll()
+        remoteRequestedAt.removeAll()
+        inbox.lock.lock()
+        inbox.generated.removeAll()
+        inbox.meshed.removeAll()
+        inbox.lock.unlock()
+        inFlightMeshes = 0
+    }
+
     // MARK: Saving
 
     private func saveChunk(_ chunk: Chunk) {
+        guard let storage, let worldID else {
+            chunk.needsSave = false
+            return
+        }
         let copy = Chunk(pos: chunk.pos)
         copy.blocks.update(from: chunk.blocks, count: WorldConst.blocksPerChunk)
         chunk.needsSave = false
-        let storage = self.storage, worldID = self.worldID
         let folder = generator.dimension.storageFolder
         storage.ioQueue.async {
             do {
@@ -378,7 +433,7 @@ final class WinWorld: BlockSource {
         inbox.cancelled = true
         jobs.cancel(group: jobGroup)
         saveModifiedChunks()
-        storage.ioQueue.sync {}
+        storage?.ioQueue.sync {}
         for (_, s) in slots { if let mesh = s.mesh { releaseMesh(mesh) } }
         slots.removeAll()
     }

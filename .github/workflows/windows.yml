@@ -77,7 +77,7 @@ jobs:
           $env:GALLIUM_DRIVER = "llvmpipe"
           $env:DINOCRAFT_HOME = "$PWD/smoke-home"
           $shot = "$PWD/screenshot.png"
-          $p = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--screenshot `"$shot`" --frames 20 --render-distance 5 --seed dino" -PassThru -Wait -NoNewWindow
+          $p = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--screenshot `"$shot`" --frames 20 --render-distance 5 --seed dino --demo-entities" -PassThru -Wait -NoNewWindow
           Write-Host "Exit code: $($p.ExitCode)"
           Get-ChildItem smoke-home/logs -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName -Tail 40 }
           if (-not (Test-Path $shot)) { throw "The game did not produce a screenshot" }

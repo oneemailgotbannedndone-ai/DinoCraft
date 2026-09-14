@@ -239,6 +239,36 @@ enum Shaders {
     }
     """
 
+    static let boxVertex = """
+    #version 330 core
+    layout(location = 0) in vec3 aPos;
+    layout(location = 1) in vec3 aColor;
+    uniform mat4 uViewProj;
+    out vec3 vColor;
+    out vec3 vViewPos;
+    void main() {
+        gl_Position = uViewProj * vec4(aPos, 1.0);
+        vColor = aColor;
+        vViewPos = aPos;
+    }
+    """
+
+    static let boxFragment = """
+    #version 330 core
+    in vec3 vColor;
+    in vec3 vViewPos;
+    uniform vec4 uFogColorStart;
+    uniform float uFogEnd;
+    uniform float uDaylight;
+    out vec4 fragColor;
+    void main() {
+        vec3 lit = vColor * mix(0.22, 1.0, uDaylight);
+        float t = smoothstep(uFogColorStart.w, uFogEnd, length(vViewPos));
+        t = t * t;
+        fragColor = vec4(mix(lit, uFogColorStart.rgb, t), 1.0);
+    }
+    """
+
     static let overlayVertex = """
     #version 330 core
     layout(location = 0) in vec2 aPos;

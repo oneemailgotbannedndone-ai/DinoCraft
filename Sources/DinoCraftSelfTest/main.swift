@@ -540,6 +540,123 @@ section("PNG") {
     #endif
 }
 
+section("Multiplayer wire protocol") {
+    let frame = Wire.frame(.chat, Data("{}".utf8))
+    check(frame.count == 7 && frame[0] == 3 && frame[4] == 10, "frames match the Mac host's layout (length, kind, payload)")
+
+    // A loopback host: accepts one player, answers hello with welcome, a chunk and a creature.
+    let server = try NetSocket.listen(port: 0, loopbackOnly: true)
+    let port = server.localPort
+    check(port > 0, "test host listens on a free port")
+    let generator = TerrainGenerator(seed: 9)
+    let hostDone = DispatchSemaphore(value: 0)
+    Thread {
+        defer { hostDone.signal() }
+        guard let socket = server.accept() else { return }
+        let peer = WireConnection(socket: socket, label: "test host")
+        let deadline = Date().addingTimeInterval(5)
+        var hello: Wire.Hello?
+        while hello == nil && Date() < deadline {
+            for case .message(.hello, let data) in peer.poll() { hello = try? JSONDecoder().decode(Wire.Hello.self, from: data) }
+            Thread.sleep(forTimeInterval: 0.01)
+        }
+        guard let hello, hello.username == "Tester", hello.version == Wire.protocolVersion else { return }
+        peer.send(.welcome, Wire.Welcome(playerID: 7, worldName: "Loopback", seed: "9", dimension: "overworld", gameMode: "survival",
+                                         difficulty: "normal", hardcore: false, x: 1, y: 70, z: 2, worldTime: 300,
+                                         players: [Wire.PlayerInfo(id: 0, name: "Host")]))
+        if let payload = try? Wire.chunkPayload(generator.generate(ChunkPos(2, -3))) { peer.sendRaw(.chunkData, payload) }
+        peer.send(.mobSnapshot, Wire.MobSnapshot(mobs: [Wire.MobState(id: 5, kind: "raptor", x: 3, y: 70, z: 4, yaw: 1, health: 16, maxHealth: 16)]))
+        Thread.sleep(forTimeInterval: 0.3)
+        peer.close()
+    }.start()
+
+    let client = try WireConnection.connect(host: "127.0.0.1", port: port)
+    client.send(.hello, Wire.Hello(version: Wire.protocolVersion, username: "Tester"))
+    var welcome: Wire.Welcome?
+    var received: Chunk?
+    var mobs = 0
+    var closed = false
+    let deadline = Date().addingTimeInterval(8)
+    while !closed && Date() < deadline {
+        for event in client.poll() {
+            switch event {
+            case .message(.welcome, let data): welcome = try? JSONDecoder().decode(Wire.Welcome.self, from: data)
+            case .message(.mobSnapshot, let data): mobs += (try? JSONDecoder().decode(Wire.MobSnapshot.self, from: data))?.mobs.count ?? 0
+            case .chunk(let chunk): received = chunk
+            case .closed: closed = true
+            default: break
+            }
+        }
+        Thread.sleep(forTimeInterval: 0.01)
+    }
+    _ = hostDone.wait(timeout: .now() + 5)
+    check(welcome?.playerID == 7 && welcome?.worldName == "Loopback", "player joins over TCP and receives the welcome")
+    check(received?.pos == ChunkPos(2, -3) && received.map(checksum) == checksum(generator.generate(ChunkPos(2, -3))), "chunks arrive intact over the network")
+    check(mobs == 1, "creature snapshots arrive")
+    check(closed, "disconnect is reported")
+    server.close()
+}
+
+// Optional: DINOCRAFT_LIVE_HOST=127.0.0.1 joins a real hosted DinoCraft game (used to verify cross-play).
+if let liveHost = ProcessInfo.processInfo.environment["DINOCRAFT_LIVE_HOST"], !liveHost.isEmpty {
+    section("Live host \(liveHost)") {
+        let connection = try WireConnection.connect(host: liveHost, port: Wire.defaultPort)
+        connection.send(.hello, Wire.Hello(version: Wire.protocolVersion, username: "WinTest"))
+        var welcome: Wire.Welcome?
+        var chunks = 0, hostStates = 0, mobSnapshots = 0, times = 0, blockEchoes = 0
+        var closedReason: String?
+        var requested = false, placed = false
+        var target = BlockPos(0, 0, 0)
+        let start = Date()
+        var lastState = Date.distantPast
+        while Date().timeIntervalSince(start) < 25 && closedReason == nil {
+            for event in connection.poll() {
+                switch event {
+                case .message(.welcome, let data): welcome = try? JSONDecoder().decode(Wire.Welcome.self, from: data)
+                case .message(.playerState, let data):
+                    if (try? JSONDecoder().decode(Wire.PlayerState.self, from: data))?.id == 0 { hostStates += 1 }
+                case .message(.mobSnapshot, _): mobSnapshots += 1
+                case .message(.worldTime, _): times += 1
+                case .message(.blockChange, let data):
+                    if let m = try? JSONDecoder().decode(Wire.BlockChange.self, from: data), BlockPos(m.x, m.y, m.z) == target { blockEchoes += 1 }
+                case .chunk: chunks += 1
+                case .closed(let reason): closedReason = reason
+                default: break
+                }
+            }
+            if let w = welcome {
+                let cx = Int32(floor(w.x / 16)), cz = Int32(floor(w.z / 16))
+                if !requested {
+                    var list: [ChunkPos] = []
+                    for dz: Int32 in -2...2 { for dx: Int32 in -2...2 { list.append(ChunkPos(cx + dx, cz + dz)) } }
+                    connection.send(.chunkRequest, Wire.ChunkRequest(list))
+                    requested = true
+                }
+                if chunks >= 25 && !placed {
+                    target = BlockPos(Int(floor(w.x)) + 2, Int(floor(w.y)) + 3, Int(floor(w.z)))
+                    connection.send(.blockChange, Wire.BlockChange(pos: target, id: Blocks.amberLantern, harvest: false))
+                    placed = true
+                }
+                if Date().timeIntervalSince(lastState) > 0.1 {
+                    lastState = Date()
+                    let t = Date().timeIntervalSince(start)
+                    connection.send(.playerState, Wire.PlayerState(id: w.playerID, x: w.x + cos(t) * 2, y: w.y, z: w.z + sin(t) * 2,
+                                                                   yaw: Float(t), pitch: 0, moving: 1, sneaking: false, swinging: false,
+                                                                   held: "planks", health: 20, dead: false))
+                }
+            }
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+        print("  welcome \(welcome.map { "'\($0.worldName)' as player \($0.playerID)" } ?? "none") · \(chunks) chunks · \(hostStates) host states · \(mobSnapshots) creature updates · \(times) time updates · \(blockEchoes) block echoes · closed: \(closedReason ?? "no")")
+        check(welcome != nil, "joined the live host")
+        check(chunks >= 25, "live host served the requested chunks (\(chunks))")
+        check(hostStates > 0, "live host's player movement arrives")
+        check(mobSnapshots > 0 && times > 0, "live host's creatures and time arrive")
+        check(blockEchoes > 0, "a placed block was accepted and broadcast by the host")
+        connection.close()
+    }
+}
+
 print("")
 print("DinoCraftCore self-test: \(passes) passed, \(failures) failed")
 exit(failures == 0 ? 0 : 1)

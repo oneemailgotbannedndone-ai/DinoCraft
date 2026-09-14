@@ -2,18 +2,20 @@ import Foundation
 import CSDL3
 import DinoCraftCore
 
-/// The Windows game loop: input, player movement, block building, day/night, saving and rendering.
+/// The Windows game loop: input, player movement, block building, day/night, saving,
+/// multiplayer (joining a Mac host) and rendering.
 final class WinGame {
     private let gl: GL
     private let window: OpaquePointer
     private let options: Options
     private let blocks: BlockRegistry
     private let renderer: WinRenderer
-    private let storage: WorldStorage
-    private var meta: WorldMetadata
+    private let storage: WorldStorage?
+    private var meta: WorldMetadata?
     private let jobs: WinJobSystem
     private let world: WinWorld
     private let player: PlayerController
+    private let network: WinNetwork?
 
     private var running = true
     private var mouseCaptured = false
@@ -25,6 +27,11 @@ final class WinGame {
     private var breakQueued = false
     private var placeQueued = false
     private var screenshotQueued = false
+    private var swingTimer = 0.0
+    private var stateTimer = 0.0
+    private var notice: (text: String, until: Double)?
+    private var disconnectReason: String?
+    private var demoEntities: [RemoteEntity] = []
 
     private let startTime = Date.timeIntervalSinceReferenceDate
     private var lastFrame = Date.timeIntervalSinceReferenceDate
@@ -34,48 +41,64 @@ final class WinGame {
     private var fps = 0
     private var framesSinceReady = 0
 
-    init(gl: GL, window: OpaquePointer, options: Options) throws {
+    init(gl: GL, window: OpaquePointer, options: Options, network: WinNetwork?) throws {
         // Build everything in locals first: stored properties can't be read until all are set.
         let blocks = try BlockRegistry.loadDefault()
         let renderer = try WinRenderer(gl: gl, blocks: blocks)
-        let storage = WorldStorage()
-
-        let worldName = "Windows World"
-        let meta: WorldMetadata
-        if let existing = storage.listWorlds().first(where: { $0.name == worldName }) {
-            meta = existing
-        } else {
-            meta = try storage.createWorld(name: worldName, seedText: options.seed, gameMode: .creative, difficulty: .normal)
-            Log.info("Created world '\(worldName)' with seed \(meta.seedText)", category: "Game")
-        }
-
-        let generator = WorldDimension.overworld.makeGenerator(seed: meta.numericSeed)
         let workers = max(2, ProcessInfo.processInfo.activeProcessorCount - 1)
         let jobs = WinJobSystem(workerCount: workers, registry: blocks)
-        let world = WinWorld(registry: blocks, generator: generator, storage: storage, worldID: meta.id, jobs: jobs,
-                             renderDistance: options.renderDistance)
 
+        let storage: WorldStorage?
+        let meta: WorldMetadata?
+        let world: WinWorld
         let player: PlayerController
         var selectedSlot = 0
-        var resolveSpawn: Bool
-        if let saved = storage.loadPlayer(id: meta.id) {
-            player = PlayerController(position: DVec3(saved.x, saved.y, saved.z))
-            player.yaw = saved.yaw
-            player.pitch = saved.pitch
-            selectedSlot = max(0, min(8, saved.selectedSlot))
-            resolveSpawn = false
+        var resolveSpawn = false
+        let time: Double
+
+        if let network {
+            let welcome = network.welcome
+            storage = nil
+            meta = nil
+            let generator = WorldDimension.overworld.makeGenerator(seed: UInt64(welcome.seed) ?? 0)
+            world = WinWorld(registry: blocks, generator: generator, storage: nil, worldID: nil, jobs: jobs,
+                             renderDistance: options.renderDistance)
+            world.remoteRequest = { network.requestChunks($0) }
+            player = PlayerController(position: DVec3(welcome.x, welcome.y, welcome.z))
+            time = welcome.worldTime
         } else {
-            let column = generator.findSpawnColumn()
-            let y = generator.estimatedSurface(x: column.x, z: column.z)
-            player = PlayerController(position: DVec3(Double(column.x) + 0.5, Double(y) + 1, Double(column.z) + 0.5))
-            player.pitch = -0.2
-            resolveSpawn = true
+            let localStorage = WorldStorage()
+            let worldName = "Windows World"
+            let localMeta: WorldMetadata
+            if let existing = localStorage.listWorlds().first(where: { $0.name == worldName }) {
+                localMeta = existing
+            } else {
+                localMeta = try localStorage.createWorld(name: worldName, seedText: options.seed, gameMode: .creative, difficulty: .normal)
+                Log.info("Created world '\(worldName)' with seed \(localMeta.seedText)", category: "Game")
+            }
+            let generator = WorldDimension.overworld.makeGenerator(seed: localMeta.numericSeed)
+            world = WinWorld(registry: blocks, generator: generator, storage: localStorage, worldID: localMeta.id, jobs: jobs,
+                             renderDistance: options.renderDistance)
+            if let saved = localStorage.loadPlayer(id: localMeta.id) {
+                player = PlayerController(position: DVec3(saved.x, saved.y, saved.z))
+                player.yaw = saved.yaw
+                player.pitch = saved.pitch
+                selectedSlot = max(0, min(8, saved.selectedSlot))
+            } else {
+                let column = generator.findSpawnColumn()
+                let y = generator.estimatedSurface(x: column.x, z: column.z)
+                player = PlayerController(position: DVec3(Double(column.x) + 0.5, Double(y) + 1, Double(column.z) + 0.5))
+                player.pitch = -0.2
+                resolveSpawn = true
+            }
+            storage = localStorage
+            meta = localMeta
+            time = localMeta.worldTime
         }
         player.gameMode = .creative
-
-        let names = ["grass", "dirt", "stone", "cobblestone", "planks", "log", "glass", "torch", "amber_lantern"]
         world.uploadMesh = { renderer.makeMesh($0) }
         world.releaseMesh = { renderer.deleteMesh($0) }
+        let names = ["grass", "dirt", "stone", "cobblestone", "planks", "log", "glass", "torch", "amber_lantern"]
 
         self.gl = gl
         self.window = window
@@ -87,16 +110,22 @@ final class WinGame {
         self.jobs = jobs
         self.world = world
         self.player = player
+        self.network = network
         hotbar = names.map { blocks.id(named: $0) ?? Blocks.stone }
         selected = selectedSlot
         needsSpawnResolve = resolveSpawn
-        worldTime = meta.worldTime
-        Log.info("World '\(meta.name)' opened at \(player.position)", category: "Game")
+        worldTime = time
+        if let network {
+            Log.info("Playing on '\(network.welcome.worldName)' at \(player.position)", category: "Game")
+        } else {
+            Log.info("World '\(meta?.name ?? "?")' opened at \(player.position)", category: "Game")
+        }
     }
 
     // MARK: Loop
 
-    func run() {
+    /// Runs until the window closes. Returns the reason if the host disconnected us.
+    func run() -> String? {
         if options.screenshotPath == nil { setMouseCaptured(true) }
         while running {
             let now = Date.timeIntervalSinceReferenceDate
@@ -107,11 +136,19 @@ final class WinGame {
             draw(now: now)
         }
         shutdown()
+        return disconnectReason
     }
 
     private func setMouseCaptured(_ captured: Bool) {
         mouseCaptured = captured
         _ = SDL_SetWindowRelativeMouseMode(window, captured)
+    }
+
+    private func showNotice(_ text: String, now: Double) {
+        notice = (text, now + 8)
+        titleTimer = 1
+        Log.info("Notice: \(text)", category: "Game")
+        print("  \(text)")
     }
 
     private func pollEvents() {
@@ -156,6 +193,8 @@ final class WinGame {
 
     private func update(dt: Double, now: Double) {
         worldTime += dt
+        swingTimer = max(0, swingTimer - dt)
+        if let network { handleNetwork(network, dt: dt, now: now) }
         world.update(focus: player.position, now: now)
 
         let px = Int(floor(player.position.x)), pz = Int(floor(player.position.z))
@@ -183,7 +222,10 @@ final class WinGame {
 
         let target = VoxelPhysics.raycast(world, origin: player.eyePosition, direction: player.lookDirection, maxDistance: 6.5)
         if breakQueued, let hit = target, blocks[hit.id]?.isBreakable == true {
-            world.setBlock(hit.block, Blocks.air)
+            if world.setBlock(hit.block, Blocks.air) {
+                network?.sendBlock(hit.block, Blocks.air)
+                swingTimer = 0.25
+            }
         }
         if placeQueued, let hit = target {
             var cell = hit.adjacent
@@ -193,7 +235,10 @@ final class WinGame {
             let free = current == Blocks.air || blocks[current]?.replaceable == true
             let origin = DVec3(Double(cell.x), Double(cell.y), Double(cell.z))
             let blocksPlayer = blocks.isSolid[Int(id)] && DBox(min: origin, max: origin + DVec3(1, 1, 1)).intersects(player.box)
-            if free && !blocksPlayer { world.setBlock(cell, id) }
+            if free && !blocksPlayer && world.setBlock(cell, id) {
+                network?.sendBlock(cell, id)
+                swingTimer = 0.25
+            }
         }
         breakQueued = false
         placeQueued = false
@@ -206,11 +251,68 @@ final class WinGame {
         titleTimer += dt
         framesThisSecond += 1
         if titleTimer >= 1 {
-            fps = framesThisSecond
+            if titleTimer >= 1 && framesThisSecond > 1 { fps = framesThisSecond }
             framesThisSecond = 0
             titleTimer = 0
             let p = player.position
-            SDL_SetWindowTitle(window, "DinoCraft · \(fps) FPS · \(Int(floor(p.x))), \(Int(floor(p.y))), \(Int(floor(p.z)))\(mouseCaptured ? "" : " · click to play")")
+            var title = "DinoCraft · \(fps) FPS · \(Int(floor(p.x))), \(Int(floor(p.y))), \(Int(floor(p.z)))"
+            if let network { title += " · \(network.welcome.worldName) (\(network.players.count + 1) playing)" }
+            if let notice, now < notice.until { title += " · \(notice.text)" }
+            if !mouseCaptured { title += " · click to play" }
+            SDL_SetWindowTitle(window, title)
+        }
+    }
+
+    private func handleNetwork(_ network: WinNetwork, dt: Double, now: Double) {
+        for event in network.poll() {
+            switch event {
+            case .chunk(let chunk):
+                world.receiveRemoteChunk(chunk)
+            case .blockChange(let pos, let id):
+                world.setBlock(pos, id)
+            case .worldTime(let time):
+                worldTime = time
+            case .dimensionChange(let position):
+                world.resetRemote()
+                player.teleport(to: position)
+                showNotice("Following the host to another dimension", now: now)
+            case .notice(let text):
+                showNotice(text, now: now)
+            case .disconnected(let reason):
+                disconnectReason = reason
+                running = false
+            }
+        }
+        network.updateEntities(dt: dt)
+        stateTimer -= dt
+        if stateTimer <= 0 {
+            stateTimer = 0.05
+            network.sendState(player: player, swinging: swingTimer > 0, held: blocks[hotbar[selected]]?.itemName)
+        }
+    }
+
+    private func entityBoxes() -> [WinRenderer.Box] {
+        var boxes: [WinRenderer.Box] = []
+        if let network {
+            for p in network.players.values { boxes += EntityShapes.player(p) }
+            for m in network.mobs.values { boxes += EntityShapes.mob(m) }
+        }
+        for e in demoEntities { boxes += e.kind == "player" ? EntityShapes.player(e) : EntityShapes.mob(e) }
+        return boxes
+    }
+
+    /// Automated check: sample players and creatures a few blocks in front of the camera.
+    private func placeDemoEntities() {
+        let look = player.lookDirection
+        let forward = simd_normalize(DVec3(look.x, 0, look.z))
+        let right = DVec3(-forward.z, 0, forward.x)
+        let samples: [(String, Double, Double)] = [("player", 5, -1.5), ("raptor", 7, 2), ("trikey", 9, -4), ("rex", 16, 3), ("sheep", 6, 4)]
+        for (i, sample) in samples.enumerated() {
+            let spot = player.position + forward * sample.1 + right * sample.2
+            let x = Int(floor(spot.x)), z = Int(floor(spot.z))
+            let y = world.findStandingY(x, z, near: Int(player.position.y)) ?? Int(player.position.y)
+            let yaw = atan2(forward.x, forward.z)
+            demoEntities.append(RemoteEntity(id: i + 1, kind: sample.0, name: sample.0, position: DVec3(spot.x, Double(y), spot.z), yaw: yaw))
         }
     }
 
@@ -224,17 +326,20 @@ final class WinGame {
         let overlay = WinRenderer.Overlay(hotbarLayers: hotbar.map { blocks.faceLayers[Int($0) * 6 + BlockFace.south.rawValue] },
                                           selected: selected, showCrosshair: true)
         renderer.render(world: world, camera: camera, sky: SkyState.at(worldTime: worldTime), time: now - startTime, now: now,
-                        width: w, height: h, overlay: overlay)
+                        width: w, height: h, overlay: overlay, boxes: entityBoxes())
 
         if let path = options.screenshotPath {
             let center = ChunkPos(Int32(floor(player.position.x / 16)), Int32(floor(player.position.z / 16)))
             let ready = world.readiness(around: center, radius: 3)
-            if !needsSpawnResolve && ready.meshed == ready.total { framesSinceReady += 1 }
+            if !needsSpawnResolve && ready.meshed == ready.total {
+                if options.demoEntities && demoEntities.isEmpty { placeDemoEntities() }
+                framesSinceReady += 1
+            }
             let timedOut = now - startTime > 150
             if framesSinceReady >= options.frames || timedOut {
                 if timedOut { Log.warning("Screenshot taken before the world finished loading (\(ready.meshed)/\(ready.total) chunks)", category: "Game") }
                 saveScreenshot(to: URL(fileURLWithPath: path), width: w, height: h)
-                Log.info("Automated check: \(renderer.visibleChunks) chunks visible, \(world.slots.count) loaded", category: "Game")
+                Log.info("Automated check: \(renderer.visibleChunks) chunks visible, \(world.slots.count) loaded, \(demoEntities.count) sample entities", category: "Game")
                 running = false
             }
         } else if screenshotQueued {
@@ -259,8 +364,10 @@ final class WinGame {
     // MARK: Saving
 
     private func save() {
+        guard let storage, var meta else { return }
         meta.worldTime = worldTime
         meta.lastPlayed = Date()
+        self.meta = meta
         do {
             try storage.saveMetadata(meta)
             let p = player.position
@@ -277,6 +384,7 @@ final class WinGame {
     private func shutdown() {
         setMouseCaptured(false)
         save()
+        network?.disconnect()
         world.shutdown()
         jobs.shutdown()
     }
