@@ -1,0 +1,27 @@
+name: Windows
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Swift
+        uses: compnerd/gha-setup-swift@main
+        with:
+          branch: swift-6.1-release
+          tag: 6.1-RELEASE
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Build core self-test
+        run: swift build -c release --product DinoCraftSelfTest
+
+      - name: Run core self-test
+        run: .build\release\DinoCraftSelfTest.exe
