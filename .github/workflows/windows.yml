@@ -8,14 +8,16 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Swift
         uses: compnerd/gha-setup-swift@main
         with:
-          branch: swift-6.1-release
-          tag: 6.1-RELEASE
+          swift-version: swift-6.1-release
+          swift-build: 6.1-RELEASE
 
       - name: Swift version
         run: swift --version
@@ -25,3 +27,73 @@ jobs:
 
       - name: Run core self-test
         run: .build\release\DinoCraftSelfTest.exe
+
+      - name: Download SDL3
+        shell: pwsh
+        run: |
+          $tag = gh release list --repo libsdl-org/SDL --limit 40 --json tagName,isPrerelease --jq '[.[] | select(.isPrerelease | not) | .tagName | select(startswith("release-3."))][0]'
+          Write-Host "SDL release: $tag"
+          New-Item -ItemType Directory -Force third_party | Out-Null
+          gh release download $tag --repo libsdl-org/SDL --pattern "SDL3-devel-*-VC.zip" --dir third_party
+          $zip = Get-ChildItem third_party -Filter "SDL3-devel-*-VC.zip" | Select-Object -First 1
+          Expand-Archive $zip.FullName -DestinationPath third_party -Force
+          $sdl = (Get-ChildItem third_party -Directory -Filter "SDL3-*" | Select-Object -First 1).FullName -replace '\\', '/'
+          Write-Host "SDL folder: $sdl"
+          "SDL3_DIR=$sdl" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build DinoCraft for Windows
+        shell: pwsh
+        run: swift build -c release --product DinoCraftWin -Xcc "-I$env:SDL3_DIR/include" -Xlinker "-L$env:SDL3_DIR/lib/x64"
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $out = "DinoCraft-Windows"
+          New-Item -ItemType Directory -Force "$out/Resources/Textures" | Out-Null
+          Copy-Item .build/release/DinoCraftWin.exe "$out/DinoCraft.exe"
+          Copy-Item "$env:SDL3_DIR/lib/x64/SDL3.dll" $out
+          $roots = @("$env:LOCALAPPDATA\Programs\Swift", "C:\Program Files\Swift", "C:\Library") | Where-Object { Test-Path $_ }
+          $runtime = Get-ChildItem -Path $roots -Recurse -Filter swiftCore.dll -ErrorAction SilentlyContinue |
+            Sort-Object { if ($_.FullName -match 'Runtimes') { 0 } else { 1 } } | Select-Object -First 1
+          if (-not $runtime) { throw "Swift runtime not found" }
+          Write-Host "Swift runtime: $($runtime.DirectoryName)"
+          Copy-Item "$($runtime.DirectoryName)\*.dll" $out
+          foreach ($dll in @("vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll")) {
+            if (Test-Path "C:\Windows\System32\$dll") { Copy-Item "C:\Windows\System32\$dll" $out }
+          }
+          Copy-Item Resources/Data "$out/Resources/Data" -Recurse
+          Copy-Item Resources/Textures/blocks "$out/Resources/Textures/blocks" -Recurse
+          Get-ChildItem $out | Format-Table Name, Length
+
+      - name: Automated check with software OpenGL
+        shell: pwsh
+        timeout-minutes: 10
+        run: |
+          gh release download --repo pal1000/mesa-dist-win --pattern "mesa3d-*-release-msvc.7z" --dir mesa
+          $archive = Get-ChildItem mesa -Filter *.7z | Select-Object -First 1
+          7z x $archive.FullName -omesa/x -y | Out-Null
+          Copy-Item DinoCraft-Windows smoke -Recurse
+          Copy-Item mesa/x/x64/*.dll smoke -Force
+          $env:GALLIUM_DRIVER = "llvmpipe"
+          $env:DINOCRAFT_HOME = "$PWD/smoke-home"
+          $shot = "$PWD/screenshot.png"
+          $p = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--screenshot `"$shot`" --frames 20 --render-distance 5 --seed dino" -PassThru -Wait -NoNewWindow
+          Write-Host "Exit code: $($p.ExitCode)"
+          Get-ChildItem smoke-home/logs -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName -Tail 40 }
+          if (-not (Test-Path $shot)) { throw "The game did not produce a screenshot" }
+
+      - name: Upload screenshot and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: automated-check
+          path: |
+            screenshot.png
+            smoke-home/logs/
+          if-no-files-found: ignore
+
+      - name: Upload Windows game
+        uses: actions/upload-artifact@v4
+        with:
+          name: DinoCraft-Windows
+          path: DinoCraft-Windows

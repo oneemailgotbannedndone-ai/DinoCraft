@@ -52,6 +52,20 @@ targets += [
 ]
 #endif
 
+#if os(Windows)
+products.append(.executable(name: "DinoCraftWin", targets: ["DinoCraftWin"]))
+targets += [
+    // SDL3 headers and import library come from the Windows build (see .github/workflows/windows.yml).
+    .systemLibrary(name: "CSDL3", path: "Sources/CSDL3"),
+    .executableTarget(
+        name: "DinoCraftWin",
+        dependencies: ["DinoCraftCore", "CSDL3"],
+        path: "Sources/DinoCraftWin",
+        swiftSettings: optimizedCore
+    ),
+]
+#endif
+
 let package = Package(
     name: "DinoCraft",
     platforms: [.macOS(.v14)],

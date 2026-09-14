@@ -6,3 +6,4 @@ dist/
 DerivedData/
 .DS_Store
 .build-portable/
+third_party/
