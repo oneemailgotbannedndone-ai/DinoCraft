@@ -1,5 +1,9 @@
 import Foundation
 import DinoCraftCore
+#if canImport(ImageIO)
+import CoreGraphics
+import ImageIO
+#endif
 
 // Headless verification suite for DinoCraftCore.
 // Run with:  swift run -c release DinoCraftSelfTest
@@ -491,6 +495,49 @@ section("Dimensions") {
     check(meta.isHardcore && meta.gameMode == .survival && meta.difficulty == .hard, "hardcore worlds are survival on hard")
     check(storage.chunkURL(worldID: meta.id, pos: ChunkPos(0, 0), dimension: "dim_underworld").path.contains("dim_underworld/chunks"),
           "dimension chunks are stored separately")
+}
+
+section("PNG") {
+    let w = 7, h = 5
+    var pixels = [UInt8](repeating: 0, count: w * h * 4)
+    for i in 0..<(w * h) {
+        pixels[i * 4] = UInt8(i * 7 % 256)
+        pixels[i * 4 + 1] = UInt8(i * 13 % 256)
+        pixels[i * 4 + 2] = UInt8(255 - i)
+        pixels[i * 4 + 3] = i % 2 == 0 ? 255 : 128
+    }
+    let encoded = PNG.encode(width: w, height: h, rgba: pixels)
+    let decoded = try PNG.decode(encoded)
+    check(decoded.width == w && decoded.height == h && decoded.rgba == pixels, "PNG round-trips through the portable writer and reader")
+    check((try? PNG.decode(Data(encoded.prefix(40)))) == nil, "truncated PNG is rejected")
+
+    // Generated textures use real zlib compression and row filters.
+    let files = ResourceLocator.files(in: "Textures/blocks", withExtension: "png")
+    var decodedCount = 0
+    for url in files {
+        if let image = try? PNG.decode(Data(contentsOf: url)), image.width == 32, image.height == 32 { decodedCount += 1 }
+    }
+    check(!files.isEmpty && decodedCount == files.count, "all \(files.count) block textures decode (\(decodedCount) ok)")
+
+    #if canImport(ImageIO)
+    // Opaque pixels must match Apple's decoder exactly.
+    if let url = files.first(where: { $0.lastPathComponent == "grass_top.png" }) ?? files.first,
+       let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+       let cg = CGImageSourceCreateImageAtIndex(source, 0, nil),
+       let mine = try? PNG.decode(Data(contentsOf: url)),
+       let space = CGColorSpace(name: CGColorSpace.sRGB),
+       let context = CGContext(data: nil, width: cg.width, height: cg.height, bitsPerComponent: 8, bytesPerRow: cg.width * 4,
+                               space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue),
+       let reference = context.data?.assumingMemoryBound(to: UInt8.self) {
+        context.draw(cg, in: CGRect(x: 0, y: 0, width: cg.width, height: cg.height))
+        var opaque = 0, mismatched = 0
+        for i in 0..<(mine.width * mine.height) where mine.rgba[i * 4 + 3] == 255 {
+            opaque += 1
+            for c in 0..<3 where abs(Int(mine.rgba[i * 4 + c]) - Int(reference[i * 4 + c])) > 1 { mismatched += 1; break }
+        }
+        check(opaque > 0 && mismatched == 0, "PNG decoder matches ImageIO on \(url.lastPathComponent) (\(mismatched) of \(opaque) pixels differ)")
+    }
+    #endif
 }
 
 print("")
