@@ -63,7 +63,7 @@ struct SkyState {
     }
 }
 
-/// Draws the sky, the voxel world and the 2D overlay (crosshair and hotbar) with OpenGL 3.3.
+/// Draws the sky, the voxel world, players and creatures, and the 2D overlay with OpenGL 3.3.
 final class WinRenderer {
     private struct ChunkProgram {
         let id: UInt32
@@ -85,21 +85,6 @@ final class WinRenderer {
         }
     }
 
-    let gl: GL
-    private let chunkPrograms: [ChunkProgram]
-    private let skyProgram: UInt32
-    private let overlayProgram: UInt32
-    private let blockTexture: UInt32
-    private let quadIndices: UInt32
-    private let maxQuads = 1 << 18
-    private let emptyVertexArray: UInt32
-    private let overlayVertexArray: UInt32
-    private let overlayBuffer: UInt32
-    private(set) var visibleChunks = 0
-    private let boxProgram: UInt32
-    private let boxVertexArray: UInt32
-    private let boxBuffer: UInt32
-
     /// A solid box rotated by `yaw`, used to draw other players and creatures.
     /// `right`, `forward` and `y` offset its bottom centre from `base`.
     struct Box {
@@ -114,7 +99,26 @@ final class WinRenderer {
         var color: SIMD3<Float>
     }
 
-    init(gl: GL, blocks: BlockRegistry) throws {
+    let gl: GL
+    private let chunkPrograms: [ChunkProgram]
+    private let skyProgram: UInt32
+    private let overlayProgram: UInt32
+    private let boxProgram: UInt32
+    private let blockTexture: UInt32
+    private let itemTexture: UInt32
+    /// Texture-array layer for each block and item texture name.
+    let blockLayers: [String: UInt16]
+    let itemLayers: [String: UInt16]
+    private let quadIndices: UInt32
+    private let maxQuads = 1 << 18
+    private let emptyVertexArray: UInt32
+    private let overlayVertexArray: UInt32
+    private let overlayBuffer: UInt32
+    private let boxVertexArray: UInt32
+    private let boxBuffer: UInt32
+    private(set) var visibleChunks = 0
+
+    init(gl: GL, blocks: BlockRegistry, items: ItemRegistry) throws {
         self.gl = gl
         chunkPrograms = try ["OPAQUE", "CUTOUT", "TRANSLUCENT"].map { pass in
             ChunkProgram(gl: gl, id: try gl.makeProgram(vertex: Shaders.chunkVertex, fragment: Shaders.chunkFragment(pass: pass), label: "chunk \(pass)"))
@@ -123,49 +127,15 @@ final class WinRenderer {
         overlayProgram = try gl.makeProgram(vertex: Shaders.overlayVertex, fragment: Shaders.overlayFragment, label: "overlay")
         boxProgram = try gl.makeProgram(vertex: Shaders.boxVertex, fragment: Shaders.boxFragment, label: "box")
 
-        // Block textures → one sRGB texture array; faces are bound to layers in the registry.
-        let names = blocks.textureNames
-        let size = 32
-        var pixels = [UInt8](repeating: 0, count: size * size * 4 * max(1, names.count))
-        var layers: [String: UInt16] = [:]
-        var missing = 0
-        for (i, name) in names.enumerated() {
-            layers[name] = UInt16(i)
-            var rgba: [UInt8]
-            if let url = try? ResourceLocator.url("Textures/blocks/\(name).png"),
-               let image = try? PNG.decode(Data(contentsOf: url)), image.width == size, image.height == size {
-                rgba = image.rgba
-            } else {
-                missing += 1
-                rgba = [UInt8](repeating: 255, count: size * size * 4)
-                for p in 0..<(size * size) where ((p / size) / 4 + (p % size) / 4) % 2 == 0 {
-                    rgba[p * 4] = 255; rgba[p * 4 + 1] = 0; rgba[p * 4 + 2] = 255
-                }
-            }
-            let base = i * size * size * 4
-            for p in 0..<(size * size) {
-                let a = UInt16(rgba[p * 4 + 3])
-                pixels[base + p * 4] = UInt8(UInt16(rgba[p * 4]) * a / 255)
-                pixels[base + p * 4 + 1] = UInt8(UInt16(rgba[p * 4 + 1]) * a / 255)
-                pixels[base + p * 4 + 2] = UInt8(UInt16(rgba[p * 4 + 2]) * a / 255)
-                pixels[base + p * 4 + 3] = UInt8(a)
-            }
-        }
-        if missing > 0 { Log.warning("\(missing) block textures were missing", category: "Renderer") }
+        let blockArray = WinRenderer.loadTextureArray(gl: gl, names: blocks.textureNames, folders: ["blocks"])
+        blockTexture = blockArray.texture
+        blockLayers = blockArray.layers
+        let layers = blockArray.layers
         blocks.bindTextureLayers { layers[$0] ?? 0 }
-
-        blockTexture = gl.makeTexture()
+        let itemArray = WinRenderer.loadTextureArray(gl: gl, names: items.textureNames, folders: ["items", "blocks"])
+        itemTexture = itemArray.texture
+        itemLayers = itemArray.layers
         gl.activeTexture(GLC.TEXTURE0)
-        gl.bindTexture(GLC.TEXTURE_2D_ARRAY, blockTexture)
-        gl.pixelStorei(GLC.UNPACK_ALIGNMENT, 1)
-        gl.texImage3D(GLC.TEXTURE_2D_ARRAY, 0, GLC.SRGB8_ALPHA8, Int32(size), Int32(size), Int32(max(1, names.count)), 0,
-                      GLC.RGBA, GLC.UNSIGNED_BYTE, pixels)
-        gl.generateMipmap(GLC.TEXTURE_2D_ARRAY)
-        gl.texParameteri(GLC.TEXTURE_2D_ARRAY, GLC.TEXTURE_MIN_FILTER, GLC.NEAREST_MIPMAP_LINEAR)
-        gl.texParameteri(GLC.TEXTURE_2D_ARRAY, GLC.TEXTURE_MAG_FILTER, GLC.NEAREST)
-        gl.texParameteri(GLC.TEXTURE_2D_ARRAY, GLC.TEXTURE_WRAP_S, GLC.REPEAT)
-        gl.texParameteri(GLC.TEXTURE_2D_ARRAY, GLC.TEXTURE_WRAP_T, GLC.REPEAT)
-        Log.info("Loaded \(names.count) block textures", category: "Renderer")
 
         // Shared quad index buffer: (0,1,2)(0,2,3) per quad.
         emptyVertexArray = gl.makeVertexArray()
@@ -185,11 +155,10 @@ final class WinRenderer {
         overlayBuffer = gl.makeBuffer()
         gl.bindVertexArray(overlayVertexArray)
         gl.bindBuffer(GLC.ARRAY_BUFFER, overlayBuffer)
-        let stride: Int32 = 36
-        gl.vertexAttribPointer(0, 2, GLC.FLOAT, 0, stride, nil)
-        gl.vertexAttribPointer(1, 2, GLC.FLOAT, 0, stride, UnsafeRawPointer(bitPattern: 8))
-        gl.vertexAttribPointer(2, 1, GLC.FLOAT, 0, stride, UnsafeRawPointer(bitPattern: 16))
-        gl.vertexAttribPointer(3, 4, GLC.FLOAT, 0, stride, UnsafeRawPointer(bitPattern: 20))
+        gl.vertexAttribPointer(0, 2, GLC.FLOAT, 0, 36, nil)
+        gl.vertexAttribPointer(1, 2, GLC.FLOAT, 0, 36, UnsafeRawPointer(bitPattern: 8))
+        gl.vertexAttribPointer(2, 1, GLC.FLOAT, 0, 36, UnsafeRawPointer(bitPattern: 16))
+        gl.vertexAttribPointer(3, 4, GLC.FLOAT, 0, 36, UnsafeRawPointer(bitPattern: 20))
         for i: UInt32 in 0..<4 { gl.enableVertexAttribArray(i) }
         gl.bindVertexArray(0)
 
@@ -202,6 +171,58 @@ final class WinRenderer {
         gl.enableVertexAttribArray(0)
         gl.enableVertexAttribArray(1)
         gl.bindVertexArray(0)
+    }
+
+    /// Loads 32×32 PNGs into an sRGB texture array (premultiplied alpha), trying each folder in order.
+    private static func loadTextureArray(gl: GL, names rawNames: [String], folders: [String]) -> (texture: UInt32, layers: [String: UInt16]) {
+        var seen = Set<String>()
+        let names = rawNames.filter { seen.insert($0).inserted }
+        let size = 32
+        var pixels = [UInt8](repeating: 0, count: size * size * 4 * max(1, names.count))
+        var layers: [String: UInt16] = [:]
+        var missing = 0
+        for (i, name) in names.enumerated() {
+            layers[name] = UInt16(i)
+            var rgba: [UInt8]?
+            for folder in folders where rgba == nil {
+                if let url = try? ResourceLocator.url("Textures/\(folder)/\(name).png"),
+                   let image = try? PNG.decode(Data(contentsOf: url)), image.width == size, image.height == size {
+                    rgba = image.rgba
+                }
+            }
+            if rgba == nil {
+                missing += 1
+                var checker = [UInt8](repeating: 255, count: size * size * 4)
+                for p in 0..<(size * size) where ((p / size) / 4 + (p % size) / 4) % 2 == 0 {
+                    checker[p * 4] = 255; checker[p * 4 + 1] = 0; checker[p * 4 + 2] = 255
+                }
+                rgba = checker
+            }
+            let source = rgba!
+            let base = i * size * size * 4
+            for p in 0..<(size * size) {
+                let a = UInt16(source[p * 4 + 3])
+                pixels[base + p * 4] = UInt8(UInt16(source[p * 4]) * a / 255)
+                pixels[base + p * 4 + 1] = UInt8(UInt16(source[p * 4 + 1]) * a / 255)
+                pixels[base + p * 4 + 2] = UInt8(UInt16(source[p * 4 + 2]) * a / 255)
+                pixels[base + p * 4 + 3] = UInt8(a)
+            }
+        }
+        if missing > 0 { Log.warning("\(missing) textures missing from \(folders.first ?? "?")", category: "Renderer") }
+
+        let texture = gl.makeTexture()
+        gl.activeTexture(GLC.TEXTURE0)
+        gl.bindTexture(GLC.TEXTURE_2D_ARRAY, texture)
+        gl.pixelStorei(GLC.UNPACK_ALIGNMENT, 1)
+        gl.texImage3D(GLC.TEXTURE_2D_ARRAY, 0, GLC.SRGB8_ALPHA8, Int32(size), Int32(size), Int32(max(1, names.count)), 0,
+                      GLC.RGBA, GLC.UNSIGNED_BYTE, pixels)
+        gl.generateMipmap(GLC.TEXTURE_2D_ARRAY)
+        gl.texParameteri(GLC.TEXTURE_2D_ARRAY, GLC.TEXTURE_MIN_FILTER, GLC.NEAREST_MIPMAP_LINEAR)
+        gl.texParameteri(GLC.TEXTURE_2D_ARRAY, GLC.TEXTURE_MAG_FILTER, GLC.NEAREST)
+        gl.texParameteri(GLC.TEXTURE_2D_ARRAY, GLC.TEXTURE_WRAP_S, GLC.REPEAT)
+        gl.texParameteri(GLC.TEXTURE_2D_ARRAY, GLC.TEXTURE_WRAP_T, GLC.REPEAT)
+        Log.info("Loaded \(names.count) textures from \(folders.first ?? "?")", category: "Renderer")
+        return (texture, layers)
     }
 
     // MARK: Chunk meshes
@@ -244,14 +265,8 @@ final class WinRenderer {
 
     // MARK: Frame
 
-    struct Overlay {
-        var hotbarLayers: [UInt16]
-        var selected: Int
-        var showCrosshair: Bool
-    }
-
     func render(world: WinWorld, camera: WinCamera, sky: SkyState, time: Double, now: Double,
-                width: Int32, height: Int32, overlay: Overlay, boxes: [Box] = []) {
+                width: Int32, height: Int32, ui: [Float], boxes: [Box] = []) {
         let aspect = Float(width) / Float(max(1, height))
         let viewProj = camera.viewProjection(aspect: aspect)
         let t = Float(time.truncatingRemainder(dividingBy: 3600))
@@ -288,7 +303,7 @@ final class WinRenderer {
         var frustum = Frustum(viewProjection: viewProj)
         frustum.planes = Array(frustum.planes.prefix(4))
         let maxDist = Double((world.renderDistance + 1) * 16)
-        var visible: [(slot: WinWorld.Slot, mesh: GPUMesh, ox: Float, oy: Float, oz: Float, fade: Float, d2: Double, pos: ChunkPos)] = []
+        var visible: [(mesh: GPUMesh, ox: Float, oy: Float, oz: Float, fade: Float, d2: Double, pos: ChunkPos)] = []
         for (pos, slot) in world.slots {
             guard let mesh = slot.mesh else { continue }
             let ox = Double(pos.originX) - camera.position.x
@@ -300,7 +315,7 @@ final class WinRenderer {
             let minV = Vec3(Float(ox), Float(oy), Float(oz))
             guard frustum.contains(AABB(min: minV, max: minV + Vec3(16, Float(max(1, mesh.maxY)), 16))) else { continue }
             let fade = slot.firstMeshTime < 0 ? 1 : Float(min(1, (now - slot.firstMeshTime) / 0.7))
-            visible.append((slot, mesh, Float(ox), Float(oy), Float(oz), 1 - (1 - fade) * (1 - fade), d2, pos))
+            visible.append((mesh, Float(ox), Float(oy), Float(oz), 1 - (1 - fade) * (1 - fade), d2, pos))
         }
         visibleChunks = visible.count
 
@@ -349,7 +364,7 @@ final class WinRenderer {
             }
         }
 
-        drawOverlay(width: width, height: height, overlay: overlay)
+        drawOverlay(width: width, height: height, vertices: ui)
         gl.bindVertexArray(0)
     }
 
@@ -391,39 +406,20 @@ final class WinRenderer {
         gl.drawArrays(GLC.TRIANGLES, 0, Int32(v.count / 6))
     }
 
-    private func drawOverlay(width: Int32, height: Int32, overlay: Overlay) {
-        var v: [Float] = []
-        func quad(_ x: Float, _ y: Float, _ w: Float, _ h: Float, layer: Float = -1, color: (Float, Float, Float, Float)) {
-            let corners: [(Float, Float, Float, Float)] = [(x, y, 0, 0), (x + w, y, 1, 0), (x + w, y + h, 1, 1),
-                                                          (x, y, 0, 0), (x + w, y + h, 1, 1), (x, y + h, 0, 1)]
-            for c in corners { v += [c.0, c.1, c.2, c.3, layer, color.0, color.1, color.2, color.3] }
-        }
-        let W = Float(width), H = Float(height)
-        let scale = max(1, min(W / 1280, H / 720) * 1.0)
-        if overlay.showCrosshair {
-            quad(W / 2 - 1.5 * scale, H / 2 - 11 * scale, 3 * scale, 22 * scale, color: (0.9, 0.9, 0.9, 0.85))
-            quad(W / 2 - 11 * scale, H / 2 - 1.5 * scale, 22 * scale, 3 * scale, color: (0.9, 0.9, 0.9, 0.85))
-        }
-        let slot: Float = 54 * scale, gap: Float = 6 * scale
-        let count = Float(overlay.hotbarLayers.count)
-        let total = count * slot + (count - 1) * gap
-        let x0 = W / 2 - total / 2, y0 = H - slot - 18 * scale
-        quad(x0 - 8 * scale, y0 - 8 * scale, total + 16 * scale, slot + 16 * scale, color: (0.005, 0.003, 0.012, 0.55))
-        for (i, layer) in overlay.hotbarLayers.enumerated() {
-            let x = x0 + Float(i) * (slot + gap)
-            if i == overlay.selected {
-                quad(x - 3 * scale, y0 - 3 * scale, slot + 6 * scale, slot + 6 * scale, color: (0.9, 0.45, 0.08, 1))
-            }
-            quad(x, y0, slot, slot, color: (0.02, 0.012, 0.04, 0.85))
-            quad(x + 9 * scale, y0 + 9 * scale, slot - 18 * scale, slot - 18 * scale, layer: Float(layer), color: (1, 1, 1, 1))
-        }
-
+    private func drawOverlay(width: Int32, height: Int32, vertices v: [Float]) {
+        guard !v.isEmpty else { return }
         gl.disable(GLC.DEPTH_TEST)
         gl.enable(GLC.BLEND)
         gl.blendFunc(GLC.ONE, GLC.ONE_MINUS_SRC_ALPHA)
         gl.useProgram(overlayProgram)
-        gl.uniform2f(gl.uniform(overlayProgram, "uScreen"), W, H)
+        gl.uniform2f(gl.uniform(overlayProgram, "uScreen"), Float(width), Float(height))
         gl.uniform1i(gl.uniform(overlayProgram, "uBlocks"), 0)
+        gl.uniform1i(gl.uniform(overlayProgram, "uItems"), 1)
+        gl.activeTexture(GLC.TEXTURE0)
+        gl.bindTexture(GLC.TEXTURE_2D_ARRAY, blockTexture)
+        gl.activeTexture(GLC.TEXTURE0 + 1)
+        gl.bindTexture(GLC.TEXTURE_2D_ARRAY, itemTexture)
+        gl.activeTexture(GLC.TEXTURE0)
         gl.bindVertexArray(overlayVertexArray)
         gl.bindBuffer(GLC.ARRAY_BUFFER, overlayBuffer)
         v.withUnsafeBytes { gl.bufferData(GLC.ARRAY_BUFFER, $0.count, $0.baseAddress, GLC.DYNAMIC_DRAW) }

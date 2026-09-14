@@ -293,10 +293,13 @@ enum Shaders {
     flat in float vLayer;
     in vec4 vColor;
     uniform sampler2DArray uBlocks;
+    uniform sampler2DArray uItems;
     out vec4 fragColor;
     void main() {
         if (vLayer < 0.0) {
             fragColor = vec4(vColor.rgb * vColor.a, vColor.a);
+        } else if (vLayer >= 9999.5) {
+            fragColor = texture(uItems, vec3(vUV, vLayer - 10000.0)) * vColor.a;
         } else {
             fragColor = texture(uBlocks, vec3(vUV, vLayer)) * vColor.a;
         }

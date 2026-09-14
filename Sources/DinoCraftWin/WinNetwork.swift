@@ -43,6 +43,8 @@ final class WinNetwork {
         case worldTime(Double)
         case dimensionChange(DVec3)
         case notice(String)
+        case giveItem(name: String, count: Int, damage: Int)
+        case damage(amount: Double, cause: String, knockback: DVec3)
         case disconnected(String)
     }
 
@@ -99,7 +101,7 @@ final class WinNetwork {
                 switch event {
                 case .message(.welcome, let data):
                     let welcome = try JSONDecoder().decode(Wire.Welcome.self, from: data)
-                    Log.info("Joined '\(welcome.worldName)' as player \(welcome.playerID)", category: "Net")
+                    Log.info("Joined '\(welcome.worldName)' as player \(welcome.playerID) (\(welcome.gameMode), \(welcome.difficulty))", category: "Net")
                     return WinNetwork(connection: connection, welcome: welcome, username: username, pending: early)
                 case .message(.reject, let data):
                     let reason = (try? JSONDecoder().decode(Wire.Reject.self, from: data))?.reason ?? "The host refused the connection."
@@ -144,6 +146,7 @@ final class WinNetwork {
                 case .playerJoined:
                     guard let info = try? decoder.decode(Wire.PlayerInfo.self, from: data) else { continue }
                     names[info.id] = info.name
+                    players[info.id]?.name = info.name
                     out.append(.notice("\(info.name) joined the game"))
                 case .playerLeft:
                     guard let info = try? decoder.decode(Wire.PlayerInfo.self, from: data) else { continue }
@@ -163,6 +166,12 @@ final class WinNetwork {
                         next[m.id] = entity
                     }
                     mobs = next
+                case .giveItem:
+                    if let m = try? decoder.decode(Wire.GiveItem.self, from: data) { out.append(.giveItem(name: m.item, count: m.count, damage: m.damage)) }
+                case .damage:
+                    if let m = try? decoder.decode(Wire.Damage.self, from: data) {
+                        out.append(.damage(amount: m.amount, cause: m.cause, knockback: DVec3(m.kx, 0, m.kz)))
+                    }
                 case .worldTime:
                     if let m = try? decoder.decode(Wire.WorldTime.self, from: data) { out.append(.worldTime(m.time)) }
                 case .dimensionChange:
@@ -194,15 +203,28 @@ final class WinNetwork {
         connection.send(.chunkRequest, Wire.ChunkRequest(positions))
     }
 
-    func sendBlock(_ pos: BlockPos, _ id: BlockID) {
-        connection.send(.blockChange, Wire.BlockChange(pos: pos, id: id, harvest: false))
+    /// `harvest` asks the host to drop the block's items (Survival).
+    func sendBlock(_ pos: BlockPos, _ id: BlockID, harvest: Bool) {
+        connection.send(.blockChange, Wire.BlockChange(pos: pos, id: id, harvest: harvest))
     }
 
-    func sendState(player: PlayerController, swinging: Bool, held: String?) {
+    func sendState(player: PlayerController, swinging: Bool, held: String?, health: Float, dead: Bool) {
         connection.send(.playerState, Wire.PlayerState(id: welcome.playerID, x: player.position.x, y: player.position.y, z: player.position.z,
                                                        yaw: Float(player.yaw), pitch: Float(player.pitch),
                                                        moving: Float(player.onGround ? min(1, player.horizontalSpeed / 4.3) : 0),
-                                                       sneaking: player.isSneaking, swinging: swinging, held: held, health: 20, dead: false))
+                                                       sneaking: player.isSneaking, swinging: swinging, held: held, health: health, dead: dead))
+    }
+
+    func sendChat(_ text: String) {
+        connection.send(.chat, Wire.Chat(from: username, text: String(text.prefix(200))))
+    }
+
+    func sendAttackMob(id: Int, damage: Double, knockback: DVec3) {
+        connection.send(.attackMob, Wire.AttackMob(mob: id, damage: damage, kx: knockback.x, kz: knockback.z))
+    }
+
+    func sendAttackPlayer(id: Int, damage: Double, knockback: DVec3) {
+        connection.send(.attackPlayer, Wire.AttackPlayer(target: id, damage: damage, kx: knockback.x, kz: knockback.z))
     }
 
     func disconnect() {
@@ -242,6 +264,11 @@ enum EntityShapes {
     private static let bipeds: Set<String> = ["raptor", "magmaRaptor", "rex", "compy", "carnotaurus", "allosaurus", "baryonyx",
                                               "troodon", "spinosaurus", "spitter", "dodo", "chicken", "pookpook", "parasaur"]
     private static let upright: Set<String> = ["villager", "boneWalker"]
+
+    static func size(of kind: String) -> (width: Double, height: Double) {
+        let s = sizes[kind] ?? (0.8, 1.2, false)
+        return (s.0, s.1)
+    }
 
     static func player(_ e: RemoteEntity) -> [WinRenderer.Box] {
         guard e.dying == 0 else { return [] }

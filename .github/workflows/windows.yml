@@ -63,6 +63,7 @@ jobs:
           }
           Copy-Item Resources/Data "$out/Resources/Data" -Recurse
           Copy-Item Resources/Textures/blocks "$out/Resources/Textures/blocks" -Recurse
+          Copy-Item Resources/Textures/items "$out/Resources/Textures/items" -Recurse
           Get-ChildItem $out | Format-Table Name, Length
 
       - name: Automated check with software OpenGL

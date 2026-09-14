@@ -131,6 +131,34 @@ public enum Wire {
         public init(dimension: String, x: Double, y: Double, z: Double) { self.dimension = dimension; self.x = x; self.y = y; self.z = z }
     }
 
+    public struct GiveItem: Codable {
+        public var item: String
+        public var count: Int
+        public var damage: Int
+        public init(item: String, count: Int, damage: Int) { self.item = item; self.count = count; self.damage = damage }
+    }
+
+    public struct Damage: Codable {
+        public var amount: Double
+        public var cause: String
+        public var kx: Double, kz: Double
+        public init(amount: Double, cause: String, kx: Double, kz: Double) { self.amount = amount; self.cause = cause; self.kx = kx; self.kz = kz }
+    }
+
+    public struct AttackMob: Codable {
+        public var mob: Int
+        public var damage: Double
+        public var kx: Double, kz: Double
+        public init(mob: Int, damage: Double, kx: Double, kz: Double) { self.mob = mob; self.damage = damage; self.kx = kx; self.kz = kz }
+    }
+
+    public struct AttackPlayer: Codable {
+        public var target: Int
+        public var damage: Double
+        public var kx: Double, kz: Double
+        public init(target: Int, damage: Double, kx: Double, kz: Double) { self.target = target; self.damage = damage; self.kx = kx; self.kz = kz }
+    }
+
     public static func frame(_ kind: Kind, _ payload: Data) -> Data {
         var out = Data(capacity: payload.count + 5)
         withUnsafeBytes(of: UInt32(payload.count + 1).littleEndian) { out.append(contentsOf: $0) }
