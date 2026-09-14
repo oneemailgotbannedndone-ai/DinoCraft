@@ -159,6 +159,31 @@ public enum Wire {
         public init(target: Int, damage: Double, kx: Double, kz: Double) { self.target = target; self.damage = damage; self.kx = kx; self.kz = kz }
     }
 
+    public struct NetStack: Codable {
+        public var item: String
+        public var count: Int
+        public var damage: Int?
+        public init(item: String, count: Int, damage: Int?) { self.item = item; self.count = count; self.damage = damage }
+    }
+
+    public struct ContainerPos: Codable {
+        public var x: Int32, y: Int32, z: Int32
+        public init(pos: BlockPos) { x = pos.x; y = pos.y; z = pos.z }
+    }
+
+    public struct ContainerData: Codable {
+        public var x: Int32, y: Int32, z: Int32
+        public var kind: String
+        public var slots: [NetStack?]
+        public var burnLeft: Double, burnTotal: Double, cook: Double, cookTotal: Double
+    }
+
+    public struct ContainerSet: Codable {
+        public var x: Int32, y: Int32, z: Int32
+        public var slots: [NetStack?]
+        public init(pos: BlockPos, slots: [NetStack?]) { x = pos.x; y = pos.y; z = pos.z; self.slots = slots }
+    }
+
     public static func frame(_ kind: Kind, _ payload: Data) -> Data {
         var out = Data(capacity: payload.count + 5)
         withUnsafeBytes(of: UInt32(payload.count + 1).littleEndian) { out.append(contentsOf: $0) }

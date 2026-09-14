@@ -45,6 +45,7 @@ final class WinNetwork {
         case notice(String)
         case giveItem(name: String, count: Int, damage: Int)
         case damage(amount: Double, cause: String, knockback: DVec3)
+        case containerData(Wire.ContainerData)
         case disconnected(String)
     }
 
@@ -172,6 +173,8 @@ final class WinNetwork {
                     if let m = try? decoder.decode(Wire.Damage.self, from: data) {
                         out.append(.damage(amount: m.amount, cause: m.cause, knockback: DVec3(m.kx, 0, m.kz)))
                     }
+                case .containerData:
+                    if let m = try? decoder.decode(Wire.ContainerData.self, from: data) { out.append(.containerData(m)) }
                 case .worldTime:
                     if let m = try? decoder.decode(Wire.WorldTime.self, from: data) { out.append(.worldTime(m.time)) }
                 case .dimensionChange:
@@ -225,6 +228,14 @@ final class WinNetwork {
 
     func sendAttackPlayer(id: Int, damage: Double, knockback: DVec3) {
         connection.send(.attackPlayer, Wire.AttackPlayer(target: id, damage: damage, kx: knockback.x, kz: knockback.z))
+    }
+
+    func openContainer(_ pos: BlockPos) {
+        connection.send(.containerOpen, Wire.ContainerPos(pos: pos))
+    }
+
+    func setContainer(_ pos: BlockPos, slots: [Wire.NetStack?]) {
+        connection.send(.containerSet, Wire.ContainerSet(pos: pos, slots: slots))
     }
 
     func disconnect() {

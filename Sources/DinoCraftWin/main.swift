@@ -21,6 +21,7 @@ struct Options {
     var join: String?
     var name: String?
     var demoEntities = false
+    var demoScreen: String?
 
     static func parse(_ args: [String]) -> Options {
         var o = Options()
@@ -35,6 +36,7 @@ struct Options {
             case "--join": o.join = next()
             case "--name": o.name = next()
             case "--demo-entities": o.demoEntities = true
+            case "--demo-screen": o.demoScreen = next()
             default: break
             }
             i += 1

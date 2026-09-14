@@ -82,6 +82,10 @@ jobs:
           Write-Host "Exit code: $($p.ExitCode)"
           Get-ChildItem smoke-home/logs -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName -Tail 40 }
           if (-not (Test-Path $shot)) { throw "The game did not produce a screenshot" }
+          $shot2 = "$PWD/screenshot-inventory.png"
+          $p2 = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--screenshot `"$shot2`" --frames 5 --render-distance 3 --seed dino --demo-entities --demo-screen inventory" -PassThru -Wait -NoNewWindow
+          Write-Host "Inventory check exit code: $($p2.ExitCode)"
+          if (-not (Test-Path $shot2)) { throw "The game did not produce the inventory screenshot" }
 
       - name: Upload screenshot and logs
         if: always()
@@ -90,6 +94,7 @@ jobs:
           name: automated-check
           path: |
             screenshot.png
+            screenshot-inventory.png
             smoke-home/logs/
           if-no-files-found: ignore
 

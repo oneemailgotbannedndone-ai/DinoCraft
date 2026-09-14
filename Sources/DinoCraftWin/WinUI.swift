@@ -1,9 +1,10 @@
 import Foundation
 import DinoCraftCore
 
-/// A tiny 5×7 pixel font (letters are shown in capitals) plus a heart, drawn as solid quads.
+/// A tiny 5×7 pixel font with upper and lower case, digits, punctuation, a heart and a dot, drawn as solid quads.
 enum PixelFont {
     static func rows(for character: Character) -> [UInt8] {
+        if let rows = glyphs[character] { return rows }
         let upper = String(character).uppercased().first ?? character
         return glyphs[upper] ?? glyphs["?"]!
     }
@@ -34,6 +35,16 @@ enum PixelFont {
         "]": [14, 2, 2, 2, 2, 2, 14], "$": [4, 15, 20, 14, 5, 30, 4], "^": [4, 10, 17, 0, 0, 0, 0],
         "~": [0, 0, 8, 21, 2, 0, 0], "|": [4, 4, 4, 4, 4, 4, 4],
         "\u{2665}": [0, 10, 31, 31, 14, 4, 0],
+        "\u{25CF}": [0, 14, 31, 31, 31, 14, 0],
+        "a": [0, 0, 14, 1, 15, 17, 15], "b": [16, 16, 22, 25, 17, 17, 30], "c": [0, 0, 14, 16, 16, 17, 14],
+        "d": [1, 1, 13, 19, 17, 17, 15], "e": [0, 0, 14, 17, 31, 16, 14], "f": [6, 9, 8, 28, 8, 8, 8],
+        "g": [0, 15, 17, 17, 15, 1, 14], "h": [16, 16, 22, 25, 17, 17, 17], "i": [4, 0, 12, 4, 4, 4, 14],
+        "j": [2, 0, 6, 2, 2, 18, 12], "k": [16, 16, 18, 20, 24, 20, 18], "l": [12, 4, 4, 4, 4, 4, 14],
+        "m": [0, 0, 26, 21, 21, 17, 17], "n": [0, 0, 22, 25, 17, 17, 17], "o": [0, 0, 14, 17, 17, 17, 14],
+        "p": [0, 30, 17, 17, 30, 16, 16], "q": [0, 13, 19, 17, 15, 1, 1], "r": [0, 0, 22, 25, 16, 16, 16],
+        "s": [0, 0, 14, 16, 14, 1, 30], "t": [8, 8, 28, 8, 8, 9, 6], "u": [0, 0, 17, 17, 17, 19, 13],
+        "v": [0, 0, 17, 17, 17, 10, 4], "w": [0, 0, 17, 17, 21, 21, 10], "x": [0, 0, 17, 10, 4, 10, 17],
+        "y": [0, 17, 17, 17, 15, 1, 14], "z": [0, 0, 31, 2, 4, 8, 31],
     ]
 }
 

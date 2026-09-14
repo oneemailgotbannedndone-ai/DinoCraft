@@ -57,6 +57,35 @@ final class WinGame {
     private var chatInput = ""
     private var swallowText: String?
 
+    // Hunger and air (Survival)
+    private var hunger = 20.0
+    private var saturation = 5.0
+    private var exhaustion = 0.0
+    private var starveTimer = 0.0
+    private var air = 10.0
+    private var drownTimer = 0.0
+
+    // Inventory, crafting and containers
+    private enum Screen: Equatable {
+        case closed, inventory, crafting, container(BlockPos)
+    }
+    private enum SlotRef: Equatable {
+        case inventory(Int), craft(Int), output, container(Int)
+    }
+    private struct ContainerView {
+        var kind: String
+        var slots: [ItemStack?]
+        var cook: Double, cookTotal: Double, burnLeft: Double, burnTotal: Double
+    }
+    private let recipes: RecipeRegistry
+    private var screen = Screen.closed
+    private var cursorStack: ItemStack?
+    private var craftGrid: [ItemStack?] = Array(repeating: nil, count: 4)
+    private var containers: [BlockPos: ContainerView] = [:]
+    private var mouse = SIMD2<Float>(0, 0)
+    private var pendingClick: (button: SlotButton, shift: Bool)?
+    private var hoveredSlot: SlotRef?
+
     private let startTime = Date.timeIntervalSinceReferenceDate
     private var lastFrame = Date.timeIntervalSinceReferenceDate
     private var autosaveTimer = 0.0
@@ -69,6 +98,7 @@ final class WinGame {
         // Build everything in locals first: stored properties can't be read until all are set.
         let blocks = try BlockRegistry.loadDefault()
         let items = try ItemRegistry.loadDefault(blocks: blocks)
+        let recipes = try RecipeRegistry.loadDefault(items: items)
         let renderer = try WinRenderer(gl: gl, blocks: blocks, items: items)
         let workers = max(2, ProcessInfo.processInfo.activeProcessorCount - 1)
         let jobs = WinJobSystem(workerCount: workers, registry: blocks)
@@ -136,6 +166,7 @@ final class WinGame {
         self.options = options
         self.blocks = blocks
         self.items = items
+        self.recipes = recipes
         self.renderer = renderer
         self.storage = storage
         self.meta = meta
@@ -231,8 +262,14 @@ final class WinGame {
                     continue
                 }
                 guard !event.key.`repeat` else { continue }
+                if screen != .closed {
+                    if code == Int(SDL_SCANCODE_ESCAPE.rawValue) || code == Int(SDL_SCANCODE_E.rawValue) { closeScreen() }
+                    continue
+                }
                 if code == Int(SDL_SCANCODE_ESCAPE.rawValue) {
                     setMouseCaptured(!mouseCaptured)
+                } else if code == Int(SDL_SCANCODE_E.rawValue) {
+                    if !dead { openScreen(.inventory) }
                 } else if code == Int(SDL_SCANCODE_SPACE.rawValue) {
                     if dead { respawn() } else { jumpPressed = true }
                 } else if code == Int(SDL_SCANCODE_T.rawValue) {
@@ -243,12 +280,19 @@ final class WinGame {
                     inventory.selected = code - Int(SDL_SCANCODE_1.rawValue)
                 }
             } else if type == UInt32(SDL_EVENT_MOUSE_MOTION.rawValue) {
+                mouse = SIMD2<Float>(event.motion.x, event.motion.y) * pixelScale()
                 guard mouseCaptured else { continue }
                 let sensitivity = 0.0022
                 player.yaw -= Double(event.motion.xrel) * sensitivity
                 player.pitch = max(-1.55, min(1.55, player.pitch - Double(event.motion.yrel) * sensitivity))
             } else if type == UInt32(SDL_EVENT_MOUSE_BUTTON_DOWN.rawValue) {
-                if !mouseCaptured {
+                if screen != .closed {
+                    let keys = SDL_GetKeyboardState(nil)
+                    let shift = keys.map { $0[Int(SDL_SCANCODE_LSHIFT.rawValue)] || $0[Int(SDL_SCANCODE_RSHIFT.rawValue)] } ?? false
+                    mouse = SIMD2<Float>(event.button.x, event.button.y) * pixelScale()
+                    if event.button.button == 1 { pendingClick = (.left, shift) }
+                    if event.button.button == 3 { pendingClick = (.right, shift) }
+                } else if !mouseCaptured {
                     setMouseCaptured(true)
                 } else if event.button.button == 1 {
                     leftHeld = true
@@ -285,7 +329,7 @@ final class WinGame {
             Log.info("Spawn resolved at \(player.position)", category: "Game")
         }
 
-        let controllable = mouseCaptured && !chatOpen && !dead
+        let controllable = mouseCaptured && !chatOpen && !dead && screen == .closed
         var input = MovementInput()
         if controllable, let keys = SDL_GetKeyboardState(nil) {
             func down(_ scancode: SDL_Scancode) -> Bool { keys[Int(scancode.rawValue)] }
@@ -301,17 +345,18 @@ final class WinGame {
             player.update(dt: dt, input: input, world: world)
         }
         for event in player.events {
-            if case .landed(let fall, _) = event, fall > 3.5 { hurt(fall - 3, cause: "Fell from a high place", knockback: nil, now: now) }
+            switch event {
+            case .landed(let fall, _) where fall > 3.5:
+                hurt(fall - 3, cause: "Fell from a high place", knockback: nil, now: now)
+            case .jumped:
+                exhaustion += player.isSprinting ? 0.2 : 0.05
+            default:
+                break
+            }
         }
         player.events.removeAll()
 
-        if !creative && !dead && health < 20 {
-            regenTimer += dt
-            if regenTimer > 4 {
-                regenTimer = 0
-                health = min(20, health + 1)
-            }
-        }
+        if !creative && !dead { survivalTick(dt: dt, now: now) }
 
         if controllable {
             interact(dt: dt)
@@ -374,6 +419,7 @@ final class WinGame {
             }
             attackCooldown = 0.35
             swingTimer = 0.25
+            exhaustion += 0.1
             if !creative && heldTool != nil { inventory.damageSelectedTool() }
             return
         }
@@ -404,12 +450,13 @@ final class WinGame {
             breakProgress = 0
         }
 
-        if placeQueued, let hit = target { place(hit) }
+        if placeQueued { useItem(target) }
     }
 
     private func breakBlock(_ hit: RaycastHit, info: BlockInfo) {
         guard world.setBlock(hit.block, Blocks.air) else { return }
         network?.sendBlock(hit.block, Blocks.air, harvest: !creative && canHarvest(info))
+        exhaustion += 0.005
         swingTimer = 0.25
         if !creative && info.hardness > 0 && heldTool != nil { inventory.damageSelectedTool() }
     }
@@ -482,6 +529,9 @@ final class WinGame {
     private func respawn() {
         dead = false
         health = 20
+        hunger = 20
+        saturation = 5
+        air = 10
         damageFlash = 0
         player.teleport(to: spawnPoint)
     }
@@ -517,6 +567,12 @@ final class WinGame {
                 default: scale = 0.6
                 }
                 hurt(amount * scale, cause: cause, knockback: knockback, now: now)
+            case .containerData(let m):
+                let slots: [ItemStack?] = m.slots.map { entry in
+                    entry.flatMap { s in items.id(named: s.item).map { ItemStack(item: $0, count: s.count, damage: s.damage ?? 0) } }
+                }
+                containers[BlockPos(m.x, m.y, m.z)] = ContainerView(kind: m.kind, slots: slots, cook: m.cook, cookTotal: m.cookTotal,
+                                                                    burnLeft: m.burnLeft, burnTotal: m.burnTotal)
             case .disconnected(let reason):
                 disconnectReason = reason
                 running = false
@@ -619,6 +675,27 @@ final class WinGame {
             }
         }
 
+        // Hunger and air (Survival)
+        if !creative || options.demoEntities {
+            let shown = creative ? 15.0 : hunger
+            for i in 0..<10 {
+                let fx = x0 + total - Float(i + 1) * 8 * small, fy = y0 - 12 * s - 7 * small
+                let value = shown / 2 - Double(i)
+                ui.text("\u{25CF}", x: fx, y: fy, scale: small, color: SIMD4(0.12, 0.06, 0.02, 0.85), shadow: false)
+                if value >= 1 {
+                    ui.text("\u{25CF}", x: fx, y: fy, scale: small, color: SIMD4(0.95, 0.55, 0.15, 1), shadow: false)
+                } else if value > 0 {
+                    ui.text("\u{25CF}", x: fx, y: fy, scale: small, color: SIMD4(0.7, 0.42, 0.2, 1), shadow: false)
+                }
+            }
+            if !creative && air < 10 {
+                for i in 0..<max(0, Int(ceil(air))) {
+                    ui.text("o", x: x0 + total - Float(i + 1) * 8 * small, y: y0 - 12 * s - 17 * small, scale: small,
+                            color: SIMD4(0.55, 0.8, 1, 1), shadow: false)
+                }
+            }
+        }
+
         // Chat
         let lineHeight = 10 * small
         let recent = chatOpen ? Array(chatLines.suffix(12)) : Array(chatLines.filter { now - $0.time < 10 }.suffix(8))
@@ -654,6 +731,7 @@ final class WinGame {
         } else if !mouseCaptured && options.screenshotPath == nil {
             ui.centeredText("Click to play", centerX: W / 2, y: H / 2 - 40 * s, scale: max(1, (3 * s).rounded()), color: white)
         }
+        if screen != .closed { buildScreenUI(&ui, width: W, height: H, scale: s) }
         return ui.vertices
     }
 
@@ -672,6 +750,16 @@ final class WinGame {
         }
         addChat("Friend joined the game", now: now)
         addChat("<Friend> hi from the Mac!", now: now)
+        if options.demoScreen == "inventory", let planks = items.id(named: "planks") {
+            inventory.slots[12] = ItemStack(item: planks, count: 23)
+            if let stick = items.id(named: "stick") { inventory.slots[20] = ItemStack(item: stick, count: 7) }
+            openScreen(.inventory)
+            craftGrid[0] = ItemStack(item: planks, count: 2)
+            craftGrid[2] = ItemStack(item: planks, count: 2)
+            var w: Int32 = 0, h: Int32 = 0
+            _ = SDL_GetWindowSizeInPixels(window, &w, &h)
+            mouse = SIMD2(Float(w) / 2 + 60, Float(h) / 2 + 40)
+        }
     }
 
     private func draw(now: Double) {
@@ -744,5 +832,327 @@ final class WinGame {
         network?.disconnect()
         world.shutdown()
         jobs.shutdown()
+    }
+}
+
+// MARK: - Hunger, item use, inventory, crafting and containers
+
+extension WinGame {
+    /// Hunger, healing, starvation and drowning, following the Mac rules.
+    private func survivalTick(dt: Double, now: Double) {
+        let difficulty = network?.welcome.difficulty ?? "normal"
+        let peaceful = difficulty == "peaceful"
+        if player.isSprinting && player.onGround { exhaustion += player.horizontalSpeed * dt * 0.1 }
+        if peaceful {
+            exhaustion = 0
+            hunger = 20
+        }
+        while exhaustion >= 4 {
+            exhaustion -= 4
+            if saturation > 0 { saturation = max(0, saturation - 1) } else { hunger = max(0, hunger - 1) }
+        }
+        if hunger >= 18 && health < 20 {
+            regenTimer += dt
+            if regenTimer >= (peaceful ? 1 : 3.5) {
+                regenTimer = 0
+                health = min(20, health + 1)
+                exhaustion += 1.5
+            }
+        } else {
+            regenTimer = 0
+        }
+        if hunger <= 0 {
+            starveTimer += dt
+            if starveTimer >= 4 {
+                starveTimer = 0
+                let floorHealth = difficulty == "hard" ? 0.0 : (difficulty == "normal" ? 1.0 : 10.0)
+                if health > floorHealth {
+                    hurtCooldown = 0
+                    hurt(1, cause: "Starved in the wilderness", knockback: nil, now: now)
+                }
+            }
+        }
+        let eye = player.eyePosition
+        if player.headInWater && world.block(Int(floor(eye.x)), Int(floor(eye.y)), Int(floor(eye.z))) == Blocks.water {
+            air -= dt
+            if air < 0 {
+                drownTimer += dt
+                if drownTimer >= 1 {
+                    drownTimer = 0
+                    hurtCooldown = 0
+                    hurt(2, cause: "Drowned", knockback: nil, now: now)
+                }
+            }
+        } else {
+            air = min(10, air + dt * 5)
+            drownTimer = 0
+        }
+    }
+
+    /// Right-click: open benches and containers, eat food, or place the held block.
+    private func useItem(_ target: RaycastHit?) {
+        if let hit = target, !player.isSneaking {
+            if hit.id == Blocks.craftingBench {
+                openScreen(.crafting)
+                return
+            }
+            if let network, let name = blocks[hit.id]?.name, name.hasPrefix("chest") || name.hasPrefix("furnace") {
+                network.openContainer(hit.block)
+                openScreen(.container(hit.block))
+                return
+            }
+        }
+        if !creative, let stack = inventory.selectedStack, let food = items[stack.item]?.food {
+            guard hunger < 20 else { return }
+            hunger = min(20, hunger + Double(food.hunger))
+            saturation = min(hunger, saturation + Double(food.saturation))
+            inventory.consumeSelected()
+            swingTimer = 0.25
+            return
+        }
+        if let hit = target { place(hit) }
+    }
+
+    private func pixelScale() -> Float {
+        var lw: Int32 = 0, lh: Int32 = 0, pw: Int32 = 0, ph: Int32 = 0
+        _ = SDL_GetWindowSize(window, &lw, &lh)
+        _ = SDL_GetWindowSizeInPixels(window, &pw, &ph)
+        return lw > 0 ? Float(pw) / Float(lw) : 1
+    }
+
+    private var gridSize: Int { craftGrid.count == 9 ? 3 : 2 }
+
+    private func openScreen(_ next: Screen) {
+        screen = next
+        let size = next == .crafting ? 3 : 2
+        craftGrid = Array(repeating: nil, count: size * size)
+        leftHeld = false
+        breakingPos = nil
+        breakProgress = 0
+        setMouseCaptured(false)
+        var w: Int32 = 0, h: Int32 = 0
+        _ = SDL_GetWindowSizeInPixels(window, &w, &h)
+        mouse = SIMD2(Float(w) / 2, Float(h) / 2)
+    }
+
+    private func closeScreen() {
+        for stack in craftGrid.compactMap({ $0 }) { inventory.add(stack) }
+        craftGrid = Array(repeating: nil, count: craftGrid.count)
+        if let cursor = cursorStack {
+            inventory.add(cursor)
+            cursorStack = nil
+        }
+        screen = .closed
+        hoveredSlot = nil
+        pendingClick = nil
+        if options.screenshotPath == nil { setMouseCaptured(true) }
+    }
+
+    private func netStack(_ stack: ItemStack?) -> Wire.NetStack? {
+        guard let stack, let info = items[stack.item] else { return nil }
+        return Wire.NetStack(item: info.name, count: stack.count, damage: stack.damage > 0 ? stack.damage : nil)
+    }
+
+    private func stack(at ref: SlotRef) -> ItemStack? {
+        switch ref {
+        case .inventory(let i): return inventory.slots[i]
+        case .craft(let i): return i < craftGrid.count ? craftGrid[i] : nil
+        case .output: return recipes.match(grid: craftGrid, size: gridSize)?.result
+        case .container(let i):
+            guard case .container(let pos) = screen, let view = containers[pos], i < view.slots.count else { return nil }
+            return view.slots[i]
+        }
+    }
+
+    private func setStack(_ ref: SlotRef, _ value: ItemStack?) {
+        switch ref {
+        case .inventory(let i):
+            inventory.slots[i] = value
+            inventory.markChanged()
+        case .craft(let i):
+            if i < craftGrid.count { craftGrid[i] = value }
+        case .output:
+            break
+        case .container(let i):
+            guard case .container(let pos) = screen, var view = containers[pos], i < view.slots.count else { return }
+            view.slots[i] = value
+            containers[pos] = view
+            network?.setContainer(pos, slots: view.slots.map { netStack($0) })
+        }
+    }
+
+    private func clickSlot(_ ref: SlotRef, button: SlotButton, shift: Bool) {
+        if ref == .output {
+            takeCraftResult(shift: shift)
+            return
+        }
+        if shift, let moving = stack(at: ref) {
+            switch ref {
+            case .inventory(let i):
+                if case .container(let pos) = screen, let view = containers[pos] {
+                    var slots = view.slots
+                    let indices = view.kind == "furnace" ? [0] : Array(0..<slots.count)
+                    let left = SlotInteraction.quickMove(moving, into: &slots, indices: indices, maxStack: inventory.maxStack)
+                    containers[pos]?.slots = slots
+                    network?.setContainer(pos, slots: slots.map { netStack($0) })
+                    setStack(ref, left)
+                } else {
+                    var slots = inventory.slots
+                    let left = SlotInteraction.quickMove(moving, into: &slots, indices: i < 9 ? Array(9..<36) : Array(0..<9), maxStack: inventory.maxStack)
+                    slots[i] = left
+                    inventory.slots = slots
+                    inventory.markChanged()
+                }
+            default:
+                var slots = inventory.slots
+                let left = SlotInteraction.quickMove(moving, into: &slots, indices: Array(9..<36) + Array(0..<9), maxStack: inventory.maxStack)
+                inventory.slots = slots
+                inventory.markChanged()
+                setStack(ref, left)
+            }
+            return
+        }
+        var value = stack(at: ref)
+        SlotInteraction.click(&value, cursor: &cursorStack, button: button, maxStack: inventory.maxStack)
+        setStack(ref, value)
+    }
+
+    private func takeCraftResult(shift: Bool) {
+        guard let recipe = recipes.match(grid: craftGrid, size: gridSize) else { return }
+        let result = recipe.result
+        if shift {
+            var crafted = 0
+            while crafted < 64, let r = recipes.match(grid: craftGrid, size: gridSize), r.result.item == result.item {
+                var slots = inventory.slots
+                guard SlotInteraction.quickMove(r.result, into: &slots, indices: Array(0..<36), maxStack: inventory.maxStack) == nil else { break }
+                inventory.slots = slots
+                RecipeRegistry.consumeIngredients(grid: &craftGrid)
+                crafted += 1
+            }
+            inventory.markChanged()
+            return
+        }
+        if let cursor = cursorStack {
+            guard cursor.canStack(with: result), cursor.count + result.count <= inventory.maxStack(cursor.item) else { return }
+            cursorStack?.count += result.count
+        } else {
+            cursorStack = result
+        }
+        RecipeRegistry.consumeIngredients(grid: &craftGrid)
+    }
+
+    private func buildScreenUI(_ ui: inout UIBuilder, width W: Float, height H: Float, scale s: Float) {
+        let small = max(1, (2 * s).rounded())
+        let slot = 40 * s, gap = 4 * s, step = slot + gap, pad = 16 * s
+        let gridWidth = 9 * step - gap
+        let panelW = gridWidth + 2 * pad
+        let title: String
+        let topHeight: Float
+        switch screen {
+        case .inventory:
+            title = "Inventory"
+            topHeight = 2 * step
+        case .crafting:
+            title = "Crafting Bench"
+            topHeight = 3 * step
+        case .container(let pos):
+            let furnace = containers[pos]?.kind == "furnace"
+            title = furnace ? "Furnace" : "Chest"
+            topHeight = furnace ? 2 * step : 3 * step
+        case .closed:
+            return
+        }
+        let titleHeight = 12 * small
+        let panelH = pad + titleHeight + topHeight + 14 * s + 3 * step + 8 * s + slot + pad
+        let px = W / 2 - panelW / 2, py = H / 2 - panelH / 2
+        ui.rect(0, 0, W, H, SIMD4(0, 0, 0, 0.45))
+        ui.rect(px, py, panelW, panelH, SIMD4(0.09, 0.06, 0.14, 0.96))
+        ui.text(title, x: px + pad, y: py + pad, scale: small, color: SIMD4(1, 0.85, 0.55, 1))
+
+        hoveredSlot = nil
+        var hoveredStack: ItemStack?
+        let white = SIMD4<Float>(1, 1, 1, 1)
+        func slotView(_ ref: SlotRef, _ x: Float, _ y: Float, accent: Bool = false) {
+            let hovered = mouse.x >= x && mouse.x < x + slot && mouse.y >= y && mouse.y < y + slot
+            let background: SIMD4<Float> = accent ? SIMD4(0.4, 0.24, 0.05, 1) : (hovered ? SIMD4(0.28, 0.22, 0.42, 1) : SIMD4(0.03, 0.02, 0.06, 0.95))
+            ui.rect(x, y, slot, slot, background)
+            if hovered {
+                hoveredSlot = ref
+                hoveredStack = stack(at: ref)
+            }
+            guard let st = stack(at: ref) else { return }
+            ui.icon(x + 5 * s, y + 5 * s, slot - 10 * s, layer: iconLayer(st.item))
+            if st.count > 1 {
+                let count = "\(st.count)"
+                ui.text(count, x: x + slot - 2 * s - UIBuilder.textWidth(count, scale: small), y: y + slot - 2 * s - 7 * small, scale: small, color: white)
+            }
+            if let tool = items[st.item]?.tool, st.damage > 0 {
+                let fraction = max(0, 1 - Float(st.damage) / Float(max(1, tool.durability)))
+                ui.rect(x + 5 * s, y + slot - 5 * s, (slot - 10 * s) * fraction, 2 * s, SIMD4(1 - fraction, fraction, 0.1, 1))
+            }
+        }
+
+        let top = py + pad + titleHeight + 4 * s
+        let left = px + pad
+        switch screen {
+        case .inventory, .crafting:
+            let size = gridSize
+            let gx = left + gridWidth / 2 - Float(size) * step - 20 * s
+            let gy = top + (topHeight - Float(size) * step) / 2
+            for r in 0..<size {
+                for c in 0..<size { slotView(.craft(r * size + c), gx + Float(c) * step, gy + Float(r) * step) }
+            }
+            let arrowX = gx + Float(size) * step + 8 * s
+            ui.text("->", x: arrowX, y: top + topHeight / 2 - 3.5 * small, scale: small, color: SIMD4(1, 0.8, 0.4, 1))
+            slotView(.output, arrowX + 12 * small + 8 * s, top + topHeight / 2 - slot / 2,
+                     accent: recipes.match(grid: craftGrid, size: size) != nil)
+        case .container(let pos):
+            if let view = containers[pos] {
+                if view.kind == "furnace" {
+                    let fx = left + gridWidth / 2 - 70 * s
+                    slotView(.container(0), fx, top)
+                    slotView(.container(1), fx, top + step)
+                    let cook = view.cookTotal > 0 ? Float(min(1, view.cook / view.cookTotal)) : 0
+                    let burn = view.burnTotal > 0 ? Float(min(1, view.burnLeft / view.burnTotal)) : 0
+                    ui.rect(fx + step + 8 * s, top + slot / 2 - 3 * s, 48 * s, 6 * s, SIMD4(0, 0, 0, 0.6))
+                    ui.rect(fx + step + 8 * s, top + slot / 2 - 3 * s, 48 * s * cook, 6 * s, SIMD4(1, 0.6, 0.15, 1))
+                    ui.rect(fx + step + 8 * s, top + step + slot / 2 - 3 * s, 48 * s, 6 * s, SIMD4(0, 0, 0, 0.6))
+                    ui.rect(fx + step + 8 * s, top + step + slot / 2 - 3 * s, 48 * s * burn, 6 * s, SIMD4(1, 0.35, 0.1, 1))
+                    slotView(.container(2), fx + step + 64 * s, top + step / 2)
+                } else {
+                    for i in 0..<min(27, view.slots.count) { slotView(.container(i), left + Float(i % 9) * step, top + Float(i / 9) * step) }
+                }
+            } else {
+                ui.text("Opening...", x: left, y: top + 10 * s, scale: small, color: SIMD4(1, 1, 1, 0.8))
+            }
+        case .closed:
+            break
+        }
+
+        let inventoryY = top + topHeight + 14 * s
+        for i in 9..<Inventory.size {
+            let index = i - 9
+            slotView(.inventory(i), left + Float(index % 9) * step, inventoryY + Float(index / 9) * step)
+        }
+        let hotbarY = inventoryY + 3 * step + 8 * s
+        for i in 0..<Inventory.hotbarCount { slotView(.inventory(i), left + Float(i) * step, hotbarY) }
+
+        if let click = pendingClick {
+            pendingClick = nil
+            if let ref = hoveredSlot { clickSlot(ref, button: click.button, shift: click.shift) }
+        }
+        if let cursor = cursorStack {
+            ui.icon(mouse.x - slot / 2 + 5 * s, mouse.y - slot / 2 + 5 * s, slot - 10 * s, layer: iconLayer(cursor.item))
+            if cursor.count > 1 {
+                let count = "\(cursor.count)"
+                ui.text(count, x: mouse.x + slot / 2 - 2 * s - UIBuilder.textWidth(count, scale: small), y: mouse.y + slot / 2 - 2 * s - 7 * small,
+                        scale: small, color: white)
+            }
+        } else if let st = hoveredStack, let info = items[st.item] {
+            let name = info.displayName
+            let width = UIBuilder.textWidth(name, scale: small)
+            ui.rect(mouse.x + 14 * s, mouse.y - 6 * s, width + 8 * small, 11 * small, SIMD4(0.05, 0.03, 0.1, 0.96))
+            ui.text(name, x: mouse.x + 14 * s + 4 * small, y: mouse.y - 6 * s + 2 * small, scale: small, color: white)
+        }
     }
 }
