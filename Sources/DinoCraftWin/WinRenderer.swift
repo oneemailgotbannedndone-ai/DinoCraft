@@ -85,25 +85,11 @@ final class WinRenderer {
         }
     }
 
-    /// A solid box rotated by `yaw`, used to draw other players and creatures.
-    /// `right`, `forward` and `y` offset its bottom centre from `base`.
-    struct Box {
-        var base: DVec3
-        var yaw: Double
-        var right: Double = 0
-        var forward: Double = 0
-        var y: Double = 0
-        var width: Double
-        var length: Double
-        var height: Double
-        var color: SIMD3<Float>
-    }
-
     let gl: GL
     private let chunkPrograms: [ChunkProgram]
     private let skyProgram: UInt32
     private let overlayProgram: UInt32
-    private let boxProgram: UInt32
+    private let modelProgram: UInt32
     private let blockTexture: UInt32
     private let itemTexture: UInt32
     /// Texture-array layer for each block and item texture name.
@@ -114,8 +100,8 @@ final class WinRenderer {
     private let emptyVertexArray: UInt32
     private let overlayVertexArray: UInt32
     private let overlayBuffer: UInt32
-    private let boxVertexArray: UInt32
-    private let boxBuffer: UInt32
+    private let modelVertexArray: UInt32
+    private let modelBuffer: UInt32
     private(set) var visibleChunks = 0
 
     init(gl: GL, blocks: BlockRegistry, items: ItemRegistry) throws {
@@ -125,7 +111,7 @@ final class WinRenderer {
         }
         skyProgram = try gl.makeProgram(vertex: Shaders.skyVertex, fragment: Shaders.skyFragment, label: "sky")
         overlayProgram = try gl.makeProgram(vertex: Shaders.overlayVertex, fragment: Shaders.overlayFragment, label: "overlay")
-        boxProgram = try gl.makeProgram(vertex: Shaders.boxVertex, fragment: Shaders.boxFragment, label: "box")
+        modelProgram = try gl.makeProgram(vertex: Shaders.boxVertex, fragment: Shaders.boxFragment, label: "models")
 
         let blockArray = WinRenderer.loadTextureArray(gl: gl, names: blocks.textureNames, folders: ["blocks"])
         blockTexture = blockArray.texture
@@ -162,14 +148,14 @@ final class WinRenderer {
         for i: UInt32 in 0..<4 { gl.enableVertexAttribArray(i) }
         gl.bindVertexArray(0)
 
-        boxVertexArray = gl.makeVertexArray()
-        boxBuffer = gl.makeBuffer()
-        gl.bindVertexArray(boxVertexArray)
-        gl.bindBuffer(GLC.ARRAY_BUFFER, boxBuffer)
-        gl.vertexAttribPointer(0, 3, GLC.FLOAT, 0, 24, nil)
-        gl.vertexAttribPointer(1, 3, GLC.FLOAT, 0, 24, UnsafeRawPointer(bitPattern: 12))
-        gl.enableVertexAttribArray(0)
-        gl.enableVertexAttribArray(1)
+        modelVertexArray = gl.makeVertexArray()
+        modelBuffer = gl.makeBuffer()
+        gl.bindVertexArray(modelVertexArray)
+        gl.bindBuffer(GLC.ARRAY_BUFFER, modelBuffer)
+        gl.vertexAttribPointer(0, 3, GLC.FLOAT, 0, 28, nil)
+        gl.vertexAttribPointer(1, 3, GLC.FLOAT, 0, 28, UnsafeRawPointer(bitPattern: 12))
+        gl.vertexAttribPointer(2, 1, GLC.FLOAT, 0, 28, UnsafeRawPointer(bitPattern: 24))
+        for i: UInt32 in 0..<3 { gl.enableVertexAttribArray(i) }
         gl.bindVertexArray(0)
     }
 
@@ -265,20 +251,7 @@ final class WinRenderer {
 
     // MARK: Frame
 
-    func render(world: WinWorld, camera: WinCamera, sky: SkyState, time: Double, now: Double,
-                width: Int32, height: Int32, ui: [Float], boxes: [Box] = []) {
-        let aspect = Float(width) / Float(max(1, height))
-        let viewProj = camera.viewProjection(aspect: aspect)
-        let t = Float(time.truncatingRemainder(dividingBy: 3600))
-
-        gl.viewport(0, 0, width, height)
-        gl.enable(GLC.FRAMEBUFFER_SRGB)
-        gl.depthMask(1)
-        gl.clearColor(sky.horizon.x, sky.horizon.y, sky.horizon.z, 1)
-        gl.clear(GLC.COLOR_BUFFER_BIT | GLC.DEPTH_BUFFER_BIT)
-        gl.disable(GLC.CULL_FACE)
-
-        // Sky
+    private func drawSky(camera: WinCamera, aspect: Float, sky: SkyState, time: Float) {
         gl.disable(GLC.DEPTH_TEST)
         gl.disable(GLC.BLEND)
         gl.useProgram(skyProgram)
@@ -295,9 +268,41 @@ final class WinRenderer {
         gl.uniform4f(gl.uniform(skyProgram, "uHorizonGlow"), sky.horizon.x, sky.horizon.y, sky.horizon.z, sky.sunsetGlow)
         gl.uniform3f(gl.uniform(skyProgram, "uCamPos"), Float(camera.position.x.truncatingRemainder(dividingBy: 65536)),
                      Float(camera.position.y), Float(camera.position.z.truncatingRemainder(dividingBy: 65536)))
-        gl.uniform1f(gl.uniform(skyProgram, "uTime"), t)
+        gl.uniform1f(gl.uniform(skyProgram, "uTime"), time)
         gl.bindVertexArray(emptyVertexArray)
         gl.drawArrays(GLC.TRIANGLES, 0, 3)
+    }
+
+    /// Menu background: a slowly turning evening sky with drifting clouds, plus the menu UI.
+    func renderMenu(width: Int32, height: Int32, time: Double, ui: [Float]) {
+        gl.viewport(0, 0, width, height)
+        gl.enable(GLC.FRAMEBUFFER_SRGB)
+        gl.depthMask(1)
+        gl.clearColor(0.02, 0.01, 0.05, 1)
+        gl.clear(GLC.COLOR_BUFFER_BIT | GLC.DEPTH_BUFFER_BIT)
+        var camera = WinCamera()
+        camera.position = DVec3(time * 3, 90, time * 1.5)
+        camera.yaw = time * 0.02
+        camera.pitch = 0.18
+        let aspect = Float(width) / Float(max(1, height))
+        drawSky(camera: camera, aspect: aspect, sky: SkyState.at(worldTime: 520 + time * 0.5), time: Float(time.truncatingRemainder(dividingBy: 3600)))
+        drawOverlay(width: width, height: height, vertices: ui)
+        gl.bindVertexArray(0)
+    }
+
+    func render(world: WinWorld, camera: WinCamera, sky: SkyState, time: Double, now: Double,
+                width: Int32, height: Int32, ui: [Float], models: [Float] = []) {
+        let aspect = Float(width) / Float(max(1, height))
+        let viewProj = camera.viewProjection(aspect: aspect)
+        let t = Float(time.truncatingRemainder(dividingBy: 3600))
+
+        gl.viewport(0, 0, width, height)
+        gl.enable(GLC.FRAMEBUFFER_SRGB)
+        gl.depthMask(1)
+        gl.clearColor(sky.horizon.x, sky.horizon.y, sky.horizon.z, 1)
+        gl.clear(GLC.COLOR_BUFFER_BIT | GLC.DEPTH_BUFFER_BIT)
+        gl.disable(GLC.CULL_FACE)
+        drawSky(camera: camera, aspect: aspect, sky: sky, time: t)
 
         // Visible chunks
         var frustum = Frustum(viewProjection: viewProj)
@@ -323,7 +328,7 @@ final class WinRenderer {
         gl.depthFunc(GLC.LESS)
         let fogEnd = Float(world.renderDistance * 16) - 6
         for (pass, program) in chunkPrograms.enumerated() {
-            if pass == 2 && !boxes.isEmpty { drawBoxes(boxes, camera: camera, viewProj: viewProj, sky: sky, fogEnd: fogEnd) }
+            if pass == 2 && !models.isEmpty { drawModels(models, viewProj: viewProj, sky: sky, fogEnd: fogEnd) }
             gl.useProgram(program.id)
             gl.setMatrix(program.viewProj, viewProj)
             gl.uniform1f(program.time, t)
@@ -368,42 +373,17 @@ final class WinRenderer {
         gl.bindVertexArray(0)
     }
 
-    private func drawBoxes(_ boxes: [Box], camera: WinCamera, viewProj: Mat4, sky: SkyState, fogEnd: Float) {
-        var v: [Float] = []
-        v.reserveCapacity(boxes.count * 216)
-        for b in boxes {
-            let offset = b.base - camera.position
-            if simd_length_squared(offset) > 160 * 160 { continue }
-            let forward = DVec3(-sin(b.yaw), 0, -cos(b.yaw))
-            let right = DVec3(cos(b.yaw), 0, -sin(b.yaw))
-            let center = offset + right * b.right + forward * b.forward
-            func corner(_ sx: Double, _ sy: Double, _ sz: Double) -> SIMD3<Float> {
-                let q = center + right * (sx * b.width / 2) + forward * (sz * b.length / 2) + DVec3(0, b.y + sy * b.height, 0)
-                return SIMD3(Float(q.x), Float(q.y), Float(q.z))
-            }
-            let c000 = corner(-1, 0, -1), c100 = corner(1, 0, -1), c101 = corner(1, 0, 1), c001 = corner(-1, 0, 1)
-            let c010 = corner(-1, 1, -1), c110 = corner(1, 1, -1), c111 = corner(1, 1, 1), c011 = corner(-1, 1, 1)
-            func face(_ p0: SIMD3<Float>, _ p1: SIMD3<Float>, _ p2: SIMD3<Float>, _ p3: SIMD3<Float>, _ shade: Float) {
-                let c = b.color * shade
-                for q in [p0, p1, p2, p0, p2, p3] { v += [q.x, q.y, q.z, c.x, c.y, c.z] }
-            }
-            face(c010, c110, c111, c011, 1.0)
-            face(c000, c100, c101, c001, 0.45)
-            face(c001, c101, c111, c011, 0.8)
-            face(c000, c100, c110, c010, 0.8)
-            face(c000, c001, c011, c010, 0.62)
-            face(c100, c101, c111, c110, 0.62)
-        }
-        guard !v.isEmpty else { return }
-        gl.useProgram(boxProgram)
-        gl.setMatrix(gl.uniform(boxProgram, "uViewProj"), viewProj)
-        gl.uniform4f(gl.uniform(boxProgram, "uFogColorStart"), sky.horizon.x, sky.horizon.y, sky.horizon.z, fogEnd * 0.55)
-        gl.uniform1f(gl.uniform(boxProgram, "uFogEnd"), fogEnd)
-        gl.uniform1f(gl.uniform(boxProgram, "uDaylight"), sky.daylight)
-        gl.bindVertexArray(boxVertexArray)
-        gl.bindBuffer(GLC.ARRAY_BUFFER, boxBuffer)
+    /// Camera-relative triangles: x, y, z, r, g, b, glow per vertex.
+    private func drawModels(_ v: [Float], viewProj: Mat4, sky: SkyState, fogEnd: Float) {
+        gl.useProgram(modelProgram)
+        gl.setMatrix(gl.uniform(modelProgram, "uViewProj"), viewProj)
+        gl.uniform4f(gl.uniform(modelProgram, "uFogColorStart"), sky.horizon.x, sky.horizon.y, sky.horizon.z, fogEnd * 0.55)
+        gl.uniform1f(gl.uniform(modelProgram, "uFogEnd"), fogEnd)
+        gl.uniform1f(gl.uniform(modelProgram, "uDaylight"), sky.daylight)
+        gl.bindVertexArray(modelVertexArray)
+        gl.bindBuffer(GLC.ARRAY_BUFFER, modelBuffer)
         v.withUnsafeBytes { gl.bufferData(GLC.ARRAY_BUFFER, $0.count, $0.baseAddress, GLC.DYNAMIC_DRAW) }
-        gl.drawArrays(GLC.TRIANGLES, 0, Int32(v.count / 6))
+        gl.drawArrays(GLC.TRIANGLES, 0, Int32(v.count / 7))
     }
 
     private func drawOverlay(width: Int32, height: Int32, vertices v: [Float]) {

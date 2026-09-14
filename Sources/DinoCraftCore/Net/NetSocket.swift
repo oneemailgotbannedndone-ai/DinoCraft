@@ -155,6 +155,88 @@ public final class NetSocket: @unchecked Sendable {
         return "\(raw >> 24).\((raw >> 16) & 255).\((raw >> 8) & 255).\(raw & 255)"
     }
 
+    /// Makes `receive` give up after `seconds` (it then returns -1).
+    public func setReceiveTimeout(_ seconds: Double) {
+        NetSocket.setTimeout(handle, seconds)
+    }
+
+    private static func setTimeout(_ h: Handle, _ seconds: Double) {
+        #if os(Windows)
+        withUnsafePointer(to: UInt32(max(1, seconds * 1000))) { p in
+            p.withMemoryRebound(to: CChar.self, capacity: 4) { _ = setsockopt(h, SOL_SOCKET, SO_RCVTIMEO, $0, 4) }
+        }
+        #else
+        var tv = timeval(tv_sec: Int(seconds), tv_usec: Int32((seconds - floor(seconds)) * 1_000_000))
+        _ = setsockopt(h, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+        #endif
+    }
+
+    /// Parses a dotted IPv4 address into a host-order integer.
+    public static func parseIPv4(_ text: String) -> UInt32? {
+        let parts = text.split(separator: ".", omittingEmptySubsequences: false).map { UInt32($0) }
+        guard parts.count == 4, parts.allSatisfy({ ($0 ?? 256) < 256 }) else { return nil }
+        return parts.reduce(0) { $0 << 8 | $1! }
+    }
+
+    /// Sends a UDP datagram and collects replies until `window` seconds pass or `done` returns true.
+    /// Repeats the send up to `attempts` times while nothing useful arrived (for NAT-PMP and SSDP).
+    public static func udpExchange(host: String, port: UInt16, payload: [UInt8], window: Double, attempts: Int = 1,
+                                   done: ([UInt8]) -> Bool) -> [[UInt8]] {
+        guard started, let ip = parseIPv4(host) else { return [] }
+        #if os(Windows)
+        let h = WinSDK.socket(AF_INET, 2 /* SOCK_DGRAM */, 0)
+        #else
+        let h = Darwin.socket(AF_INET, SOCK_DGRAM, 0)
+        #endif
+        guard h != invalidHandle else { return [] }
+        defer { closeHandle(h) }
+        setTimeout(h, min(window, 0.5))
+        let size = MemoryLayout<sockaddr_in>.size
+        var addr = sockaddr_in()
+        #if os(Windows)
+        addr.sin_family = ADDRESS_FAMILY(AF_INET)
+        addr.sin_port = port.bigEndian
+        addr.sin_addr.S_un.S_addr = ip.bigEndian
+        #else
+        addr.sin_len = UInt8(size)
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = port.bigEndian
+        addr.sin_addr.s_addr = ip.bigEndian
+        #endif
+        var replies: [[UInt8]] = []
+        for _ in 0..<max(1, attempts) {
+            let sent = payload.withUnsafeBytes { buf -> Int in
+                withUnsafePointer(to: &addr) { ptr in
+                    ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sa -> Int in
+                        #if os(Windows)
+                        return Int(WinSDK.sendto(h, buf.baseAddress!.assumingMemoryBound(to: CChar.self), Int32(buf.count), 0, sa, Int32(size)))
+                        #else
+                        return Darwin.sendto(h, buf.baseAddress, buf.count, 0, sa, socklen_t(size))
+                        #endif
+                    }
+                }
+            }
+            guard sent == payload.count else { continue }
+            let deadline = Date().addingTimeInterval(window)
+            while Date() < deadline {
+                var reply = [UInt8](repeating: 0, count: 2048)
+                let n = reply.withUnsafeMutableBytes { raw -> Int in
+                    #if os(Windows)
+                    return Int(WinSDK.recv(h, raw.baseAddress!.assumingMemoryBound(to: CChar.self), Int32(raw.count), 0))
+                    #else
+                    return Darwin.recv(h, raw.baseAddress, raw.count, 0)
+                    #endif
+                }
+                guard n > 0 else { continue }
+                let bytes = Array(reply.prefix(n))
+                replies.append(bytes)
+                if done(bytes) { return replies }
+            }
+            if !replies.isEmpty { return replies }
+        }
+        return replies
+    }
+
     public func accept() -> NetSocket? {
         #if os(Windows)
         let h = WinSDK.accept(handle, nil, nil)

@@ -64,6 +64,9 @@ jobs:
           Copy-Item Resources/Data "$out/Resources/Data" -Recurse
           Copy-Item Resources/Textures/blocks "$out/Resources/Textures/blocks" -Recurse
           Copy-Item Resources/Textures/items "$out/Resources/Textures/items" -Recurse
+          Copy-Item Resources/Sounds "$out/Resources/Sounds" -Recurse
+          Copy-Item Resources/Music "$out/Resources/Music" -Recurse
+          Remove-Item "$out/Resources/Music/*.m4a" -ErrorAction SilentlyContinue
           Get-ChildItem $out | Format-Table Name, Length
 
       - name: Automated check with software OpenGL
@@ -86,6 +89,15 @@ jobs:
           $p2 = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--screenshot `"$shot2`" --frames 5 --render-distance 3 --seed dino --demo-entities --demo-screen inventory" -PassThru -Wait -NoNewWindow
           Write-Host "Inventory check exit code: $($p2.ExitCode)"
           if (-not (Test-Path $shot2)) { throw "The game did not produce the inventory screenshot" }
+          $shot3 = "$PWD/screenshot-menu.png"
+          $p3 = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--screenshot `"$shot3`" --demo-screen menu" -PassThru -Wait -NoNewWindow
+          Write-Host "Menu check exit code: $($p3.ExitCode)"
+          if (-not (Test-Path $shot3)) { throw "The game did not produce the menu screenshot" }
+          $shot4 = "$PWD/screenshot-worlds.png"
+          $p4 = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--screenshot `"$shot4`" --demo-screen worlds" -PassThru -Wait -NoNewWindow
+          Write-Host "World list check exit code: $($p4.ExitCode)"
+          if (-not (Test-Path $shot4)) { throw "The game did not produce the world list screenshot" }
+          Get-ChildItem smoke-home/logs -ErrorAction SilentlyContinue | ForEach-Object { Select-String -Path $_.FullName -Pattern "Audio|Music|error" | Select-Object -Last 20 }
 
       - name: Upload screenshot and logs
         if: always()
@@ -95,6 +107,8 @@ jobs:
           path: |
             screenshot.png
             screenshot-inventory.png
+            screenshot-menu.png
+            screenshot-worlds.png
             smoke-home/logs/
           if-no-files-found: ignore
 

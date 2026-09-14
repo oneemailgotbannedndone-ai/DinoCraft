@@ -597,6 +597,19 @@ section("Multiplayer wire protocol") {
     server.close()
 }
 
+section("Router port mapping parsing") {
+    check(PortMapping.gatewayCandidates(local: "192.168.1.23") == ["192.168.1.1", "192.168.1.254"], "gateway guesses from the LAN address")
+    check(PortMapping.isPrivate("100.72.1.9") && !PortMapping.isPrivate("81.2.69.160"), "carrier-grade NAT addresses are private")
+    check(NetSocket.parseIPv4("10.0.0.138") == 0x0A00_008A && NetSocket.parseIPv4("300.1.1.1") == nil, "IPv4 parsing")
+    let plain = Array("HTTP/1.1 200 OK\r\nContent-Type: text/xml\r\n\r\n<ok/>".utf8)
+    check(PortMapping.parseResponse(plain).map { $0.0 == "<ok/>" && $0.1 == 200 } == true, "plain HTTP response")
+    let chunked = Array("HTTP/1.1 500 Internal Server Error\r\nTransfer-Encoding: chunked\r\n\r\n5\r\n<err>\r\n6\r\n</err>\r\n0\r\n\r\n".utf8)
+    check(PortMapping.parseResponse(chunked).map { $0.0 == "<err></err>" && $0.1 == 500 } == true, "chunked HTTP response")
+    let xml = "<device><serviceType>urn:schemas-upnp-org:service:WANIPConnection:1</serviceType><controlURL>/ctl/IPConn</controlURL></device>"
+    let control = PortMapping.controlURL(in: xml, location: URL(string: "http://192.168.1.1:5000/rootDesc.xml")!)
+    check(control?.url.absoluteString == "http://192.168.1.1:5000/ctl/IPConn", "UPnP control URL resolves against the description location")
+}
+
 section("Multiplayer portable host") {
     let generator = TerrainGenerator(seed: 11)
     let host = try WireHost(settings: .init(worldName: "Windows World", seed: "11", gameMode: "creative", difficulty: "normal", hostName: "WinHost"),

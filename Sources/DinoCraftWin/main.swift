@@ -1,21 +1,28 @@
 import Foundation
 import CSDL3
 import DinoCraftCore
+#if os(Windows)
+import WinSDK
+#endif
 
-// DinoCraft for Windows: explore and build on your own, or join a friend's game hosted on a Mac.
+// DinoCraft for Windows: a title screen with your worlds, playing on your own, hosting friends,
+// and joining games hosted on a Mac or another Windows PC.
 //
 // Options:
-//   --join <code or address>  join a friend's game (invite code like DINO-3M4KA-9QX2B, or an IP address)
+//   --join <code or address>  join a friend's game straight away (invite code like DINO-3M4KA-9QX2B, or an IP address)
 //   --name <name>             player name when joining
-//   --seed <text>             seed for a new single-player world
-//   --render-distance <n>     chunks (default 8)
-//   --screenshot <path.png>   automated check: wait for the world to load, save a screenshot, quit
+//   --host <name>             open "Windows World" for friends straight away
+//   --seed <text>             seed when "Windows World" is created by --host or an automated check
+//   --render-distance <n>     chunks (default: the Settings value)
+//   --console                 keep the console window open (for log output)
+//   --screenshot <path.png>   automated check: save a screenshot and quit
 //   --frames <n>              frames to draw after loading before the screenshot (default 30)
 //   --demo-entities           automated check: place sample players and creatures in view
+//   --demo-screen <name>      automated check: inventory, menu or worlds
 
 struct Options {
     var seed = ""
-    var renderDistance = 8
+    var renderDistance: Int?
     var screenshotPath: String?
     var frames = 30
     var join: String?
@@ -23,6 +30,7 @@ struct Options {
     var demoEntities = false
     var demoScreen: String?
     var hostName: String?
+    var console = false
 
     static func parse(_ args: [String]) -> Options {
         var o = Options()
@@ -39,6 +47,7 @@ struct Options {
             case "--demo-entities": o.demoEntities = true
             case "--demo-screen": o.demoScreen = next()
             case "--host": o.hostName = next()
+            case "--console": o.console = true
             default: break
             }
             i += 1
@@ -47,11 +56,18 @@ struct Options {
     }
 }
 
+/// Registries and GPU resources shared by the menus and every game session.
+struct GameContent {
+    let blocks: BlockRegistry
+    let items: ItemRegistry
+    let recipes: RecipeRegistry
+    let renderer: WinRenderer
+}
+
 private let SDL_WINDOW_OPENGL_FLAG: UInt64 = 0x0000_0002
 private let SDL_WINDOW_RESIZABLE_FLAG: UInt64 = 0x0000_0020
 private let SDL_WINDOW_HIGH_PIXEL_DENSITY_FLAG: UInt64 = 0x0000_2000
 private let SDL_MESSAGEBOX_ERROR_FLAG: UInt32 = 0x0000_0010
-private let SDL_MESSAGEBOX_INFORMATION_FLAG: UInt32 = 0x0000_0040
 
 func fail(_ message: String, window: OpaquePointer? = nil) -> Never {
     Log.fatal(message, category: "App")
@@ -66,51 +82,18 @@ func cleanName(_ raw: String) -> String {
     return name.isEmpty ? "Explorer" : name
 }
 
-var options = Options.parse(CommandLine.arguments)
+let options = Options.parse(CommandLine.arguments)
 try? GamePaths.ensureDirectories()
 Log.shared.start(directory: GamePaths.logs)
 Log.info("DinoCraft for Windows starting · data: \(GamePaths.root.path)", category: "App")
 
-if options.screenshotPath == nil && options.join == nil && options.hostName == nil {
-    print("")
-    print("  DinoCraft for Windows")
-    print("")
-    print("  Press Enter to play on your own.")
-    print("  Type host and press Enter to open your world so friends (on Mac or Windows) can join.")
-    print("  To join a friend, paste their invite code (like DINO-3M4KA-9QX2B) or IP address, then press Enter.")
-    print("")
-    if let line = readLine()?.trimmingCharacters(in: .whitespacesAndNewlines), !line.isEmpty {
-        if line.lowercased() == "host" {
-            let fallback = cleanName(ProcessInfo.processInfo.environment["USERNAME"] ?? "Host")
-            print("  Your player name (press Enter to use \(fallback)):")
-            let typed = readLine()?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            options.hostName = cleanName(typed.isEmpty ? fallback : typed)
-        } else {
-            options.join = line
-        }
-    }
+#if os(Windows)
+if options.screenshotPath == nil && !options.console {
+    // Started by double-clicking: hide the empty console window (keep it when run from a terminal).
+    var processes = [UInt32](repeating: 0, count: 4)
+    if GetConsoleProcessList(&processes, 4) <= 1 { _ = FreeConsole() }
 }
-
-var network: WinNetwork?
-if let address = options.join {
-    var name = options.name
-    if name == nil && options.screenshotPath == nil {
-        let fallback = cleanName(ProcessInfo.processInfo.environment["USERNAME"] ?? "Explorer")
-        print("  Your player name (press Enter to use \(fallback)):")
-        let typed = readLine()?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        name = typed.isEmpty ? fallback : typed
-    }
-    let username = cleanName(name ?? "Explorer")
-    print("  Connecting to \(address) as \(username)…")
-    do {
-        let joined = try WinNetwork.join(address: address, username: username)
-        network = joined
-        print("  Joined \(joined.welcome.worldName)! Opening the game window…")
-    } catch {
-        print("  Couldn't join: \(error)")
-        fail("Couldn't join the game:\n\n\(error)")
-    }
-}
+#endif
 
 guard SDL_Init(SDL_INIT_VIDEO) else { fail("Could not start SDL: \(String(cString: SDL_GetError()))") }
 _ = SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3)
@@ -120,8 +103,7 @@ _ = SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24)
 _ = SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1)
 _ = SDL_GL_SetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, 1)
 
-let title = network.map { "DinoCraft · \($0.welcome.worldName)" } ?? "DinoCraft"
-guard let window = SDL_CreateWindow(title, 1280, 720,
+guard let window = SDL_CreateWindow("DinoCraft", 1280, 720,
                                     SDL_WINDOW_OPENGL_FLAG | SDL_WINDOW_RESIZABLE_FLAG | SDL_WINDOW_HIGH_PIXEL_DENSITY_FLAG) else {
     fail("Could not create the game window: \(String(cString: SDL_GetError()))")
 }
@@ -131,14 +113,70 @@ guard let context = SDL_GL_CreateContext(window) else {
 _ = SDL_GL_MakeCurrent(window, context)
 _ = SDL_GL_SetSwapInterval(options.screenshotPath == nil ? 1 : 0)
 
+let settingsStore = SettingsStore()
+
 do {
     let gl = try GL()
     Log.info("OpenGL \(gl.string(GLC.VERSION)) · \(gl.string(GLC.RENDERER)) · \(gl.string(GLC.VENDOR))", category: "Renderer")
-    let game = try WinGame(gl: gl, window: window, options: options, network: network)
-    if let reason = game.run() {
-        print("  Disconnected: \(reason)")
-        _ = SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION_FLAG, "DinoCraft", "You left the game:\n\n\(reason)", window)
+    let blocks = try BlockRegistry.loadDefault()
+    let items = try ItemRegistry.loadDefault(blocks: blocks)
+    let recipes = try RecipeRegistry.loadDefault(items: items)
+    let renderer = try WinRenderer(gl: gl, blocks: blocks, items: items)
+    let content = GameContent(blocks: blocks, items: items, recipes: recipes, renderer: renderer)
+    let audio = WinAudio()
+    audio.apply(settingsStore.settings)
+
+    /// Runs one game session. Returns whether the player closed the window, and why the game ended if it wasn't their choice.
+    func play(network: WinNetwork?, world: WorldMetadata?, hostName: String?) throws -> (quit: Bool, message: String?) {
+        var sessionOptions = options
+        if sessionOptions.renderDistance == nil { sessionOptions.renderDistance = max(2, min(16, settingsStore.settings.renderDistance)) }
+        SDL_SetWindowTitle(window, "DinoCraft · \(network?.welcome.worldName ?? world?.name ?? "")")
+        let game = try WinGame(gl: gl, window: window, content: content, audio: audio, settings: settingsStore, options: sessionOptions,
+                               network: network, world: world, hostName: hostName)
+        let reason = game.run()
+        SDL_SetWindowTitle(window, "DinoCraft")
+        return (game.quitRequested, reason.map { "You left the game: \($0)" })
     }
+
+    if let address = options.join {
+        let username = cleanName(options.name ?? settingsStore.settings.username)
+        let joined: WinNetwork
+        do {
+            joined = try WinNetwork.join(address: address, username: username)
+        } catch {
+            fail("Couldn't join the game:\n\n\(error)", window: window)
+        }
+        if let message = try play(network: joined, world: nil, hostName: nil).message {
+            Log.info(message, category: "Net")
+        }
+    } else if options.hostName != nil || (options.screenshotPath != nil && options.demoScreen != "menu" && options.demoScreen != "worlds") {
+        let storage = WorldStorage()
+        let meta = try storage.listWorlds().first { $0.name == "Windows World" }
+            ?? storage.createWorld(name: "Windows World", seedText: options.seed, gameMode: .creative, difficulty: .normal)
+        _ = try play(network: nil, world: meta, hostName: options.hostName.map(cleanName))
+    } else {
+        let menus = WinMenus(window: window, renderer: renderer, store: settingsStore, audio: audio, options: options)
+        var message: String?
+        menuLoop: while true {
+            let result: (quit: Bool, message: String?)
+            switch menus.run(message: message) {
+            case .quit:
+                break menuLoop
+            case .play(let meta, let hostName):
+                do {
+                    result = try play(network: nil, world: meta, hostName: hostName)
+                } catch {
+                    Log.error("Could not open world: \(error)", category: "Game")
+                    result = (false, "Couldn't open the world: \(error)")
+                }
+            case .join(let network):
+                result = try play(network: network, world: nil, hostName: nil)
+            }
+            if result.quit || options.screenshotPath != nil { break }
+            message = result.message
+        }
+    }
+    audio.shutdown()
 } catch {
     fail(String(describing: error), window: window)
 }

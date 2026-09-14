@@ -243,13 +243,16 @@ enum Shaders {
     #version 330 core
     layout(location = 0) in vec3 aPos;
     layout(location = 1) in vec3 aColor;
+    layout(location = 2) in float aGlow;
     uniform mat4 uViewProj;
     out vec3 vColor;
     out vec3 vViewPos;
+    out float vGlow;
     void main() {
         gl_Position = uViewProj * vec4(aPos, 1.0);
         vColor = aColor;
         vViewPos = aPos;
+        vGlow = aGlow;
     }
     """
 
@@ -257,12 +260,13 @@ enum Shaders {
     #version 330 core
     in vec3 vColor;
     in vec3 vViewPos;
+    in float vGlow;
     uniform vec4 uFogColorStart;
     uniform float uFogEnd;
     uniform float uDaylight;
     out vec4 fragColor;
     void main() {
-        vec3 lit = vColor * mix(0.22, 1.0, uDaylight);
+        vec3 lit = mix(vColor * mix(0.22, 1.0, uDaylight), vColor, vGlow);
         float t = smoothstep(uFogColorStart.w, uFogEnd, length(vViewPos));
         t = t * t;
         fragColor = vec4(mix(lit, uFogColorStart.rgb, t), 1.0);

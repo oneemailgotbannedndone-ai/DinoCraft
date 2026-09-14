@@ -11,6 +11,16 @@ final class RemoteEntity {
     var yaw: Double
     var targetYaw: Double
     var dying: Float = 0
+    // Animation
+    var walk: Float = 0
+    var moving: Float = 0
+    var lunge: Float = 0
+    var hurt: Float = 0
+    var swing: Float = 0
+    var pitch: Float = 0
+    var sneaking = false
+    var health: Float = 20
+    var variant = 0
 
     init(id: Int, kind: String, name: String, position: DVec3, yaw: Double) {
         self.id = id
@@ -20,6 +30,29 @@ final class RemoteEntity {
         target = position
         self.yaw = yaw
         targetYaw = yaw
+    }
+
+    func apply(_ s: Wire.PlayerState) {
+        target = DVec3(s.x, s.y, s.z)
+        targetYaw = Double(s.yaw)
+        pitch = s.pitch
+        moving = s.moving
+        sneaking = s.sneaking
+        if s.swinging { swing = 1 }
+        if s.health < health { hurt = 0.35 }
+        health = s.health
+        dying = s.dead ? 1 : 0
+    }
+
+    func apply(_ m: Wire.MobState) {
+        target = DVec3(m.x, m.y, m.z)
+        targetYaw = Double(m.yaw)
+        walk = m.walk
+        moving = m.move
+        hurt = max(hurt, m.hurt)
+        dying = m.dying
+        lunge = m.lunge
+        variant = m.variant ?? 0
     }
 
     func update(dt: Double) {
@@ -32,6 +65,9 @@ final class RemoteEntity {
         if diff > .pi { diff -= 2 * .pi }
         if diff < -.pi { diff += 2 * .pi }
         yaw += diff * min(1, dt * 12)
+        walk += moving * Float(dt) * 7
+        swing = max(0, swing - Float(dt) * 3.5)
+        hurt = max(0, hurt - Float(dt))
     }
 }
 
@@ -140,9 +176,7 @@ final class WinNetwork {
                     guard let s = try? decoder.decode(Wire.PlayerState.self, from: data), s.id != welcome.playerID else { continue }
                     let entity = players[s.id] ?? RemoteEntity(id: s.id, kind: "player", name: names[s.id] ?? "Explorer",
                                                                  position: DVec3(s.x, s.y, s.z), yaw: Double(s.yaw))
-                    entity.target = DVec3(s.x, s.y, s.z)
-                    entity.targetYaw = Double(s.yaw)
-                    entity.dying = s.dead ? 1 : 0
+                    entity.apply(s)
                     players[s.id] = entity
                 case .playerJoined:
                     guard let info = try? decoder.decode(Wire.PlayerInfo.self, from: data) else { continue }
@@ -161,9 +195,7 @@ final class WinNetwork {
                     var next: [Int: RemoteEntity] = [:]
                     for m in snapshot.mobs {
                         let entity = mobs[m.id] ?? RemoteEntity(id: m.id, kind: m.kind, name: m.kind, position: DVec3(m.x, m.y, m.z), yaw: Double(m.yaw))
-                        entity.target = DVec3(m.x, m.y, m.z)
-                        entity.targetYaw = Double(m.yaw)
-                        entity.dying = m.dying
+                        entity.apply(m)
                         next[m.id] = entity
                     }
                     mobs = next
@@ -243,16 +275,8 @@ final class WinNetwork {
     }
 }
 
-/// Simple box models for players and creatures (the Windows version has no model renderer yet).
+/// Creature sizes for hit tests, mirroring `MobSpecies` in the Mac app.
 enum EntityShapes {
-    private static func linear(_ hex: UInt32) -> SIMD3<Float> {
-        func channel(_ v: UInt32) -> Float {
-            let c = Float(v) / 255
-            return c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
-        }
-        return SIMD3(channel((hex >> 16) & 255), channel((hex >> 8) & 255), channel(hex & 255))
-    }
-
     /// Width, height and whether the creature is hostile, mirroring `MobSpecies` in the Mac app.
     private static let sizes: [String: (Double, Double, Bool)] = [
         "trikey": (0.9, 1.0, false), "dodo": (0.5, 0.9, false), "longneck": (1.6, 3.8, false), "raptor": (0.6, 1.2, true),
@@ -264,73 +288,8 @@ enum EntityShapes {
         "baryonyx": (1.0, 2.2, true), "troodon": (0.5, 1.0, true), "spinosaurus": (1.4, 3.6, true),
     ]
 
-    private static let colors: [String: UInt32] = [
-        "trikey": 0x6E8B4A, "dodo": 0x8A7A6A, "longneck": 0x7A9A6A, "raptor": 0x9A6A3A, "spitter": 0x4A8A5A, "crawler": 0x3A3A4A,
-        "magmaRaptor": 0xB8401A, "villager": 0xB08A5A, "stego": 0x6A8A7A, "ankylo": 0x8A7A5A, "rex": 0x6A5A3A, "compy": 0x8AA04A,
-        "ptero": 0x9A6A5A, "parasaur": 0x7A9A8A, "sailback": 0x9A5A4A, "boneWalker": 0xD8D0BC, "scorpion": 0x5A3A2A, "pig": 0xE8A0A8,
-        "cow": 0x6A4A3A, "sheep": 0xE8E4DC, "chicken": 0xF2F0EA, "pookpook": 0xF4F2EE, "carnotaurus": 0x9A3A2A,
-        "allosaurus": 0x8A6A4A, "baryonyx": 0x6A7A5A, "troodon": 0x7A6A9A, "spinosaurus": 0x5A6A4A,
-    ]
-
-    private static let bipeds: Set<String> = ["raptor", "magmaRaptor", "rex", "compy", "carnotaurus", "allosaurus", "baryonyx",
-                                              "troodon", "spinosaurus", "spitter", "dodo", "chicken", "pookpook", "parasaur"]
-    private static let upright: Set<String> = ["villager", "boneWalker"]
-
     static func size(of kind: String) -> (width: Double, height: Double) {
         let s = sizes[kind] ?? (0.8, 1.2, false)
         return (s.0, s.1)
-    }
-
-    static func player(_ e: RemoteEntity) -> [WinRenderer.Box] {
-        guard e.dying == 0 else { return [] }
-        let shirts: [UInt32] = [0x3A6EC8, 0xC8503A, 0x3AA05A, 0xC8A03A, 0x8A4AC8]
-        let shirt = linear(shirts[abs(e.id) % shirts.count]), skin = linear(0xE0B090), legs = linear(0x2A2A40)
-        return [
-            .init(base: e.position, yaw: e.yaw, right: -0.13, width: 0.22, length: 0.25, height: 0.72, color: legs),
-            .init(base: e.position, yaw: e.yaw, right: 0.13, width: 0.22, length: 0.25, height: 0.72, color: legs),
-            .init(base: e.position, yaw: e.yaw, y: 0.72, width: 0.52, length: 0.3, height: 0.72, color: shirt),
-            .init(base: e.position, yaw: e.yaw, y: 1.44, width: 0.44, length: 0.44, height: 0.44, color: skin),
-        ]
-    }
-
-    static func mob(_ e: RemoteEntity) -> [WinRenderer.Box] {
-        let (w, h, hostile) = sizes[e.kind] ?? (0.8, 1.2, false)
-        let color = linear(colors[e.kind] ?? (hostile ? 0x8A3A2A : 0x5E8A3A))
-        let dark = color * 0.6
-        let base = e.position - DVec3(0, Double(e.dying) * h * 0.5, 0)
-        var out: [WinRenderer.Box] = []
-        func box(_ right: Double, _ forward: Double, _ y: Double, _ width: Double, _ length: Double, _ height: Double, _ c: SIMD3<Float>) {
-            out.append(.init(base: base, yaw: e.yaw, right: right, forward: forward, y: y, width: width, length: length, height: height, color: c))
-        }
-        if upright.contains(e.kind) {
-            box(-w * 0.22, 0, 0, w * 0.35, w * 0.4, h * 0.42, dark)
-            box(w * 0.22, 0, 0, w * 0.35, w * 0.4, h * 0.42, dark)
-            box(0, 0, h * 0.42, w * 0.9, w * 0.5, h * 0.36, color)
-            box(0, 0, h * 0.78, w * 0.7, w * 0.7, h * 0.22, color)
-        } else if e.kind == "ptero" {
-            box(0, 0, h * 0.3, w * 0.5, w * 1.2, h * 0.4, color)
-            box(0, 0, h * 0.55, w * 2.6, w * 0.6, h * 0.08, dark)
-            box(0, w * 0.75, h * 0.4, w * 0.3, w * 0.5, h * 0.3, color)
-        } else if bipeds.contains(e.kind) {
-            let length = w * 2.2
-            box(-w * 0.25, 0, 0, w * 0.25, w * 0.3, h * 0.45, dark)
-            box(w * 0.25, 0, 0, w * 0.25, w * 0.3, h * 0.45, dark)
-            box(0, 0, h * 0.4, w, length, h * 0.35, color)
-            box(0, -length * 0.8, h * 0.5, w * 0.45, length * 0.7, h * 0.18, color)
-            box(0, length * 0.55, h * 0.62, w * 0.7, w * 0.9, h * 0.3, color)
-        } else {
-            let length = w * 1.7, legHeight = h * 0.35
-            for (r, f) in [(-0.3, -0.32), (0.3, -0.32), (-0.3, 0.32), (0.3, 0.32)] {
-                box(w * r, length * f, 0, w * 0.24, w * 0.24, legHeight, dark)
-            }
-            box(0, 0, legHeight, w, length, h * 0.45, color)
-            if e.kind == "longneck" {
-                box(0, length * 0.5, h * 0.5, w * 0.3, w * 0.3, h * 0.45, color)
-                box(0, length * 0.55, h * 0.9, w * 0.35, w * 0.5, h * 0.12, color)
-            } else {
-                box(0, length * 0.55, h * 0.5, w * 0.6, w * 0.6, h * 0.4, color)
-            }
-        }
-        return out
     }
 }
