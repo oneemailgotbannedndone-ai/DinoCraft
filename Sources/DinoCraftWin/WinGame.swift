@@ -22,6 +22,10 @@ final class WinGame {
     private let world: WinWorld
     private let player: PlayerController
     private let network: WinNetwork?
+    /// Set when this player opened their world for friends.
+    private let host: WireHost?
+    private let hostName: String
+    private var hostEntities: [Int: RemoteEntity] = [:]
     private let inventory: Inventory
     private let creative: Bool
     private let spawnPoint: DVec3
@@ -111,6 +115,7 @@ final class WinGame {
         let player: PlayerController
         var resolveSpawn = false
         let time: Double
+        let host: WireHost?
 
         if let network {
             let welcome = network.welcome
@@ -122,6 +127,7 @@ final class WinGame {
             world.remoteRequest = { network.requestChunks($0) }
             player = PlayerController(position: DVec3(welcome.x, welcome.y, welcome.z))
             time = welcome.worldTime
+            host = nil
         } else {
             let localStorage = WorldStorage()
             let worldName = "Windows World"
@@ -150,6 +156,33 @@ final class WinGame {
             storage = localStorage
             meta = localMeta
             time = localMeta.worldTime
+            if let name = options.hostName {
+                let worldForHost = world
+                do {
+                    let server = try WireHost(settings: .init(worldName: localMeta.name, seed: localMeta.seed, gameMode: "creative",
+                                                              difficulty: localMeta.difficulty.rawValue, hostName: name),
+                                              makeChunk: { [localStorage, generator, id = localMeta.id] pos in
+                                                  localStorage.loadChunk(worldID: id, pos: pos) ?? generator.generate(pos)
+                                              })
+                    server.loadedChunk = { pos in
+                        guard let slot = worldForHost.slots[pos] else { return nil }
+                        let copy = Chunk(pos: pos)
+                        copy.blocks.update(from: slot.chunk.blocks, count: WorldConst.blocksPerChunk)
+                        return copy
+                    }
+                    server.onBlockChange = { pos, id in
+                        worldForHost.setBlock(pos, id)
+                        return true
+                    }
+                    host = server
+                } catch {
+                    Log.error("Could not host: \(error)", category: "Net")
+                    print("  Couldn't open your world for friends: \(error)")
+                    host = nil
+                }
+            } else {
+                host = nil
+            }
         }
         player.gameMode = creative ? .creative : .survival
         if creative {
@@ -174,6 +207,8 @@ final class WinGame {
         self.world = world
         self.player = player
         self.network = network
+        self.host = host
+        hostName = options.hostName ?? "Host"
         self.inventory = inventory
         self.creative = creative
         spawnPoint = player.position
@@ -184,6 +219,12 @@ final class WinGame {
         } else {
             Log.info("World '\(meta?.name ?? "?")' opened at \(player.position)", category: "Game")
         }
+        if let host {
+            host.spawnPoint = { [weak self] in self?.player.position ?? .zero }
+            host.worldTime = { [weak self] in self?.worldTime ?? 0 }
+            host.onChat = { [weak self] from, text in self?.addChat("<\(from)> \(text)", now: Date.timeIntervalSinceReferenceDate) }
+            host.onEvent = { [weak self] text in self?.addChat(text, now: Date.timeIntervalSinceReferenceDate) }
+        }
     }
 
     // MARK: Loop
@@ -193,6 +234,16 @@ final class WinGame {
         if options.screenshotPath == nil { setMouseCaptured(true) }
         if let network {
             addChat("Joined \(network.welcome.worldName). Press T to chat.", now: Date.timeIntervalSinceReferenceDate)
+        }
+        if let host {
+            let now = Date.timeIntervalSinceReferenceDate
+            if let ip = NetSocket.localIPv4(), let code = InviteCode.encode(ip: ip, port: host.port) {
+                addChat("Your world is open! Friends on the same Wi-Fi can join with \(code)", now: now)
+                addChat("(or the address \(ip)). Press T to chat.", now: now)
+            } else {
+                addChat("Your world is open on port \(host.port). Press T to chat.", now: now)
+            }
+            addChat("Friends on other internet: forward TCP port \(host.port) or use Tailscale.", now: now)
         }
         while running {
             let now = Date.timeIntervalSinceReferenceDate
@@ -219,7 +270,7 @@ final class WinGame {
     }
 
     private func openChat() {
-        guard network != nil, !chatOpen else { return }
+        guard network != nil || host != nil, !chatOpen else { return }
         chatOpen = true
         chatInput = ""
         swallowText = "t"
@@ -254,7 +305,14 @@ final class WinGame {
                         closeChat()
                     } else if code == Int(SDL_SCANCODE_RETURN.rawValue) || code == Int(SDL_SCANCODE_KP_ENTER.rawValue) {
                         let text = chatInput.trimmingCharacters(in: .whitespaces)
-                        if !text.isEmpty { network?.sendChat(text) }
+                        if !text.isEmpty {
+                            if let network {
+                                network.sendChat(text)
+                            } else if let host {
+                                host.broadcastChat(from: hostName, text: text)
+                                addChat("<\(hostName)> \(text)", now: now)
+                            }
+                        }
                         closeChat()
                     } else if code == Int(SDL_SCANCODE_BACKSPACE.rawValue), !chatInput.isEmpty {
                         chatInput.removeLast()
@@ -320,6 +378,11 @@ final class WinGame {
         damageFlash = max(0, damageFlash - dt * 1.6)
         attackCooldown = max(0, attackCooldown - dt)
         if let network { handleNetwork(network, dt: dt, now: now) }
+        if let host {
+            host.poll()
+            host.tick(dt: dt, hostState: hostPlayerState())
+            syncHostPlayers(dt: dt)
+        }
         world.update(focus: player.position, now: now)
 
         let px = Int(floor(player.position.x)), pz = Int(floor(player.position.z))
@@ -456,6 +519,7 @@ final class WinGame {
     private func breakBlock(_ hit: RaycastHit, info: BlockInfo) {
         guard world.setBlock(hit.block, Blocks.air) else { return }
         network?.sendBlock(hit.block, Blocks.air, harvest: !creative && canHarvest(info))
+        host?.broadcastBlock(hit.block, Blocks.air)
         exhaustion += 0.005
         swingTimer = 0.25
         if !creative && info.hardness > 0 && heldTool != nil { inventory.damageSelectedTool() }
@@ -472,6 +536,7 @@ final class WinGame {
         if blocks.isSolid[Int(blockID)] && DBox(min: origin, max: origin + DVec3(1, 1, 1)).intersects(player.box) { return }
         guard world.setBlock(cell, blockID) else { return }
         network?.sendBlock(cell, blockID, harvest: false)
+        host?.broadcastBlock(cell, blockID)
         swingTimer = 0.25
         if !creative { inventory.consumeSelected() }
     }
@@ -595,6 +660,7 @@ final class WinGame {
             for p in network.players.values { boxes += EntityShapes.player(p) }
             for m in network.mobs.values { boxes += EntityShapes.mob(m) }
         }
+        for p in hostEntities.values { boxes += EntityShapes.player(p) }
         for e in demoEntities { boxes += e.kind == "player" ? EntityShapes.player(e) : EntityShapes.mob(e) }
         return boxes
     }
@@ -619,6 +685,7 @@ final class WinGame {
         let viewProj = camera.viewProjection(aspect: W / max(1, H))
         var tagged = demoEntities.filter { $0.kind == "player" }
         if let network { tagged += network.players.values.filter { $0.dying == 0 } }
+        tagged += hostEntities.values.filter { $0.dying == 0 }
         for p in tagged {
             let rel = p.position + DVec3(0, 2.25, 0) - camera.position
             guard simd_length(rel) < 48 else { continue }
@@ -717,6 +784,9 @@ final class WinGame {
         // Status line
         if let network {
             let status = "\(network.welcome.worldName) - \(network.players.count + 1) playing - T to chat"
+            ui.text(status, x: 12 * s, y: 12 * s, scale: small, color: SIMD4(1, 1, 1, 0.8))
+        } else if let host {
+            let status = "Hosting \(meta?.name ?? "your world") - \(host.playerCount + 1) playing - T to chat"
             ui.text(status, x: 12 * s, y: 12 * s, scale: small, color: SIMD4(1, 1, 1, 0.8))
         }
 
@@ -830,6 +900,7 @@ final class WinGame {
         setMouseCaptured(false)
         save()
         network?.disconnect()
+        host?.stop()
         world.shutdown()
         jobs.shutdown()
     }
@@ -838,6 +909,30 @@ final class WinGame {
 // MARK: - Hunger, item use, inventory, crafting and containers
 
 extension WinGame {
+    /// This player's movement as the host (player id 0).
+    private func hostPlayerState() -> Wire.PlayerState {
+        Wire.PlayerState(id: 0, x: player.position.x, y: player.position.y, z: player.position.z, yaw: Float(player.yaw), pitch: Float(player.pitch),
+                         moving: Float(player.onGround ? min(1, player.horizontalSpeed / 4.3) : 0), sneaking: player.isSneaking,
+                         swinging: swingTimer > 0, held: inventory.selectedStack.flatMap { items[$0.item]?.name }, health: 20, dead: false)
+    }
+
+    /// Keeps a smoothed model for every friend connected to this host.
+    private func syncHostPlayers(dt: Double) {
+        guard let host else { return }
+        var next: [Int: RemoteEntity] = [:]
+        for p in host.players {
+            guard let state = p.state else { continue }
+            let entity = hostEntities[p.id] ?? RemoteEntity(id: p.id, kind: "player", name: p.name,
+                                                             position: DVec3(state.x, state.y, state.z), yaw: Double(state.yaw))
+            entity.target = DVec3(state.x, state.y, state.z)
+            entity.targetYaw = Double(state.yaw)
+            entity.dying = state.dead ? 1 : 0
+            entity.update(dt: dt)
+            next[p.id] = entity
+        }
+        hostEntities = next
+    }
+
     /// Hunger, healing, starvation and drowning, following the Mac rules.
     private func survivalTick(dt: Double, now: Double) {
         let difficulty = network?.welcome.difficulty ?? "normal"

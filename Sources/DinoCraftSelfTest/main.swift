@@ -597,6 +597,98 @@ section("Multiplayer wire protocol") {
     server.close()
 }
 
+section("Multiplayer portable host") {
+    let generator = TerrainGenerator(seed: 11)
+    let host = try WireHost(settings: .init(worldName: "Windows World", seed: "11", gameMode: "creative", difficulty: "normal", hostName: "WinHost"),
+                            port: 0, loopbackOnly: true, makeChunk: { generator.generate($0) })
+    host.spawnPoint = { DVec3(8.5, 80, 8.5) }
+    var edits: [BlockPos] = []
+    host.onBlockChange = { pos, _ in edits.append(pos); return true }
+    var chats: [String] = []
+    host.onChat = { from, text in chats.append("\(from): \(text)") }
+
+    let client = try WireConnection.connect(host: "127.0.0.1", port: host.port)
+    client.send(.hello, Wire.Hello(version: Wire.protocolVersion, username: "MacFriend"))
+    var welcome: Wire.Welcome?
+    var chunks = 0, hostStates = 0
+    var echoed = false, sent = false
+    let target = BlockPos(9, 70, 9)
+    let deadline = Date().addingTimeInterval(8)
+    while Date() < deadline && !(welcome != nil && chunks >= 4 && hostStates > 0 && echoed && !chats.isEmpty) {
+        host.poll()
+        host.tick(dt: 0.02, hostState: Wire.PlayerState(id: 0, x: 8.5, y: 80, z: 8.5, yaw: 0, pitch: 0, moving: 0, sneaking: false,
+                                                        swinging: false, held: nil, health: 20, dead: false))
+        for event in client.poll() {
+            switch event {
+            case .message(.welcome, let data): welcome = try? JSONDecoder().decode(Wire.Welcome.self, from: data)
+            case .message(.playerState, let data):
+                if (try? JSONDecoder().decode(Wire.PlayerState.self, from: data))?.id == 0 { hostStates += 1 }
+            case .message(.blockChange, let data):
+                if let m = try? JSONDecoder().decode(Wire.BlockChange.self, from: data), BlockPos(m.x, m.y, m.z) == target { echoed = true }
+            case .chunk: chunks += 1
+            default: break
+            }
+        }
+        if welcome != nil && !sent {
+            client.send(.chunkRequest, Wire.ChunkRequest([ChunkPos(0, 0), ChunkPos(1, 0), ChunkPos(0, 1), ChunkPos(1, 1)]))
+            client.send(.blockChange, Wire.BlockChange(pos: target, id: Blocks.stone))
+            client.send(.chat, Wire.Chat(from: "MacFriend", text: "hello host"))
+            sent = true
+        }
+        Thread.sleep(forTimeInterval: 0.02)
+    }
+    check(welcome?.worldName == "Windows World" && welcome?.players.first?.name == "WinHost", "a player joins the portable host")
+    check(chunks >= 4, "the portable host serves chunks (\(chunks))")
+    check(hostStates > 0, "the portable host shares the host player's movement")
+    check(edits == [target] && echoed, "the portable host applies and broadcasts block edits")
+    check(chats == ["MacFriend: hello host"], "the portable host relays chat")
+    check(host.players.first?.name == "MacFriend", "the portable host lists joined players")
+    client.close()
+    host.stop()
+}
+
+// Optional: DINOCRAFT_SERVE_SECONDS=40 hosts a world on port 25650 with the portable host so a real
+// DinoCraft client can join (used to verify that Mac players can join a Windows host).
+if let serveText = ProcessInfo.processInfo.environment["DINOCRAFT_SERVE_SECONDS"], let seconds = Double(serveText) {
+    section("Serving a real client for \(Int(seconds))s") {
+        let generator = TerrainGenerator(seed: 4242)
+        let column = generator.findSpawnColumn()
+        let spawnChunk = generator.generate(ChunkPos(Int32(column.x >> 4), Int32(column.z >> 4)))
+        var standY = 100
+        for y in stride(from: WorldConst.height - 2, through: 1, by: -1) where blocks.isSolid[Int(spawnChunk.block(column.x & 15, y, column.z & 15))] {
+            standY = y + 1
+            break
+        }
+        let spawn = DVec3(Double(column.x) + 0.5, Double(standY), Double(column.z) + 0.5)
+        let host = try WireHost(settings: .init(worldName: "Portable Host", seed: "4242", gameMode: "creative", difficulty: "normal", hostName: "Host"),
+                                makeChunk: { generator.generate($0) })
+        host.spawnPoint = { spawn }
+        var chats: [String] = []
+        host.onChat = { from, text in chats.append("\(from): \(text)") }
+        var events: [String] = []
+        host.onEvent = { events.append($0) }
+        var sawState = false, announced = false
+        let start = Date()
+        while Date().timeIntervalSince(start) < seconds {
+            host.poll()
+            host.tick(dt: 0.02, hostState: Wire.PlayerState(id: 0, x: spawn.x + 1.5, y: spawn.y, z: spawn.z, yaw: 0, pitch: 0, moving: 0,
+                                                            sneaking: false, swinging: false, held: "planks", health: 20, dead: false))
+            if host.players.first?.state != nil { sawState = true }
+            if !announced, sawState, Date().timeIntervalSince(start) > 12 {
+                host.broadcastBlock(BlockPos(Int(floor(spawn.x)) + 2, standY + 1, Int(floor(spawn.z))), Blocks.amberLantern)
+                host.broadcastChat(from: "Host", text: "hello from the portable host")
+                announced = true
+            }
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+        print("  events: \(events) · chats: \(chats) · movement received: \(sawState) · spawn \(spawn)")
+        check(events.contains { $0.hasSuffix("joined the game") }, "a real client joined the portable host")
+        check(sawState, "the client's movement reached the portable host")
+        check(chats.contains { $0.hasSuffix("hello from mac") }, "the client's chat reached the portable host")
+        host.stop()
+    }
+}
+
 // Optional: DINOCRAFT_LIVE_HOST=127.0.0.1 joins a real hosted DinoCraft game (used to verify cross-play).
 if let liveHost = ProcessInfo.processInfo.environment["DINOCRAFT_LIVE_HOST"], !liveHost.isEmpty {
     section("Live host \(liveHost)") {

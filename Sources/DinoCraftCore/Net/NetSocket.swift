@@ -116,6 +116,45 @@ public final class NetSocket: @unchecked Sendable {
         return ok ? UInt16(bigEndian: addr.sin_port) : 0
     }
 
+    /// This computer's LAN IPv4 address (the one it would use to reach the internet), if any.
+    /// Uses an unconnected UDP socket, so no packets are sent.
+    public static func localIPv4() -> String? {
+        guard started else { return nil }
+        #if os(Windows)
+        let h = WinSDK.socket(AF_INET, 2 /* SOCK_DGRAM */, 0)
+        #else
+        let h = Darwin.socket(AF_INET, SOCK_DGRAM, 0)
+        #endif
+        guard h != invalidHandle else { return nil }
+        defer { closeHandle(h) }
+        let size = MemoryLayout<sockaddr_in>.size
+        var remote = sockaddr_in()
+        #if os(Windows)
+        remote.sin_family = ADDRESS_FAMILY(AF_INET)
+        remote.sin_port = UInt16(53).bigEndian
+        remote.sin_addr.S_un.S_addr = UInt32(0x0808_0808).bigEndian
+        var length = Int32(size)
+        #else
+        remote.sin_len = UInt8(size)
+        remote.sin_family = sa_family_t(AF_INET)
+        remote.sin_port = UInt16(53).bigEndian
+        remote.sin_addr.s_addr = UInt32(0x0808_0808).bigEndian
+        var length = socklen_t(size)
+        #endif
+        let connected = withUnsafeMutablePointer(to: &remote) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connectHandle(h, $0, size) } }
+        guard connected else { return nil }
+        var local = sockaddr_in()
+        let named = withUnsafeMutablePointer(to: &local) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { getsockname(h, $0, &length) == 0 } }
+        guard named else { return nil }
+        #if os(Windows)
+        let raw = UInt32(bigEndian: local.sin_addr.S_un.S_addr)
+        #else
+        let raw = UInt32(bigEndian: local.sin_addr.s_addr)
+        #endif
+        guard raw != 0 else { return nil }
+        return "\(raw >> 24).\((raw >> 16) & 255).\((raw >> 8) & 255).\(raw & 255)"
+    }
+
     public func accept() -> NetSocket? {
         #if os(Windows)
         let h = WinSDK.accept(handle, nil, nil)

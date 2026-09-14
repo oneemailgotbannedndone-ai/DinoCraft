@@ -22,6 +22,7 @@ struct Options {
     var name: String?
     var demoEntities = false
     var demoScreen: String?
+    var hostName: String?
 
     static func parse(_ args: [String]) -> Options {
         var o = Options()
@@ -37,6 +38,7 @@ struct Options {
             case "--name": o.name = next()
             case "--demo-entities": o.demoEntities = true
             case "--demo-screen": o.demoScreen = next()
+            case "--host": o.hostName = next()
             default: break
             }
             i += 1
@@ -69,15 +71,24 @@ try? GamePaths.ensureDirectories()
 Log.shared.start(directory: GamePaths.logs)
 Log.info("DinoCraft for Windows starting · data: \(GamePaths.root.path)", category: "App")
 
-if options.screenshotPath == nil && options.join == nil {
+if options.screenshotPath == nil && options.join == nil && options.hostName == nil {
     print("")
     print("  DinoCraft for Windows")
     print("")
     print("  Press Enter to play on your own.")
+    print("  Type host and press Enter to open your world so friends (on Mac or Windows) can join.")
     print("  To join a friend, paste their invite code (like DINO-3M4KA-9QX2B) or IP address, then press Enter.")
-    print("  (Your friend hosts on a Mac: Esc > Open to LAN, or Open to Internet > Copy Invite Code.)")
     print("")
-    if let line = readLine()?.trimmingCharacters(in: .whitespacesAndNewlines), !line.isEmpty { options.join = line }
+    if let line = readLine()?.trimmingCharacters(in: .whitespacesAndNewlines), !line.isEmpty {
+        if line.lowercased() == "host" {
+            let fallback = cleanName(ProcessInfo.processInfo.environment["USERNAME"] ?? "Host")
+            print("  Your player name (press Enter to use \(fallback)):")
+            let typed = readLine()?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            options.hostName = cleanName(typed.isEmpty ? fallback : typed)
+        } else {
+            options.join = line
+        }
+    }
 }
 
 var network: WinNetwork?
