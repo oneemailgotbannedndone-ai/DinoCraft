@@ -94,7 +94,7 @@ jobs:
           Write-Host "Menu check exit code: $($p3.ExitCode)"
           if (-not (Test-Path $shot3)) { throw "The game did not produce the menu screenshot" }
           $shot4 = "$PWD/screenshot-worlds.png"
-          $p4 = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--screenshot `"$shot4`" --demo-screen worlds" -PassThru -Wait -NoNewWindow
+          $p4 = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--screenshot `"$shot4`" --demo-screen worlds --hide-console" -PassThru -Wait -NoNewWindow
           Write-Host "World list check exit code: $($p4.ExitCode)"
           if (-not (Test-Path $shot4)) { throw "The game did not produce the world list screenshot" }
           Get-ChildItem smoke-home/logs -ErrorAction SilentlyContinue | ForEach-Object { Select-String -Path $_.FullName -Pattern "Audio|Music|error" | Select-Object -Last 20 }

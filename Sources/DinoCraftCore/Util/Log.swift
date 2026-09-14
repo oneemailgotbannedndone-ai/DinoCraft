@@ -63,7 +63,7 @@ public final class Log: @unchecked Sendable {
                 handle = try FileHandle(forWritingTo: url)
                 currentLogURL = url
             } catch {
-                FileHandle.standardError.write(Data("[DinoCraft] Could not open log file in \(directory.path): \(error)\n".utf8))
+                try? FileHandle.standardError.write(contentsOf: Data("[DinoCraft] Could not open log file in \(directory.path): \(error)\n".utf8))
             }
         }
     }
@@ -88,7 +88,8 @@ public final class Log: @unchecked Sendable {
             if recent.count > recentCapacity { recent.removeFirst(recent.count - recentCapacity) }
             if let data = text.data(using: .utf8) {
                 try? handle?.write(contentsOf: data)
-                if echoToConsole { FileHandle.standardError.write(data) }
+                // The throwing form: a closed console (Windows games hide theirs) must not crash the game.
+                if echoToConsole { try? FileHandle.standardError.write(contentsOf: data) }
             }
             if level >= .error { try? handle?.synchronize() }
         }

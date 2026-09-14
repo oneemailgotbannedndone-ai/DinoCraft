@@ -31,6 +31,8 @@ struct Options {
     var demoScreen: String?
     var hostName: String?
     var console = false
+    /// Automated check: hide the console like a double-click launch does.
+    var hideConsole = false
 
     static func parse(_ args: [String]) -> Options {
         var o = Options()
@@ -48,6 +50,7 @@ struct Options {
             case "--demo-screen": o.demoScreen = next()
             case "--host": o.hostName = next()
             case "--console": o.console = true
+            case "--hide-console": o.hideConsole = true
             default: break
             }
             i += 1
@@ -88,10 +91,14 @@ Log.shared.start(directory: GamePaths.logs)
 Log.info("DinoCraft for Windows starting · data: \(GamePaths.root.path)", category: "App")
 
 #if os(Windows)
-if options.screenshotPath == nil && !options.console {
+if options.hideConsole || (options.screenshotPath == nil && !options.console) {
     // Started by double-clicking: hide the empty console window (keep it when run from a terminal).
+    // Nothing may write to the console afterwards, so logging goes to the log file only.
     var processes = [UInt32](repeating: 0, count: 4)
-    if GetConsoleProcessList(&processes, 4) <= 1 { _ = FreeConsole() }
+    if options.hideConsole || GetConsoleProcessList(&processes, 4) <= 1 {
+        Log.shared.echoToConsole = false
+        _ = FreeConsole()
+    }
 }
 #endif
 

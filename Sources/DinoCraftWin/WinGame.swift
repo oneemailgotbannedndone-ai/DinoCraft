@@ -340,7 +340,6 @@ final class WinGame {
         chatLines.append((text, now))
         if chatLines.count > 60 { chatLines.removeFirst(chatLines.count - 60) }
         Log.info("Chat: \(text)", category: "Net")
-        print("  \(text)")
     }
 
     private func openChat() {
