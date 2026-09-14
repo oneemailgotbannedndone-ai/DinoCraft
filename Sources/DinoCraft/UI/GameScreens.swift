@@ -1,0 +1,580 @@
+import Foundation
+import simd
+import DinoCraftCore
+
+// MARK: - Pause
+
+final class PauseScreen: Screen {
+    override var scene: GameActivityState.Scene { .playing }
+
+    override func back(_ engine: GameEngine) { engine.resumeGame() }
+
+    override func draw(_ ui: UIContext, _ e: GameEngine) {
+        let a = appear(0, duration: 0.3)
+        ui.dim(0.6 * a)
+        let d = ui.draw
+        let W = ui.size.x, H = ui.size.y
+        d.opacity = a
+        d.outlinedText("Paused", x: W / 2, y: H * 0.2 - (1 - a) * 12, size: 64, fill: Color(hex: 0xFFE69A), fillBottom: Color(hex: 0xF08A2E),
+                       outline: Color(hex: 0x2A1740), outlineWidth: 5)
+        if let s = e.session {
+            d.text("\(s.meta.name)  ·  \(s.modeName)  ·  \(s.dimension == .overworld ? SkyModel.periodName(worldTime: s.worldTime) : s.dimension.displayName)",
+                   x: W / 2, y: H * 0.2 + 84, size: 16, color: Theme.text.alpha(0.85), align: .center, shadow: Color(linear: 0, 0, 0, 0.6))
+        }
+        if e.server != nil {
+            let joinText = e.internetAddress.map { "Invite code \(e.inviteCode ?? "—")   ·   Internet \($0)   ·   Same Wi-Fi \(NetworkInfo.localIPv4() ?? "?"):\(NetConfig.port)" }
+                ?? "Friends can join at \(NetworkInfo.localIPv4() ?? "?"):\(NetConfig.port)"
+            d.text(joinText, x: W / 2, y: H * 0.2 + 108, size: 14,
+                   color: Theme.jungle, face: .display, align: .center)
+        }
+        let bw: Float = 380, bh: Float = 56
+        var y = H * 0.2 + 140
+        var entries: [(String, String, ButtonStyle)] = [
+            ("pause.resume", "Resume", .primary),
+            ("pause.settings", "Settings", .secondary),
+            ("pause.advancements", "Advancements", .secondary),
+        ]
+        if e.client != nil {
+            entries.append(("pause.quit", "Disconnect", .secondary))
+        } else {
+            entries.append(("pause.host", e.server == nil ? "Open to LAN" : "Stop Hosting (\(e.server!.playerCount) players)", .secondary))
+            if e.internetAddress == nil {
+                entries.append(("pause.internet", e.internetStatus == "Opening…" ? "Opening to Internet…" : "Open to Internet", .secondary))
+            } else {
+                entries.append(("pause.copyinvite", "Copy Invite Code", .secondary))
+            }
+            if let s = e.session, !s.meta.isHardcore {
+                entries.append(("pause.commands", "Commands: \(s.meta.commandsAllowed ? "On" : "Off")", .secondary))
+            }
+            entries.append(("pause.quit", "Save & Quit to Title", .secondary))
+        }
+        for (i, entry) in entries.enumerated() {
+            let t = appear(0.05 + Double(i) * 0.05, duration: 0.3)
+            d.opacity = t
+            if ui.button(entry.0, entry.1, Rect(W / 2 - bw / 2, y + (1 - t) * 16, bw, bh), style: entry.2) {
+                switch entry.0 {
+                case "pause.resume": e.resumeGame()
+                case "pause.settings": e.pushScreen(SettingsScreen())
+                case "pause.advancements": e.pushScreen(AdvancementsScreen())
+                case "pause.host": if e.server == nil { e.hostGame() } else { e.stopHosting() }
+                case "pause.internet": e.openToInternet()
+                case "pause.copyinvite": e.copyInviteCode()
+                case "pause.commands":
+                    if let s = e.session {
+                        s.setCommandsAllowed(!s.meta.commandsAllowed)
+                        e.showToast(s.meta.commandsAllowed ? "Commands turned on" : "Commands turned off")
+                    }
+                default: e.saveAndQuitToTitle()
+                }
+            }
+            y += bh + 14
+        }
+        d.opacity = 1
+    }
+}
+
+// MARK: - Death
+
+final class DeathScreen: Screen {
+    override var scene: GameActivityState.Scene { .playing }
+    override func back(_ engine: GameEngine) {}
+
+    override func draw(_ ui: UIContext, _ e: GameEngine) {
+        let a = appear(0.2, duration: 1.0)
+        let d = ui.draw
+        let W = ui.size.x, H = ui.size.y
+        d.fill(Rect(0, 0, W, H), Color(hex: 0x5A0A12, alpha: 0.55 * a), bottom: Color(hex: 0x1A0206, alpha: 0.8 * a))
+        d.opacity = a
+        let hardcore = e.session?.meta.isHardcore ?? false
+        d.outlinedText(hardcore ? "Game Over" : "You Perished", x: W / 2, y: H * 0.26, size: 72, fill: Color(hex: 0xFF8A80), fillBottom: Color(hex: 0xC62828),
+                       outline: Color(hex: 0x1A0206), outlineWidth: 6)
+        if hardcore {
+            d.text("HARDCORE — THIS WORLD IS LOST", x: W / 2, y: H * 0.26 - 34, size: 14, color: Theme.danger, face: .display, align: .center, tracking: 0.18)
+        }
+        if let s = e.session {
+            d.text(s.deathMessage, x: W / 2, y: H * 0.26 + 96, size: 18, color: Theme.text, align: .center, shadow: Color(linear: 0, 0, 0, 0.7))
+        }
+        let t = appear(1.0, duration: 0.4)
+        d.opacity = t
+        if ui.button("death.respawn", hardcore ? "Spectate World" : "Respawn", Rect(W / 2 - 190, H * 0.26 + 160, 380, 56)) { e.respawnPlayer() }
+        if ui.button("death.title", "Save & Quit to Title", Rect(W / 2 - 190, H * 0.26 + 230, 380, 56), style: .secondary) {
+            e.saveAndQuitToTitle()
+        }
+        d.opacity = 1
+    }
+}
+
+// MARK: - Credits
+
+final class CreditsScreen: Screen {
+    override var scene: GameActivityState.Scene { .credits }
+
+    private let lines: [(String, Float, Bool)] = [
+        ("DinoCraft", 44, true),
+        ("A prehistoric voxel adventure", 18, false),
+        ("", 20, false),
+        ("DESIGN & ENGINEERING", 14, true),
+        ("Built for you, from scratch, in Swift", 18, false),
+        ("", 16, false),
+        ("TECHNOLOGY", 14, true),
+        ("Native AppKit · Metal · AVAudioEngine", 18, false),
+        ("Multithreaded chunk streaming on Apple Silicon", 18, false),
+        ("Greedy meshing with smooth lighting & ambient occlusion", 18, false),
+        ("", 16, false),
+        ("ART & AUDIO", 14, true),
+        ("All textures painted procedurally by AssetForge", 18, false),
+        ("All sounds and music synthesized from scratch", 18, false),
+        ("", 16, false),
+        ("SOUNDTRACK", 14, true),
+        ("Where Giants Roamed · Fernlight · Amber Dusk", 18, false),
+        ("Deep Strata · Titan Valley", 18, false),
+        ("", 16, false),
+        ("SPECIAL THANKS", 14, true),
+        ("Every dinosaur that ever roamed the Earth", 18, false),
+        ("", 30, false),
+        ("Thank you for playing.", 22, true),
+    ]
+
+    override func draw(_ ui: UIContext, _ e: GameEngine) {
+        MenuBackdrop.draw(ui)
+        ui.dim(0.35)
+        let d = ui.draw
+        let W = ui.size.x, H = ui.size.y
+        let a = appear(0)
+        d.opacity = a
+        var total: Float = 0
+        for l in lines { total += l.1 * 1.9 }
+        let scroll = Float(age) * 34
+        let startY = H * 0.85 - scroll.truncatingRemainder(dividingBy: total + H * 0.9)
+        var y = startY
+        d.pushClip(Rect(0, 60, W, H - 150))
+        for (text, size, strong) in lines {
+            if !text.isEmpty {
+                if size > 40 {
+                    d.outlinedText(text, x: W / 2, y: y, size: size, fill: Color(hex: 0xFFE69A), fillBottom: Color(hex: 0xF08A2E),
+                                   outline: Color(hex: 0x2A1740), outlineWidth: 4)
+                } else {
+                    d.text(text, x: W / 2, y: y, size: size, color: strong ? Theme.amber : Theme.text, face: strong ? .display : .body,
+                           align: .center, tracking: strong ? 0.12 : 0, shadow: Color(linear: 0, 0, 0, 0.7))
+                }
+            }
+            y += size * 1.9
+        }
+        d.popClip()
+        if ui.button("credits.back", "Back", Rect(W / 2 - 120, H - 80, 240, 52), style: .secondary) { back(e) }
+        d.opacity = 1
+    }
+}
+
+// MARK: - Settings
+
+final class SettingsScreen: Screen {
+    private var tab = 0
+    private var listening: GameAction?
+
+    override var scene: GameActivityState.Scene { .settings }
+
+    override func back(_ engine: GameEngine) {
+        if listening != nil {
+            listening = nil
+            engine.input.captureNextBinding = nil
+            return
+        }
+        super.back(engine)
+    }
+
+    override func draw(_ ui: UIContext, _ e: GameEngine) {
+        if e.session != nil { ui.dim(0.65) } else { MenuBackdrop.draw(ui) }
+        let d = ui.draw
+        let W = ui.size.x, H = ui.size.y
+        let a = appear(0)
+        let pw = min(860, W - 60), ph = min(700, H - 50)
+        let p = Rect(W / 2 - pw / 2, H / 2 - ph / 2 + (1 - a) * 24, pw, ph)
+        d.opacity = a
+        ui.panel(p, title: "Settings")
+
+        let previousTab = tab
+        ui.segmented("settings.tab", Rect(p.x + 40, p.y + 80, p.w - 80, 46), options: ["Graphics", "Audio", "Controls", "Discord", "Packs"], selected: &tab)
+        if tab != previousTab && tab == 4 { e.refreshTexturePacks() }
+        let area = Rect(p.x + 40, p.y + 144, p.w - 80, p.h - 144 - 96)
+        var s = e.settings
+        let rowH: Float = 58, gap: Float = 10
+        var rows: Float = 0
+        let contentHeight: Float
+        switch tab {
+        case 0: contentHeight = 12 * (rowH + gap)
+        case 1: contentHeight = 4 * (rowH + gap)
+        case 2: contentHeight = (Float(GameAction.allCases.count) + 3) * (rowH + gap)
+        case 4: contentHeight = Float(e.texturePacks.count + 7) * (rowH + gap)
+        default: contentHeight = 4 * (rowH + gap)
+        }
+        let offset = ui.beginScroll("settings.scroll.\(tab)", area, contentHeight: contentHeight)
+        func next() -> Rect {
+            let r = Rect(area.x, area.y + rows * (rowH + gap) - offset, area.w - 14, rowH)
+            rows += 1
+            return r
+        }
+
+        switch tab {
+        case 0:
+            var rd = Double(s.renderDistance)
+            if ui.slider("set.rd", "Render Distance", next(), &rd, range: 4...24, step: 1, format: { "\(Int($0)) chunks" }) { s.renderDistance = Int(rd) }
+            ui.slider("set.fov", "Field of View", next(), &s.fov, range: 50...110, step: 1, format: { "\(Int($0))°" })
+            ui.slider("set.brightness", "Brightness", next(), &s.brightness, range: 0...1, step: 0.01, format: { $0 < 0.05 ? "Moody" : ($0 > 0.95 ? "Bright" : "\(Int($0 * 100))%") })
+            var q = GraphicsQuality.allCases.firstIndex(of: s.graphicsQuality) ?? 2
+            let qr = next()
+            d.text("Graphics Quality", in: Rect(qr.x + 16, qr.y, 200, qr.h), size: 16, color: Theme.text, align: .left)
+            if ui.segmented("set.quality", Rect(qr.maxX - 360, qr.y + 7, 344, qr.h - 14), options: GraphicsQuality.allCases.map { $0.displayName }, selected: &q) {
+                s.graphicsQuality = GraphicsQuality.allCases[q]
+            }
+            let resolutions: [(Int, Int)] = [(1280, 720), (1600, 900), (1920, 1080), (2560, 1440)]
+            var resIndex = resolutions.firstIndex { $0.0 == s.windowWidth && $0.1 == s.windowHeight } ?? -1
+            let rr = next()
+            d.text("Window Resolution", in: Rect(rr.x + 16, rr.y, 200, rr.h), size: 16, color: Theme.text, align: .left)
+            var sel = max(0, resIndex)
+            if ui.segmented("set.res", Rect(rr.maxX - 460, rr.y + 7, 444, rr.h - 14), options: resolutions.map { "\($0.0)×\($0.1)" }, selected: &sel) || (resIndex >= 0 && sel != resIndex) {
+                resIndex = sel
+                s.windowWidth = resolutions[sel].0
+                s.windowHeight = resolutions[sel].1
+            }
+            ui.toggle("set.fullscreen", "Fullscreen", next(), &s.fullscreen)
+            ui.toggle("set.vsync", "VSync", next(), &s.vsync, detail: "Sync to the display refresh rate (ProMotion aware)")
+            ui.toggle("set.bob", "View Bobbing", next(), &s.viewBobbing)
+            ui.toggle("set.clouds", "Clouds", next(), &s.clouds)
+            ui.toggle("set.fps", "Show FPS Counter", next(), &s.showFPS)
+            ui.slider("set.gui", "Interface Scale", next(), &s.guiScale, range: 0.75...1.5, step: 0.05, format: { "\(Int($0 * 100))%" })
+            var fps = Double(s.maxFPS)
+            if ui.slider("set.maxfps", "Max FPS (VSync off)", next(), &fps, range: 30...240, step: 10, format: { "\(Int($0))" }) { s.maxFPS = Int(fps) }
+        case 1:
+            ui.slider("set.master", "Master Volume", next(), &s.masterVolume, range: 0...1, step: 0.01, format: { "\(Int($0 * 100))%" })
+            ui.slider("set.music", "Music", next(), &s.musicVolume, range: 0...1, step: 0.01, format: { "\(Int($0 * 100))%" })
+            ui.slider("set.sound", "Sound Effects", next(), &s.soundVolume, range: 0...1, step: 0.01, format: { "\(Int($0 * 100))%" })
+            ui.slider("set.ambient", "Ambience", next(), &s.ambientVolume, range: 0...1, step: 0.01, format: { "\(Int($0 * 100))%" })
+        case 2:
+            ui.slider("set.sens", "Mouse Sensitivity", next(), &s.mouseSensitivity, range: 0...1, step: 0.01, format: { "\(Int($0 * 200))%" })
+            ui.toggle("set.invert", "Invert Mouse Y", next(), &s.invertY)
+            for action in GameAction.allCases {
+                if ui.keyBinding("bind.\(action.rawValue)", action.displayName, next(), binding: s.binding(for: action), listening: listening == action) {
+                    listening = action
+                    e.input.captureNextBinding = { [weak self] binding in
+                        guard let self else { return }
+                        if !(binding.kind == .key && binding.code == KeyCode.escape && action != .pause) {
+                            e.settingsStore.update { $0.setBinding(binding, for: action) }
+                        }
+                        self.listening = nil
+                    }
+                }
+            }
+            if ui.button("set.resetkeys", "Reset Controls to Defaults", next().inset(dx: 120, dy: 4), style: .secondary, fontSize: 16) {
+                for (action, binding) in GameAction.defaults { s.setBinding(binding, for: action) }
+            }
+        case 3:
+            ui.toggle("set.discord", "Discord Rich Presence", next(), &s.discordRichPresence, detail: "Show what you're doing in DinoCraft on your Discord profile")
+            ui.toggle("set.discordWorld", "Show World Name", next(), &s.showWorldNameInDiscord, detail: "Include the current world's name in your activity")
+            let sr = next()
+            d.fill(sr, Color(linear: 1, 1, 1, 0.025), radius: 12)
+            d.text("Status", in: Rect(sr.x + 16, sr.y, 200, sr.h), size: 16, color: Theme.text, align: .left)
+            let status = e.presence.statusText
+            d.text(status, in: Rect(sr.x + 160, sr.y, sr.w - 176, sr.h), size: 15, color: status.hasPrefix("Connected") ? Theme.jungle : Theme.textMuted,
+                   face: .display, align: .right)
+            let hr = next()
+            d.text("Discord is optional — DinoCraft works normally without it.", in: Rect(hr.x + 16, hr.y, hr.w - 32, hr.h),
+                   size: 13.5, color: Theme.textMuted, align: .left)
+        default:
+            let th = next()
+            d.text("TEXTURE PACKS", x: th.x + 4, y: th.y + 32, size: 12.5, color: Theme.amber, face: .display, tracking: 0.12)
+            for pack in e.texturePacks {
+                let r = next()
+                let active = s.texturePack == pack.id
+                let hover = ui.hoverSilent("pack.\(pack.id)", r)
+                d.fill(r, Color(linear: 1, 1, 1, active ? 0.09 : (hover ? 0.06 : 0.025)), radius: 12)
+                if active { d.stroke(r, Theme.amber.alpha(0.75), radius: 12, width: 1.5) }
+                d.text(pack.name, x: r.x + 16, y: r.y + 8, size: 16, color: Theme.text, face: .display)
+                d.text(pack.description, x: r.x + 16, y: r.y + 32, size: 13, color: Theme.textMuted, maxWidth: r.w - 150)
+                d.text(active ? "Active" : (pack.isUser ? "Your pack" : "Built-in"), in: Rect(r.maxX - 130, r.y, 114, r.h), size: 13.5,
+                       color: active ? Theme.jungle : Theme.textMuted, face: .display, align: .right)
+                if hover && ui.input.buttonsPressed.contains(0) && !active {
+                    s.texturePack = pack.id
+                    e.audio.play("ui_click", volume: 0.5)
+                }
+            }
+            if ui.button("set.packsfolder", "Open Texture Packs Folder", next().inset(dx: 150, dy: 4), style: .secondary, fontSize: 16) {
+                e.openTexturePacksFolder()
+            }
+            let sh = next()
+            d.text("SHADER PACKS", x: sh.x + 4, y: sh.y + 32, size: 12.5, color: Theme.amber, face: .display, tracking: 0.12)
+            let sr = next()
+            let current = ShaderPack(rawValue: s.shaderPack) ?? .off
+            var shaderIndex = ShaderPack.allCases.firstIndex(of: current) ?? 0
+            if ui.segmented("set.shader", Rect(sr.x, sr.y + 6, sr.w, sr.h - 12), options: ShaderPack.allCases.map { $0.displayName }, selected: &shaderIndex) {
+                s.shaderPack = ShaderPack.allCases[shaderIndex].rawValue
+            }
+            let dr = next()
+            d.text(current.detail, in: Rect(dr.x + 16, dr.y, dr.w - 32, dr.h), size: 14, color: Theme.textMuted, align: .left)
+            ui.slider("set.shaderStrength", "Shader Strength", next(), &s.shaderStrength, range: 0...1, step: 0.05, format: { "\(Int($0 * 100))%" })
+        }
+        ui.endScroll("settings.scroll.\(tab)", area, contentHeight: contentHeight)
+
+        if s != e.settings { e.updateSettings(s) }
+        if ui.button("settings.done", "Done", Rect(p.midX - 130, p.maxY - 78, 260, 52)) { back(e) }
+        d.opacity = 1
+    }
+}
+
+// MARK: - Loading
+
+enum LoadingView {
+    static let tips = [
+        "Sneak to stay safely on ledges.",
+        "Fossil Stone hides Dino Bones deep in the mountains.",
+        "Amber glows faintly — look for it in caves.",
+        "Ginkgo leaves sometimes drop Cycad Berries.",
+        "Double-tap jump to fly in Creative mode.",
+        "Torches keep the deep strata bright.",
+        "Iron ore can be field-smelted with coal on a crafting grid.",
+        "Rivers carve valleys through even the tallest peaks.",
+    ]
+
+    static func draw(_ ui: UIContext, session: GameSession) {
+        let d = ui.draw
+        let W = ui.size.x, H = ui.size.y
+        d.fill(Rect(0, 0, W, H), Color(hex: 0x1C1236), bottom: Color(hex: 0x0A0614))
+        // Drifting voxel silhouettes
+        for i in 0..<18 {
+            let h1 = Float(Hashing.unit(7, Int32(i), 0, 0)), h2 = Float(Hashing.unit(7, Int32(i), 1, 0))
+            let size = 20 + h2 * 60
+            let x = (h1 * W + Float(ui.time) * (8 + h2 * 20)).truncatingRemainder(dividingBy: W + 120) - 60
+            let y = H * (0.55 + h2 * 0.4)
+            d.fill(Rect(x, y, size, size), Theme.amber.alpha(0.03 + h1 * 0.04), radius: 4)
+        }
+        MenuBackdrop.draw(ui, strength: 0.6)
+        let bob = Float(sin(ui.time * 1.5)) * 4
+        d.outlinedText(Brand.title, x: W / 2, y: H * 0.26 + bob, size: 80, fill: Color(hex: Brand.top), fillBottom: Color(hex: Brand.bottom),
+                       outline: Color(hex: 0x2A1740), outlineWidth: 6)
+        let title = session.loadingTitle
+        d.text(title, x: W / 2, y: H * 0.26 + 110, size: 24, color: Theme.text, face: .display, align: .center, shadow: Color(linear: 0, 0, 0, 0.6))
+        d.text(session.meta.name, x: W / 2, y: H * 0.26 + 146, size: 16, color: Theme.textMuted, align: .center)
+
+        let bar = Rect(W / 2 - 240, H * 0.26 + 196, 480, 14)
+        let progress = ui.anim("loading.progress", session.loadingProgress, speed: 6)
+        d.fill(bar, Color(hex: 0x0F0A1C, alpha: 0.9), radius: 7)
+        d.stroke(bar, Theme.amber.alpha(0.3), radius: 7, width: 1)
+        let fill = Rect(bar.x + 2, bar.y + 2, max(10, (bar.w - 4) * progress), bar.h - 4)
+        d.fill(fill, Theme.amberDeep, radius: 5, bottom: Theme.amber)
+        let shimmerX = fill.x + (Float(ui.time * 0.6).truncatingRemainder(dividingBy: 1)) * fill.w
+        d.fill(Rect(shimmerX - 20, fill.y, 40, fill.h), Color(linear: 1, 1, 1, 0.25), radius: 5, blur: 6)
+        d.text("\(Int(progress * 100))%  ·  \(session.loadingDetail)", x: W / 2, y: bar.maxY + 14, size: 14, color: Theme.textMuted, align: .center)
+
+        let tip = tips[Int(ui.time / 5) % tips.count]
+        d.text("TIP", x: W / 2, y: H - 110, size: 12, color: Theme.amber, face: .display, align: .center, tracking: 0.2)
+        d.text(tip, x: W / 2, y: H - 88, size: 16, color: Theme.text.alpha(0.85), align: .center)
+    }
+}
+
+// MARK: - HUD
+
+enum HUD {
+    static func draw(_ ui: UIContext, session s: GameSession, engine e: GameEngine) {
+        let d = ui.draw
+        let W = ui.size.x, H = ui.size.y
+
+        if s.damageFlash > 0 {
+            let a = Float(s.damageFlash) * 0.45
+            d.fill(Rect(0, 0, W, H), Color(hex: 0x8A0010, alpha: a * 0.3), bottom: Color(hex: 0x8A0010, alpha: a))
+        }
+        if s.player.headInWater {
+            d.fill(Rect(0, 0, W, H), Color(hex: 0x0A3A6A, alpha: 0.18), bottom: Color(hex: 0x05203A, alpha: 0.35))
+        }
+
+        // Crosshair
+        let c = SIMD2(W / 2, H / 2)
+        d.fill(Rect(c.x - 1.5, c.y - 10, 3, 20), Color(linear: 0, 0, 0, 0.45), radius: 1.5, blur: 1)
+        d.fill(Rect(c.x - 10, c.y - 1.5, 20, 3), Color(linear: 0, 0, 0, 0.45), radius: 1.5, blur: 1)
+        d.fill(Rect(c.x - 1, c.y - 9, 2, 18), Color(linear: 1, 1, 1, 0.92), radius: 1)
+        d.fill(Rect(c.x - 9, c.y - 1, 18, 2), Color(linear: 1, 1, 1, 0.92), radius: 1)
+        if s.breakProgress > 0 {
+            let br = Rect(c.x - 22, c.y + 18, 44, 5)
+            d.fill(br, Color(linear: 0, 0, 0, 0.5), radius: 2.5)
+            d.fill(Rect(br.x, br.y, br.w * Float(min(1, s.breakProgress)), br.h), Theme.amber, radius: 2.5)
+        }
+        if s.bowCharge > 0 {
+            let br = Rect(c.x - 22, c.y + 18, 44, 5)
+            d.fill(br, Color(linear: 0, 0, 0, 0.5), radius: 2.5)
+            d.fill(Rect(br.x, br.y, br.w * Float(s.bowCharge), br.h), s.bowCharge >= 1 ? Theme.jungle : Color(hex: 0xE8E2D4), radius: 2.5)
+        }
+
+        if s.portalProgress > 0 {
+            let a = Float(min(1, s.portalProgress))
+            let tint = s.portalKind == Blocks.skylandsPortal ? Color(hex: 0xF2B04A) : Color(hex: 0x8A1A4A)
+            d.fill(Rect(0, 0, W, H), tint.alpha(a * 0.5), bottom: tint.alpha(a * 0.8))
+        }
+        if let mob = s.targetMob {
+            let frac = Float(max(0, mob.health) / mob.species.maxHealth)
+            let bar = Rect(W / 2 - 110, 74, 220, 8)
+            d.text(mob.species.displayName, x: W / 2, y: 48, size: 15, color: mob.species.hostile ? Color(hex: 0xFF8A80) : Theme.text,
+                   face: .display, align: .center, shadow: Color(linear: 0, 0, 0, 0.8))
+            d.fill(bar, Color(linear: 0, 0, 0, 0.55), radius: 4)
+            d.fill(Rect(bar.x, bar.y, bar.w * frac, bar.h), mob.species.hostile ? Theme.danger : Theme.jungle, radius: 4)
+        }
+        if e.settings.showFPS && !e.showDebug {
+            d.text(String(format: "%.0f FPS", e.profiler.fps), x: 14, y: 12, size: 14, color: Theme.jungle, face: .display,
+                   shadow: Color(linear: 0, 0, 0, 0.85))
+        }
+
+        MultiplayerHUD.draw(ui, engine: e)
+
+        // Hotbar
+        let slot: Float = 54, gap: Float = 5
+        let total = slot * 9 + gap * 8
+        let hx = W / 2 - total / 2, hy = H - slot - 18
+        let backing = Rect(hx - 8, hy - 8, total + 16, slot + 16)
+        d.shadow(backing, radius: 16, blur: 14, color: Color(linear: 0, 0, 0, 0.45), offset: 4)
+        d.fill(backing, Color(hex: 0x1A1230, alpha: 0.72), radius: 16)
+        d.stroke(backing, Theme.amber.alpha(0.18), radius: 16, width: 1)
+        let selX = ui.anim("hud.sel", Float(s.inventory.selected), speed: 22)
+        for i in 0..<9 {
+            let r = Rect(hx + Float(i) * (slot + gap), hy, slot, slot)
+            d.fill(r, Color(hex: 0x0D0818, alpha: 0.55), radius: 10)
+            if let stack = s.inventory.slots[i], let info = e.items[stack.item] {
+                d.itemIcon(info, r.inset(8))
+                if stack.count > 1 {
+                    d.text("\(stack.count)", x: r.maxX - 6, y: r.maxY - 22, size: 14, color: .white, face: .display, align: .right,
+                           shadow: Color(linear: 0, 0, 0, 0.9))
+                }
+                if let durability = info.maxDurability, stack.damage > 0 {
+                    let frac = 1 - Float(stack.damage) / Float(durability)
+                    let bar = Rect(r.x + 8, r.maxY - 8, r.w - 16, 3)
+                    d.fill(bar, Color(linear: 0, 0, 0, 0.7), radius: 1.5)
+                    d.fill(Rect(bar.x, bar.y, bar.w * frac, 3), Color(hex: 0xE5484D).mix(Theme.jungle, frac), radius: 1.5)
+                }
+            }
+            d.text("\(i + 1)", x: r.x + 6, y: r.y + 3, size: 10, color: Theme.textMuted.alpha(0.6))
+        }
+        let sel = Rect(hx + selX * (slot + gap) - 3, hy - 3, slot + 6, slot + 6)
+        d.fill(sel.inset(-2), Theme.amber.alpha(0.25), radius: 13, blur: 8)
+        d.stroke(sel, Theme.amber, radius: 12, width: 2.5)
+
+        // Selected item name
+        if s.hotbarNameTimer > 0, let stack = s.inventory.selectedStack, let info = e.items[stack.item] {
+            let a = Float(min(1, s.hotbarNameTimer / 0.4))
+            let lift: Float = s.player.gameMode == .survival && s.armorPoints > 0 ? 24 : 0
+            d.text(info.displayName, x: W / 2, y: hy - 58 - lift, size: 17, color: Theme.text.alpha(a), face: .display, align: .center,
+                   shadow: Color(linear: 0, 0, 0, 0.8 * a))
+        }
+
+        // Survival stats
+        if s.player.gameMode == .survival && !s.spectator {
+            let rowY = hy - 34
+            for i in 0..<10 {
+                let x = hx + Float(i) * 22
+                let value = s.health / 2 - Double(i)
+                d.text("♥", x: x, y: rowY, size: 20, color: Color(hex: 0x2A0A10, alpha: 0.7), face: .display)
+                if value > 0 {
+                    let full = value >= 1
+                    if !full { d.pushClip(Rect(x, rowY, 9, 26)) }
+                    let lowPulse: Float = s.health <= 4 ? Float(0.7 + 0.3 * sin(ui.time * 10)) : 1
+                    d.text("♥", x: x, y: rowY, size: 20, color: (s.meta.isHardcore ? Color(hex: 0xC01830) : Color(hex: 0xFF4D5E)).scaled(lowPulse), face: .display)
+                    if !full { d.popClip() }
+                }
+            }
+            // Armor bar: one shield per 2 points
+            let points = s.armorPoints
+            if points > 0 {
+                let armorY = rowY - 24
+                func shield(_ x: Float, _ color: Color) {
+                    d.fill(Rect(x + 3, armorY + 3, 14, 10), color, radius: 2.5)
+                    d.circle(center: SIMD2(x + 10, armorY + 12), radius: 6.5, color)
+                }
+                for i in 0..<10 {
+                    let x = hx + Float(i) * 22
+                    let value = points - i * 2
+                    shield(x, Color(hex: 0x14141C, alpha: 0.65))
+                    if value > 0 {
+                        if value == 1 { d.pushClip(Rect(x, armorY, 10, 24)) }
+                        shield(x + 1, Color(hex: 0xCBD5E2))
+                        if value == 1 { d.popClip() }
+                    }
+                }
+            }
+            for i in 0..<10 {
+                let x = hx + total - 20 - Float(i) * 22
+                let value = s.hunger / 2 - Double(i)
+                d.circle(center: SIMD2(x + 9, rowY + 12), radius: 7.5, Color(hex: 0x2A160A, alpha: 0.7))
+                if value > 0 {
+                    let rad: Float = value >= 1 ? 6.5 : 3.5
+                    d.circle(center: SIMD2(x + 9, rowY + 12), radius: rad, Color(hex: 0xE89A3C))
+                    d.circle(center: SIMD2(x + 7, rowY + 10), radius: rad * 0.35, Color(hex: 0xFFD08A))
+                }
+            }
+            if s.air < 10 {
+                for i in 0..<10 where s.air / 1.0 > Double(i) {
+                    let x = hx + total - 20 - Float(i) * 22
+                    d.circle(center: SIMD2(x + 9, rowY - 12), radius: 7, Color(hex: 0x8FD3FF), ring: 2)
+                }
+            }
+        } else {
+            d.text(s.spectator ? "SPECTATING" : "CREATIVE", x: W / 2, y: hy - 32, size: 11, color: Theme.amber.alpha(0.7), face: .display, align: .center, tracking: 0.25)
+        }
+
+        if let (text, remaining) = e.toast {
+            let a = Float(min(1, remaining / 0.3))
+            let w = d.font.measure(text, size: 15, face: .display) + 40
+            let r = Rect(W / 2 - w / 2, 28 - (1 - a) * 12, w, 40)
+            d.opacity = a
+            d.fill(r, Color(hex: 0x1A1230, alpha: 0.85), radius: 20)
+            d.stroke(r, Theme.amber.alpha(0.4), radius: 20, width: 1)
+            d.text(text, in: r, size: 15, color: Theme.text, face: .display)
+            d.opacity = 1
+        }
+        AdvancementToast.draw(ui, engine: e)
+    }
+}
+
+// MARK: - Debug overlay
+
+enum DebugOverlay {
+    static func draw(_ ui: UIContext, engine e: GameEngine) {
+        let d = ui.draw
+        let p = e.profiler
+        var lines: [String] = [
+            String(format: "%.0f FPS  (%.2f ms · worst %.1f ms)", p.fps, p.frameMs, p.worstFrameMs),
+            String(format: "CPU update %.2f ms · encode %.2f ms · GPU %.2f ms", p.updateMs, p.encodeMs, p.gpuMs),
+            String(format: "Memory %.0f MB", p.memoryMB),
+        ]
+        if let w = e.activeWorld {
+            let s = w.stats, r = e.worldRenderer.stats
+            lines += [
+                "Chunks \(s.loadedChunks) loaded · \(r.visibleChunks) rendered",
+                "Draw calls \(r.drawCalls) · quads \(r.quads)",
+                String(format: "Chunk gen %.2f ms · mesh %.2f ms", s.avgGenerationMs, s.avgMeshMs),
+                "Queued gen \(s.pendingGeneration) · meshing \(s.pendingMeshes) · workers \(e.jobs.workerCount)",
+                String(format: "GPU mesh memory %.1f MB", Double(s.gpuMeshBytes) / 1_048_576),
+            ]
+        }
+        if let s = e.session {
+            let pos = s.player.position
+            lines += [
+                String(format: "XYZ %.2f / %.2f / %.2f", pos.x, pos.y, pos.z),
+                "Biome \(s.biome.displayName) · \(SkyModel.periodName(worldTime: s.worldTime))",
+                s.target.map { "Target \(e.blocks[$0.id]?.displayName ?? "?") at \($0.block)" } ?? "Target none",
+            ]
+        }
+        let h = Float(lines.count) * 20 + 20
+        let panel = Rect(12, 12, 430, h)
+        d.fill(panel, Color(hex: 0x05030A, alpha: 0.65), radius: 10)
+        for (i, line) in lines.enumerated() {
+            d.text(line, x: 24, y: 22 + Float(i) * 20, size: 13.5, color: i == 0 ? Theme.jungle : Theme.text)
+        }
+        // Frame-time graph
+        let history = p.history
+        let g = Rect(12, panel.maxY + 8, 430, 60)
+        d.fill(g, Color(hex: 0x05030A, alpha: 0.55), radius: 8)
+        let bw = g.w / Float(history.count)
+        for (i, t) in history.enumerated() {
+            let ms = Float(t * 1000)
+            let bh = min(g.h - 4, ms / 33.3 * (g.h - 4))
+            let col = ms < 9 ? Theme.jungle : (ms < 17.5 ? Theme.amber : Theme.danger)
+            d.fill(Rect(g.x + Float(i) * bw, g.maxY - 2 - bh, max(1, bw), bh), col.alpha(0.8))
+        }
+    }
+}

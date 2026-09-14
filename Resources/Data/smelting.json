@@ -1,0 +1,124 @@
+{
+  "fuel": {
+    "coal": 80,
+    "charcoal": 80,
+    "amber": 80,
+    "ember_shard": 160,
+    "planks": 15,
+    "log": 15,
+    "redwood_log": 15,
+    "stick": 5,
+    "crafting_bench": 15,
+    "planks_slab": 7.5,
+    "chest": 15,
+    "bookshelf": 15,
+    "wooden_door": 10,
+    "wooden_pickaxe": 10,
+    "wooden_axe": 10,
+    "wooden_shovel": 10,
+    "wooden_sword": 10,
+    "palm_log": 15,
+    "palm_planks": 15,
+    "barrel": 15,
+    "planks_stairs": 15,
+    "coal_block": 800,
+    "hay_bale": 5,
+    "silver_log": 15
+  },
+  "recipes": [
+    {
+      "input": "iron_ore",
+      "result": "iron_ingot"
+    },
+    {
+      "input": "gold_ore",
+      "result": "gold_ingot"
+    },
+    {
+      "input": "sand",
+      "result": "glass"
+    },
+    {
+      "input": "ash",
+      "result": "glass"
+    },
+    {
+      "input": "cobblestone",
+      "result": "stone"
+    },
+    {
+      "input": "stone",
+      "result": "polished_stone"
+    },
+    {
+      "input": "clay",
+      "result": "brick",
+      "count": 4
+    },
+    {
+      "input": "mud",
+      "result": "terracotta"
+    },
+    {
+      "input": "raw_dino_meat",
+      "result": "cooked_dino_steak"
+    },
+    {
+      "input": "log",
+      "result": "charcoal"
+    },
+    {
+      "input": "redwood_log",
+      "result": "charcoal"
+    },
+    {
+      "input": "coal_ore",
+      "result": "coal"
+    },
+    {
+      "input": "diamond_ore",
+      "result": "diamond"
+    },
+    {
+      "input": "emerald_ore",
+      "result": "emerald"
+    },
+    {
+      "input": "amber_ore",
+      "result": "amber"
+    },
+    {
+      "input": "stone_bricks",
+      "result": "cracked_stone_bricks"
+    },
+    {
+      "input": "sandstone",
+      "result": "smooth_sandstone"
+    },
+    {
+      "input": "cactus",
+      "result": "dye_green",
+      "count": 2
+    },
+    {
+      "input": "palm_log",
+      "result": "charcoal"
+    },
+    {
+      "input": "raw_pork",
+      "result": "cooked_pork"
+    },
+    {
+      "input": "raw_beef",
+      "result": "cooked_beef"
+    },
+    {
+      "input": "raw_mutton",
+      "result": "cooked_mutton"
+    },
+    {
+      "input": "raw_poultry",
+      "result": "cooked_poultry"
+    }
+  ]
+}
