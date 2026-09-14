@@ -211,6 +211,7 @@ public final class WorldStorage: @unchecked Sendable {
     public func deleteWorld(id: String) throws {
         let dir = directory(for: id)
         guard FileManager.default.fileExists(atPath: dir.path) else { throw WorldStorageError.notFound(id) }
+        #if os(macOS)
         do {
             try FileManager.default.trashItem(at: dir, resultingItemURL: nil)
             Log.info("Moved world \(id) to the Trash", category: "Save")
@@ -218,6 +219,10 @@ public final class WorldStorage: @unchecked Sendable {
             Log.warning("Could not move world \(id) to Trash (\(error)); deleting directly", category: "Save")
             try FileManager.default.removeItem(at: dir)
         }
+        #else
+        try FileManager.default.removeItem(at: dir)
+        Log.info("Deleted world \(id)", category: "Save")
+        #endif
     }
 
     // MARK: Metadata & player

@@ -33,7 +33,13 @@ public final class Log: @unchecked Sendable {
 
     public private(set) var currentLogURL: URL?
     /// Raw descriptor of the open log file, for async-signal-safe crash reporting (-1 if none).
-    public var fileDescriptor: Int32 { queue.sync { handle?.fileDescriptor ?? -1 } }
+    public var fileDescriptor: Int32 {
+        #if os(Windows)
+        return -1
+        #else
+        return queue.sync { handle?.fileDescriptor ?? -1 }
+        #endif
+    }
     public var minimumLevel: LogLevel = .debug
     public var echoToConsole = true
 
