@@ -427,6 +427,13 @@ enum HUD {
             d.fill(bar, Color(linear: 0, 0, 0, 0.55), radius: 4)
             d.fill(Rect(bar.x, bar.y, bar.w * frac, bar.h), mob.species.hostile ? Theme.danger : Theme.jungle, radius: 4)
         }
+        if s.dimension == .toonland, let line = SongLyrics.line(track: e.audio.currentTrack, time: e.audio.musicTime) {
+            // Sing-along lyrics
+            let text = "\u{266A} \(line) \u{266A}"
+            let y = H - 150
+            d.fill(Rect(W / 2 - 300, y - 8, 600, 34), Color(linear: 0, 0, 0, 0.5), radius: 10)
+            d.text(text, x: W / 2, y: y, size: 18, color: Theme.text, face: .display, align: .center, shadow: Color(linear: 0, 0, 0, 0.85))
+        }
         if e.settings.showFPS && !e.showDebug {
             d.text(String(format: "%.0f FPS", e.profiler.fps), x: 14, y: 12, size: 14, color: Theme.jungle, face: .display,
                    shadow: Color(linear: 0, 0, 0, 0.85))

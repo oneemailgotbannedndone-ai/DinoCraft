@@ -514,6 +514,15 @@ final class WinSolo: CommandHost {
                 audio.play(Bool.random() ? "amb_dino_low" : "amb_dino_high", volume: 0.4, pitch: Float.random(in: 0.9...1.05))
             }
         }
+        if s.dimension == .toonland {
+            // Toonland always has its song on (the boss has his own theme).
+            let track = SongLyrics.toonlandTrack(s)
+            if audio.currentTrack != track || !audio.isMusicPlaying { audio.playMusic(track) }
+            return
+        } else if audio.currentTrack == "sunny_side_up" || audio.currentTrack == "grumble_stomp" {
+            audio.stopMusic()
+            musicTimer = 20
+        }
         musicTimer -= dt
         if !audio.isMusicPlaying && musicTimer <= 0 {
             let pool = underground || s.dimension == .underworld ? ["deep_strata"]

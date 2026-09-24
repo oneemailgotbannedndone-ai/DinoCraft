@@ -766,6 +766,15 @@ final class GameEngine: NSObject, MTKViewDelegate {
             }
         }
 
+        if s.dimension == .toonland {
+            // Toonland always has its song on (the boss has his own theme).
+            let track = SongLyrics.toonlandTrack(s)
+            if audio.currentTrack != track || !audio.isMusicPlaying { audio.playMusic(track, loop: true, fade: 1.5) }
+            return
+        } else if audio.currentTrack == "sunny_side_up" || audio.currentTrack == "grumble_stomp" {
+            audio.stopMusic(fade: 2)
+            musicTimer = 20
+        }
         musicTimer -= dt
         if !audio.isMusicPlaying && musicTimer <= 0 {
             let pool = (s.isUnderground || s.dimension == .underworld) ? ["deep_strata"]

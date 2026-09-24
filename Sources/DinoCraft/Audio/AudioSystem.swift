@@ -157,7 +157,7 @@ final class AudioSystem {
     // MARK: Music
 
     func playMusic(_ track: String, loop: Bool, fade: Double) {
-        guard let url = try? ResourceLocator.url("Music/\(track).m4a") else {
+        guard let url = (try? ResourceLocator.url("Music/\(track).m4a")) ?? (try? ResourceLocator.url("Music/\(track).wav")) else {
             Log.warning("Music track \(track) not found", category: "Audio")
             return
         }
@@ -186,6 +186,9 @@ final class AudioSystem {
     }
 
     var isMusicPlaying: Bool { music?.isPlaying ?? false }
+
+    /// Seconds into the current music track (for the sing-along lyrics).
+    var musicTime: Double? { music.map { $0.currentTime } }
 
     func applyVolumes(_ s: GameSettings) {
         masterVolume = Float(s.masterVolume)

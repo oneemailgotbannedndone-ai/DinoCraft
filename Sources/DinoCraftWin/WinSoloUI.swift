@@ -113,6 +113,15 @@ extension WinSolo {
             ui.rect(bx, by, bw, bh, SIMD4(0.25, 0.25, 0.25, 1))
             ui.rect(bx, by, bw * frac, bh, boss.enraged ? SIMD4(0.95, 0.3, 0.3, 1) : SIMD4(0.95, 0.95, 0.95, 1))
         }
+        if s.dimension == .toonland, let line = SongLyrics.line(track: audio?.currentTrack, time: audio?.musicTime) {
+            // Sing-along lyrics
+            let text = "\u{266A} \(line) \u{266A}"
+            let scale = max(1, (2 * sc).rounded())
+            let tw = UIBuilder.textWidth(text, scale: scale)
+            let y = H - 150 * sc
+            ui.rect(W / 2 - tw / 2 - 10 * sc, y - 6 * sc, tw + 20 * sc, 7 * scale + 12 * sc, SIMD4(0, 0, 0, 0.55))
+            ui.centeredText(text, centerX: W / 2, y: y, scale: scale, color: white)
+        }
         if s.breakProgress > 0 {
             ui.rect(W / 2 - 22 * sc, H / 2 + 18 * sc, 44 * sc, 5 * sc, SIMD4(0, 0, 0, 0.5))
             ui.rect(W / 2 - 22 * sc, H / 2 + 18 * sc, 44 * sc * Float(min(1, s.breakProgress)), 5 * sc, SIMD4(0.95, 0.6, 0.12, 1))

@@ -166,6 +166,13 @@ final class WinAudio {
         return voices.contains { $0.bus == .music }
     }
 
+    /// Seconds into the current music track (for the sing-along lyrics).
+    var musicTime: Double? {
+        lock.lock()
+        defer { lock.unlock() }
+        return voices.first { $0.bus == .music }.map { $0.position / $0.clip.rate }
+    }
+
     func stopLoops() {
         for name in loopTargets.keys { loopTargets[name] = 0 }
     }
