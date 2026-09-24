@@ -64,6 +64,20 @@ section("Registries") {
     print("  \(blocks.all.count) blocks, \(items.all.count) items, \(recipes.recipes.count) recipes, \(blocks.textureNames.count) block textures")
 }
 
+section("Pixel font") {
+    let sample = "DinoCraft 0123456789 abcxyz ABCXYZ .,:;!?'\"-_+=/\\()<>#*%&@[]$^~|{}` \u{2665}\u{25CF}\u{2026}\u{2192}\u{00B7}\u{00D7}"
+    var wellFormed = true, allKnown = true
+    for ch in sample {
+        let rows = PixelFont.rows(for: ch)
+        if rows.count != PixelFont.height || rows.contains(where: { $0 >= 32 }) { wellFormed = false }
+        if !PixelFont.hasGlyph(ch) { allKnown = false }
+    }
+    check(wellFormed, "every glyph is 7 rows of 5 pixels")
+    check(allKnown, "the font covers letters, digits, punctuation and HUD symbols")
+    check(PixelFont.rows(for: "\u{00E9}") == PixelFont.rows(for: "e"), "accented letters use their plain letter")
+    check(PixelFont.rows(for: "\u{4E2D}") == PixelFont.rows(for: "?"), "unknown characters draw as ?")
+}
+
 section("Noise") {
     let a = SimplexNoise(seed: 42), b = SimplexNoise(seed: 42), c = SimplexNoise(seed: 43)
     var same = true, differs = false, minV = 1.0, maxV = -1.0

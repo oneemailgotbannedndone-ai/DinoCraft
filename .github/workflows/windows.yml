@@ -97,6 +97,16 @@ jobs:
           $p4 = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--screenshot `"$shot4`" --demo-screen worlds --hide-console" -PassThru -Wait -NoNewWindow
           Write-Host "World list check exit code: $($p4.ExitCode)"
           if (-not (Test-Path $shot4)) { throw "The game did not produce the world list screenshot" }
+          foreach ($screen in @("creative", "furnace", "pause")) {
+            $shotN = "$PWD/screenshot-$screen.png"
+            $pN = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--screenshot `"$shotN`" --frames 5 --render-distance 4 --seed dino --demo-entities --demo-screen $screen" -PassThru -Wait -NoNewWindow
+            Write-Host "$screen check exit code: $($pN.ExitCode)"
+            if (-not (Test-Path $shotN)) { throw "The game did not produce the $screen screenshot" }
+          }
+          $shotC = "$PWD/screenshot-create.png"
+          $pC = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--screenshot `"$shotC`" --demo-screen create --hide-console" -PassThru -Wait -NoNewWindow
+          Write-Host "Create world check exit code: $($pC.ExitCode)"
+          if (-not (Test-Path $shotC)) { throw "The game did not produce the create world screenshot" }
           Get-ChildItem smoke-home/logs -ErrorAction SilentlyContinue | ForEach-Object { Select-String -Path $_.FullName -Pattern "Audio|Music|error" | Select-Object -Last 20 }
 
       - name: Upload screenshot and logs
@@ -109,6 +119,10 @@ jobs:
             screenshot-inventory.png
             screenshot-menu.png
             screenshot-worlds.png
+            screenshot-creative.png
+            screenshot-furnace.png
+            screenshot-pause.png
+            screenshot-create.png
             smoke-home/logs/
           if-no-files-found: ignore
 

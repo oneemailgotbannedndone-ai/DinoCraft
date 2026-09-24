@@ -58,7 +58,7 @@ An original prehistoric voxel sandbox built from scratch as a **native macOS app
 - macOS 14 or later on Apple Silicon (developed and tested on an M4)
 - Xcode Command Line Tools (`xcode-select --install`). Full Xcode is **not** required, because shaders are compiled at runtime by Metal.
 
-> **Windows:** DinoCraft is a native Mac game. Its renderer (Metal), windowing (AppKit), and audio (AVAudioEngine) are Apple frameworks, so there is no Windows build. `DinoCraftCore` (world generation, meshing, physics, inventory, crafting, saves) is platform-independent Swift and could back a future port.
+> **Windows:** there is also a Windows version (SDL3 + OpenGL 3.3), built by the Windows workflow in `.github/workflows/windows.yml`. Your own worlds run the same shared game as the Mac (`Sources/DinoCraftGame`): Survival, Hardcore and Creative, creatures, crafting, furnaces, chests, farming, bows, armor, beds, villagers, portals, weather, advancements and chat commands. Windows players can host worlds for Mac and Windows friends, and join games hosted on a Mac. Both versions draw their text with the same 5×7 pixel font (`Sources/DinoCraftCore/Util/PixelFont.swift`).
 
 ## Build and run
 
@@ -102,7 +102,7 @@ If the router refuses, or your internet provider hides your public address (comm
 
 The router mapping is removed when you stop hosting or quit.
 
-> **Friends on Windows can't join yet.** DinoCraft is a native Mac app built on Apple-only technology (Metal, AppKit, AVAudioEngine), so there is no Windows version to install. A Windows port would need a new renderer, window layer and audio layer. `DinoCraftCore` (worlds, blocks, crafting, saves) and the network protocol (`Sources/DinoCraft/Network/NetProtocol.swift`) are platform-independent, so they could be reused.
+> **Friends on Windows** can join with the same invite code or address, using the Windows version (see Requirements).
 
 While playing:
    - **T** opens chat and **Tab** shows who's online.
@@ -321,14 +321,18 @@ Sources/DinoCraftCore      platform-independent engine logic (unit-tested)
 Sources/DinoCraft          the macOS application
   App/       AppKit lifecycle, window, crash handler, launch options
   Engine/    GameEngine (state machine & frame loop), JobSystem, Profiler, ScriptRunner
-  Renderer/  Metal renderer, chunk/sky/model/overlay/UI passes, SDF fonts,
+  Renderer/  Metal renderer, chunk/sky/model/overlay/UI passes, SDF pixel font,
              creature & player models, texture packs, shader-pack post-processing
-  World/     World: multithreaded chunk streaming (local or from a host), GPU meshes, saving
-  Game/      GameSession, entities, creatures & AI, villagers, containers, block variants
+  World/     Metal chunk meshes for the shared world
   Network/   framed TCP protocol, GameServer (host), GameClient, Bonjour LAN discovery
   UI/        immediate-mode widgets, menus, HUD, inventories, chests/furnaces, trading, multiplayer
   Audio/     AVAudioEngine effects, ambience loops and music
   Discord/   DiscordIPCClient + PresenceManager
+
+Sources/DinoCraftGame      the shared game both apps run: GameSession, world streaming, creatures,
+                           items, containers, crops, weather, advancements, chat commands
+Sources/DinoCraftWin       the Windows application: SDL3 window, input and audio, OpenGL renderer,
+                           menus, single-player on the shared game, hosting and joining
 
 Tools/AssetForge           generates every texture (and the TunefulCraft pack), sound, music track and icon
 Resources/                 data, shaders, texture packs, and the generated art and audio

@@ -50,7 +50,7 @@ extension UIBuilder {
 /// Title screen, world list, world creation, joining and settings.
 final class WinMenus {
     enum Choice {
-        case play(WorldMetadata, hostName: String?)
+        case play(WorldMetadata, isNew: Bool, hostName: String?)
         case join(WinNetwork)
         case quit
     }
@@ -69,6 +69,11 @@ final class WinMenus {
     private var focus = ""
     private var newName = "New World"
     private var newSeed = ""
+    /// 0 Survival, 1 Hardcore, 2 Creative (the same order as on the Mac).
+    private var newMode = 0
+    private var newDifficulty = 2
+    private var newBonusChest = false
+    private var newCommands = true
     private var address = ""
     private var playerName = ""
     private var deleteArmed: String?
@@ -99,6 +104,7 @@ final class WinMenus {
         playerName = defaultName
         refreshWorlds()
         if options.demoScreen == "worlds" { page = .worlds }
+        if options.demoScreen == "create" { page = .create; focus = "name" }
         _ = SDL_SetWindowRelativeMouseMode(window, false)
         _ = SDL_StartTextInput(window)
         defer { _ = SDL_StopTextInput(window) }
@@ -237,20 +243,23 @@ final class WinMenus {
             formatter.dateStyle = .medium
             for world in worlds.dropFirst(scroll).prefix(visible) {
                 ui.rect(listX, y, listW, rowH, SIMD4(0.1, 0.07, 0.16, 0.9))
-                ui.text(world.name, x: listX + 14 * s, y: y + 10 * s, scale: small, color: SIMD4(1, 1, 1, 1))
-                let detail = "\(world.gameMode.rawValue.capitalized) - last played \(formatter.string(from: world.lastPlayed))"
-                ui.text(detail, x: listX + 14 * s, y: y + 10 * s + 11 * small, scale: small, color: SIMD4(0.7, 0.66, 0.8, 1))
                 let bwSmall = 92 * s, bhSmall = 36 * s, by = y + (rowH - bhSmall) / 2
+                let textChars = max(8, Int((listW - 3 * bwSmall - 52 * s) / (6 * small)))
+                func fit(_ text: String) -> String { text.count > textChars ? String(text.prefix(textChars - 1)) + "\u{2026}" : text }
+                ui.text(fit(world.name), x: listX + 14 * s, y: y + 10 * s, scale: small, color: SIMD4(1, 1, 1, 1))
+                let mode = world.isHardcore ? ((world.hardcoreDead ?? false) ? "Hardcore - Game Over" : "Hardcore") : world.gameMode.displayName
+                let detail = "\(mode) - \(world.difficulty.displayName) - \(formatter.string(from: world.lastPlayed))"
+                ui.text(fit(detail), x: listX + 14 * s, y: y + 10 * s + 11 * small, scale: small, color: SIMD4(0.7, 0.66, 0.8, 1))
                 var bx = listX + listW - 3 * bwSmall - 3 * 8 * s
                 if ui.button("Play", x: bx, y: by, w: bwSmall, h: bhSmall, scale: s, input: input, primary: true) {
                     click()
-                    return .play(world, hostName: nil)
+                    return .play(world, isNew: false, hostName: nil)
                 }
                 bx += bwSmall + 8 * s
                 if ui.button("Host", x: bx, y: by, w: bwSmall, h: bhSmall, scale: s, input: input) {
                     click()
                     store.update { $0.username = self.playerName }
-                    return .play(world, hostName: defaultName)
+                    return .play(world, isNew: false, hostName: defaultName)
                 }
                 bx += bwSmall + 8 * s
                 let armed = deleteArmed == world.id
@@ -268,7 +277,8 @@ final class WinMenus {
             }
             let footerY = H * 0.8
             if ui.button("Create New World", x: cx - bw - gap / 2, y: footerY, w: bw, h: bh, scale: s, input: input, primary: true) {
-                click(); newName = "New World"; newSeed = ""; focus = "name"; page = .create
+                click(); newName = "New World"; newSeed = ""; newMode = 0; newDifficulty = 2; newBonusChest = false; newCommands = true
+                focus = "name"; page = .create
             }
             if ui.button("Back", x: cx + gap / 2, y: footerY, w: bw, h: bh, scale: s, input: input) || input.escape {
                 click(); page = .title
@@ -279,24 +289,65 @@ final class WinMenus {
             if input.tab { focus = focus == "name" ? "seed" : "name" }
             edit(&newName, id: "name", input: input, limit: 32)
             edit(&newSeed, id: "seed", input: input, limit: 40)
-            var y = H * 0.28
-            label("World name", y)
-            y += 12 * small
-            if ui.field(newName, placeholder: "Name your world", x: cx - bw / 2, y: y, w: bw, h: bh, scale: s, focused: focus == "name", input: input, time: now) { focus = "name" }
-            y += bh + 18 * s
-            label("Seed (optional)", y)
-            y += 12 * small
-            if ui.field(newSeed, placeholder: "Leave blank for a random world", x: cx - bw / 2, y: y, w: bw, h: bh, scale: s, focused: focus == "seed", input: input, time: now) { focus = "seed" }
-            y += bh + 18 * s
-            ui.centeredText("Creative mode: fly, build and explore. Survival worlds can be joined from a Mac host.",
-                            centerX: cx, y: y, scale: small, color: SIMD4(0.8, 0.76, 0.9, 0.9))
+            var y = H * 0.2
+            let fw = min(W - 60 * s, 620 * s), fx = cx - fw / 2
+            func caption(_ text: String) {
+                ui.text(text, x: fx, y: y, scale: small, color: SIMD4(0.9, 0.85, 1, 0.9))
+                y += 12 * small
+            }
+            /// A row of buttons where one is chosen.
+            func choices(_ labels: [String], selected: Int, enabled: Bool = true) -> Int? {
+                let gapX = 8 * s, w = (fw - gapX * Float(labels.count - 1)) / Float(labels.count)
+                var picked: Int?
+                for (i, text) in labels.enumerated() {
+                    if ui.button(text, x: fx + Float(i) * (w + gapX), y: y, w: w, h: 40 * s, scale: s, input: input,
+                                 enabled: enabled || i == selected, primary: i == selected) { picked = i }
+                }
+                y += 40 * s + 14 * s
+                return picked
+            }
+            caption("World name")
+            if ui.field(newName, placeholder: "Name your world", x: fx, y: y, w: fw, h: bh, scale: s, focused: focus == "name", input: input, time: now) { focus = "name" }
+            y += bh + 14 * s
+            caption("Seed (optional)")
+            if ui.field(newSeed, placeholder: "Leave blank for a random world", x: fx, y: y, w: fw, h: bh, scale: s, focused: focus == "seed", input: input, time: now) { focus = "seed" }
+            y += bh + 14 * s
+            caption("Game mode")
+            if let pick = choices(["Survival", "Hardcore", "Creative"], selected: newMode) { click(); newMode = pick }
+            let modeInfo = [
+                "Gather resources, craft tools, manage health and hunger.",
+                "One life on Hard. If you fall, the world is lost forever.",
+                "Unlimited blocks, instant breaking and flight (double-tap jump).",
+            ][newMode]
+            ui.centeredText(modeInfo, centerX: cx, y: y - 6 * s, scale: small, color: SIMD4(0.8, 0.76, 0.9, 0.9))
+            y += 12 * small + 6 * s
+            caption("Difficulty")
+            if let pick = choices(Difficulty.allCases.map { $0.displayName }, selected: newMode == 1 ? 3 : newDifficulty, enabled: newMode != 1) {
+                click(); newDifficulty = pick
+            }
+            let half = (fw - 8 * s) / 2
+            if newMode != 2, ui.button("Bonus Chest: \(newBonusChest ? "On" : "Off")", x: fx, y: y, w: half, h: 40 * s, scale: s, input: input,
+                                       primary: newBonusChest) {
+                click(); newBonusChest.toggle()
+            }
+            if newMode != 1, ui.button("Commands: \(newCommands ? "On" : "Off")", x: fx + half + 8 * s, y: y, w: half, h: 40 * s, scale: s,
+                                       input: input, primary: newCommands) {
+                click(); newCommands.toggle()
+            }
             let valid = !newName.trimmingCharacters(in: .whitespaces).isEmpty
-            let footerY = H * 0.72
+            let footerY = H - bh - 30 * s
             if ui.button("Create", x: cx - bw - gap / 2, y: footerY, w: bw, h: bh, scale: s, input: input, enabled: valid, primary: true) || (input.enter && valid) {
                 click()
                 do {
-                    let meta = try storage.createWorld(name: newName.trimmingCharacters(in: .whitespaces), seedText: newSeed, gameMode: .creative, difficulty: .normal)
-                    return .play(meta, hostName: nil)
+                    var meta = try storage.createWorld(name: newName.trimmingCharacters(in: .whitespaces), seedText: newSeed,
+                                                       gameMode: newMode == 2 ? .creative : .survival,
+                                                       difficulty: Difficulty.allCases[newDifficulty], hardcore: newMode == 1)
+                    if (newBonusChest && newMode != 2) || (!newCommands && newMode != 1) {
+                        if newBonusChest && newMode != 2 { meta.bonusChest = true }
+                        if !newCommands && newMode != 1 { meta.allowCommands = false }
+                        try storage.saveMetadata(meta)
+                    }
+                    return .play(meta, isNew: true, hostName: nil)
                 } catch {
                     message = "Couldn't create the world: \(error)"
                     page = .title

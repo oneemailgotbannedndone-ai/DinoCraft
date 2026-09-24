@@ -1,5 +1,6 @@
 import Foundation
 import DinoCraftCore
+@testable import DinoCraftGame
 
 struct WinCamera {
     var position = DVec3(0, 100, 0)
@@ -61,6 +62,36 @@ struct SkyState {
         s.skyLight = simd_mix(s.skyLight, SIMD3(1.0, 0.82, 0.68), SIMD3(repeating: sunset * 0.35))
         return s
     }
+
+    /// The sky for any dimension, dimmed and greyed by rain and storms in the overworld.
+    static func at(worldTime: Double, dimension: WorldDimension, weather: Float) -> SkyState {
+        switch dimension {
+        case .underworld:
+            var s = SkyState()
+            s.sunDirection = SIMD3(0, -1, 0)
+            s.daylight = 0.35
+            s.zenith = lin(0.12, 0.03, 0.02)
+            s.horizon = lin(0.32, 0.09, 0.04)
+            s.skyLight = SIMD3(1, 0.62, 0.45)
+            return s
+        case .skylands:
+            var s = SkyState.at(worldTime: 300)
+            s.zenith = lin(0.55, 0.62, 0.95)
+            s.horizon = lin(1.0, 0.86, 0.6)
+            s.skyLight = SIMD3(1, 0.95, 0.85)
+            return s
+        default:
+            var s = SkyState.at(worldTime: worldTime)
+            guard weather > 0 else { return s }
+            let grey = SIMD3<Float>(repeating: simd_dot(s.horizon, SIMD3(0.3, 0.55, 0.15)))
+            s.horizon = simd_mix(s.horizon, grey * 0.8, SIMD3(repeating: weather * 0.75))
+            s.zenith = simd_mix(s.zenith, grey * 0.6, SIMD3(repeating: weather * 0.75))
+            s.daylight *= 1 - weather * 0.35
+            s.sunsetGlow *= 1 - weather
+            s.stars *= 1 - weather
+            return s
+        }
+    }
 }
 
 /// Draws the sky, the voxel world, players and creatures, and the 2D overlay with OpenGL 3.3.
@@ -95,6 +126,9 @@ final class WinRenderer {
     /// Texture-array layer for each block and item texture name.
     let blockLayers: [String: UInt16]
     let itemLayers: [String: UInt16]
+    /// Average colour (linear) of each block and item texture layer, for dropped items.
+    private let blockLayerColors: [SIMD3<Float>]
+    private let itemLayerColors: [SIMD3<Float>]
     private let quadIndices: UInt32
     private let maxQuads = 1 << 18
     private let emptyVertexArray: UInt32
@@ -116,11 +150,13 @@ final class WinRenderer {
         let blockArray = WinRenderer.loadTextureArray(gl: gl, names: blocks.textureNames, folders: ["blocks"])
         blockTexture = blockArray.texture
         blockLayers = blockArray.layers
+        blockLayerColors = blockArray.colors
         let layers = blockArray.layers
         blocks.bindTextureLayers { layers[$0] ?? 0 }
         let itemArray = WinRenderer.loadTextureArray(gl: gl, names: items.textureNames, folders: ["items", "blocks"])
         itemTexture = itemArray.texture
         itemLayers = itemArray.layers
+        itemLayerColors = itemArray.colors
         gl.activeTexture(GLC.TEXTURE0)
 
         // Shared quad index buffer: (0,1,2)(0,2,3) per quad.
@@ -160,12 +196,14 @@ final class WinRenderer {
     }
 
     /// Loads 32×32 PNGs into an sRGB texture array (premultiplied alpha), trying each folder in order.
-    private static func loadTextureArray(gl: GL, names rawNames: [String], folders: [String]) -> (texture: UInt32, layers: [String: UInt16]) {
+    private static func loadTextureArray(gl: GL, names rawNames: [String], folders: [String])
+        -> (texture: UInt32, layers: [String: UInt16], colors: [SIMD3<Float>]) {
         var seen = Set<String>()
         let names = rawNames.filter { seen.insert($0).inserted }
         let size = 32
         var pixels = [UInt8](repeating: 0, count: size * size * 4 * max(1, names.count))
         var layers: [String: UInt16] = [:]
+        var colors: [SIMD3<Float>] = []
         var missing = 0
         for (i, name) in names.enumerated() {
             layers[name] = UInt16(i)
@@ -186,6 +224,12 @@ final class WinRenderer {
             }
             let source = rgba!
             let base = i * size * size * 4
+            var sum = SIMD3<Float>(0, 0, 0), weight: Float = 0
+            for p in 0..<(size * size) where source[p * 4 + 3] > 127 {
+                sum += SIMD3(pow(Float(source[p * 4]) / 255, 2.2), pow(Float(source[p * 4 + 1]) / 255, 2.2), pow(Float(source[p * 4 + 2]) / 255, 2.2))
+                weight += 1
+            }
+            colors.append(weight > 0 ? sum / weight : SIMD3(0.5, 0.5, 0.5))
             for p in 0..<(size * size) {
                 let a = UInt16(source[p * 4 + 3])
                 pixels[base + p * 4] = UInt8(UInt16(source[p * 4]) * a / 255)
@@ -208,7 +252,34 @@ final class WinRenderer {
         gl.texParameteri(GLC.TEXTURE_2D_ARRAY, GLC.TEXTURE_WRAP_S, GLC.REPEAT)
         gl.texParameteri(GLC.TEXTURE_2D_ARRAY, GLC.TEXTURE_WRAP_T, GLC.REPEAT)
         Log.info("Loaded \(names.count) textures from \(folders.first ?? "?")", category: "Renderer")
-        return (texture, layers)
+        return (texture, layers, colors)
+    }
+
+    /// The overlay layer for an item's icon (see `UIBuilder.icon`), or -1 when it has none.
+    func iconLayer(_ item: ItemID, items: ItemRegistry, blocks: BlockRegistry) -> Float {
+        guard let info = items[item] else { return -1 }
+        if let texture = info.texture {
+            if let layer = itemLayers[texture] { return UIBuilder.itemLayerOffset + Float(layer) }
+            if let layer = blockLayers[texture] { return Float(layer) }
+        }
+        if let block = info.block { return Float(blocks.faceLayers[Int(block) * 6 + BlockFace.south.rawValue]) }
+        return -1
+    }
+
+    /// The average colour of an item's icon, for drawing it as a small model.
+    func itemColor(_ item: ItemID, items: ItemRegistry, blocks: BlockRegistry) -> SIMD4<Float> {
+        let layer = iconLayer(item, items: items, blocks: blocks)
+        let color: SIMD3<Float>
+        if layer >= UIBuilder.itemLayerOffset {
+            let i = Int(layer - UIBuilder.itemLayerOffset)
+            color = i < itemLayerColors.count ? itemLayerColors[i] : SIMD3(0.5, 0.5, 0.5)
+        } else if layer >= 0 {
+            let i = Int(layer)
+            color = i < blockLayerColors.count ? blockLayerColors[i] : SIMD3(0.5, 0.5, 0.5)
+        } else {
+            color = SIMD3(0.5, 0.5, 0.5)
+        }
+        return SIMD4(color, 1)
     }
 
     // MARK: Chunk meshes
@@ -290,7 +361,7 @@ final class WinRenderer {
         gl.bindVertexArray(0)
     }
 
-    func render(world: WinWorld, camera: WinCamera, sky: SkyState, time: Double, now: Double,
+    func render(world: World, camera: WinCamera, sky: SkyState, time: Double, now: Double,
                 width: Int32, height: Int32, ui: [Float], models: [Float] = []) {
         let aspect = Float(width) / Float(max(1, height))
         let viewProj = camera.viewProjection(aspect: aspect)
@@ -310,7 +381,7 @@ final class WinRenderer {
         let maxDist = Double((world.renderDistance + 1) * 16)
         var visible: [(mesh: GPUMesh, ox: Float, oy: Float, oz: Float, fade: Float, d2: Double, pos: ChunkPos)] = []
         for (pos, slot) in world.slots {
-            guard let mesh = slot.mesh else { continue }
+            guard let mesh = slot.mesh as? GPUMesh else { continue }
             let ox = Double(pos.originX) - camera.position.x
             let oz = Double(pos.originZ) - camera.position.z
             let oy = -camera.position.y
