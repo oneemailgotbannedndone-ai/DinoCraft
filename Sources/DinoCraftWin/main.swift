@@ -1,6 +1,7 @@
 import Foundation
 import CSDL3
 import DinoCraftCore
+@testable import DinoCraftGame
 #if os(Windows)
 import WinSDK
 #endif
@@ -17,8 +18,9 @@ import WinSDK
 //   --console                 keep the console window open (for log output)
 //   --screenshot <path.png>   automated check: save a screenshot and quit
 //   --frames <n>              frames to draw after loading before the screenshot (default 30)
-//   --demo-entities           automated check: place sample players and creatures in view
-//   --demo-screen <name>      automated check: inventory, menu or worlds
+//   --demo-entities           automated check: place sample creatures in view
+//   --demo-screen <name>      automated check: inventory, crafting, furnace, creative, pause, advancements,
+//                             menu, worlds or create
 
 struct Options {
     var seed = ""
@@ -64,6 +66,7 @@ struct GameContent {
     let blocks: BlockRegistry
     let items: ItemRegistry
     let recipes: RecipeRegistry
+    let smelting: SmeltingRegistry
     let renderer: WinRenderer
 }
 
@@ -128,21 +131,35 @@ do {
     let blocks = try BlockRegistry.loadDefault()
     let items = try ItemRegistry.loadDefault(blocks: blocks)
     let recipes = try RecipeRegistry.loadDefault(items: items)
-    let renderer = try WinRenderer(gl: gl, blocks: blocks, items: items)
-    let content = GameContent(blocks: blocks, items: items, recipes: recipes, renderer: renderer)
+    let smelting = try SmeltingRegistry.loadDefault(items: items)
+    let pack = TexturePackLibrary.all().first { $0.id == settingsStore.settings.texturePack } ?? TexturePackLibrary.defaultPack
+    let renderer = try WinRenderer(gl: gl, blocks: blocks, items: items, pack: pack)
+    SettingsPanel.applyLooks(settingsStore.settings, to: renderer)
+    if settingsStore.settings.fullscreen { _ = SDL_SetWindowFullscreen(window, true) }
+    let content = GameContent(blocks: blocks, items: items, recipes: recipes, smelting: smelting, renderer: renderer)
     let audio = WinAudio()
     audio.apply(settingsStore.settings)
 
-    /// Runs one game session. Returns whether the player closed the window, and why the game ended if it wasn't their choice.
-    func play(network: WinNetwork?, world: WorldMetadata?, hostName: String?) throws -> (quit: Bool, message: String?) {
+    /// Plays on a friend's game. Returns whether the player closed the window, and why the game ended if it wasn't their choice.
+    func join(_ network: WinNetwork) -> (quit: Bool, message: String?) {
         var sessionOptions = options
         if sessionOptions.renderDistance == nil { sessionOptions.renderDistance = max(2, min(16, settingsStore.settings.renderDistance)) }
-        SDL_SetWindowTitle(window, "DinoCraft · \(network?.welcome.worldName ?? world?.name ?? "")")
-        let game = try WinGame(gl: gl, window: window, content: content, audio: audio, settings: settingsStore, options: sessionOptions,
-                               network: network, world: world, hostName: hostName)
+        SDL_SetWindowTitle(window, "DinoCraft · \(network.welcome.worldName)")
+        let game = WinGame(gl: gl, window: window, content: content, audio: audio, settings: settingsStore, options: sessionOptions,
+                           network: network)
         let reason = game.run()
         SDL_SetWindowTitle(window, "DinoCraft")
         return (game.quitRequested, reason.map { "You left the game: \($0)" })
+    }
+
+    /// Plays one of your own worlds (optionally opened to friends). Returns whether the player closed the window.
+    func play(_ world: WorldMetadata, isNew: Bool, hostName: String?) -> Bool {
+        SDL_SetWindowTitle(window, "DinoCraft · \(world.name)")
+        let game = WinSolo(gl: gl, window: window, content: content, audio: audio, settings: settingsStore, options: options,
+                           world: world, isNew: isNew, hostName: hostName)
+        game.run()
+        SDL_SetWindowTitle(window, "DinoCraft")
+        return game.quitRequested
     }
 
     if let address = options.join {
@@ -153,14 +170,17 @@ do {
         } catch {
             fail("Couldn't join the game:\n\n\(error)", window: window)
         }
-        if let message = try play(network: joined, world: nil, hostName: nil).message {
+        if let message = join(joined).message {
             Log.info(message, category: "Net")
         }
-    } else if options.hostName != nil || (options.screenshotPath != nil && options.demoScreen != "menu" && options.demoScreen != "worlds") {
+    } else if options.hostName != nil || (options.screenshotPath != nil && !["menu", "worlds", "create", "cosmetics", "skin"].contains(options.demoScreen ?? "")) {
         let storage = WorldStorage()
-        let meta = try storage.listWorlds().first { $0.name == "Windows World" }
-            ?? storage.createWorld(name: "Windows World", seedText: options.seed, gameMode: .creative, difficulty: .normal)
-        _ = try play(network: nil, world: meta, hostName: options.hostName.map(cleanName))
+        if let existing = storage.listWorlds().first(where: { $0.name == "Windows World" }) {
+            _ = play(existing, isNew: false, hostName: options.hostName.map(cleanName))
+        } else {
+            let meta = try storage.createWorld(name: "Windows World", seedText: options.seed, gameMode: .survival, difficulty: .normal)
+            _ = play(meta, isNew: true, hostName: options.hostName.map(cleanName))
+        }
     } else {
         let menus = WinMenus(window: window, renderer: renderer, store: settingsStore, audio: audio, options: options)
         var message: String?
@@ -169,15 +189,10 @@ do {
             switch menus.run(message: message) {
             case .quit:
                 break menuLoop
-            case .play(let meta, let hostName):
-                do {
-                    result = try play(network: nil, world: meta, hostName: hostName)
-                } catch {
-                    Log.error("Could not open world: \(error)", category: "Game")
-                    result = (false, "Couldn't open the world: \(error)")
-                }
+            case .play(let meta, let isNew, let hostName):
+                result = (play(meta, isNew: isNew, hostName: hostName), nil)
             case .join(let network):
-                result = try play(network: network, world: nil, hostName: nil)
+                result = join(network)
             }
             if result.quit || options.screenshotPath != nil { break }
             message = result.message

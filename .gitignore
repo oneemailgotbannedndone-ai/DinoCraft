@@ -7,3 +7,4 @@ DerivedData/
 .DS_Store
 .build-portable/
 third_party/
+Resources/Data/build.json

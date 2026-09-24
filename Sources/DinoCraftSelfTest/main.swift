@@ -64,6 +64,36 @@ section("Registries") {
     print("  \(blocks.all.count) blocks, \(items.all.count) items, \(recipes.recipes.count) recipes, \(blocks.textureNames.count) block textures")
 }
 
+section("Pixel font") {
+    let sample = "DinoCraft 0123456789 abcxyz ABCXYZ .,:;!?'\"-_+=/\\()<>#*%&@[]$^~|{}` \u{2665}\u{25CF}\u{2026}\u{2192}\u{00B7}\u{00D7}"
+    var wellFormed = true, allKnown = true
+    for ch in sample {
+        let rows = PixelFont.rows(for: ch)
+        if rows.count != PixelFont.height || rows.contains(where: { $0 >= 32 }) { wellFormed = false }
+        if !PixelFont.hasGlyph(ch) { allKnown = false }
+    }
+    check(wellFormed, "every glyph is 7 rows of 5 pixels")
+    check(allKnown, "the font covers letters, digits, punctuation and HUD symbols")
+    check(PixelFont.rows(for: "\u{00E9}") == PixelFont.rows(for: "e"), "accented letters use their plain letter")
+    check(PixelFont.rows(for: "\u{4E2D}") == PixelFont.rows(for: "?"), "unknown characters draw as ?")
+}
+
+section("Updates") {
+    let reply = """
+    {"tag_name": "build-42", "name": "DinoCraft build 42", "body": "New packs", "published_at": "2026-09-24T10:00:00Z",
+     "assets": [{"name": "DinoCraft-Windows.zip", "browser_download_url": "https://example.com/w.zip"},
+                {"name": "DinoCraft-Mac.zip", "browser_download_url": "https://example.com/m.zip"}]}
+    """
+    let release = GameUpdater.parse(Data(reply.utf8))
+    check(release?.build == 42, "release tag build-42 reads as build 42")
+    check(release?.assets["DinoCraft-Windows.zip"]?.absoluteString == "https://example.com/w.zip", "release downloads are found by name")
+    check(release?.published == "2026-09-24", "release date is kept")
+    check(GameUpdater.parse(Data("{}".utf8)) == nil, "a broken reply is ignored")
+    let withDownloads = GameUpdater.parse(Data(###"{"tag_name": "build-9", "body": "## Download\n\n- zip\n\n## What's new\n\nSkins!", "assets": []}"###.utf8))
+    check(withDownloads?.notes == "Skins!", "the launcher shows only the what's-new part of the notes")
+    check(BuildInfo(build: 0, commit: nil, date: nil).isDevelopment, "builds made by hand count as development builds")
+}
+
 section("Noise") {
     let a = SimplexNoise(seed: 42), b = SimplexNoise(seed: 42), c = SimplexNoise(seed: 43)
     var same = true, differs = false, minV = 1.0, maxV = -1.0

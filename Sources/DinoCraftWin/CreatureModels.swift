@@ -1,5 +1,6 @@
 import Foundation
 import DinoCraftCore
+@testable import DinoCraftGame
 
 // Creature and player models for the Windows renderer. The creature box definitions are copied from
 // Sources/DinoCraft/Renderer/MobModels.swift and the player from PlayerModels.swift (keep them in sync).
@@ -388,51 +389,15 @@ enum CreatureModels {
         }
     }
 
-    static let shirtPalette: [UInt32] = [0x3A7BD5, 0xD5563A, 0x3AA66A, 0x9A4AD5, 0xD5A33A, 0x2FB5B0, 0xD54A8A, 0x6A7A3A]
-
-    private static func playerParts(shirt: UInt32) -> [(Int, SIMD3<Float>, [(SIMD3<Float>, SIMD3<Float>, SIMD4<Float>)])] {
-        let skin = c(0xD9A77E), hat = c(0xC8A46A), band = c(0x6A4A2A), pants = c(0x5A4632), boots = c(0x3A2A1E), shirtColor = c(shirt)
-        let belt = c(0x2A2016), eye = c(0x2A1E14)
-        return [
-            (0, SIMD3(0, 0.75, 0), [(SIMD3(-0.25, 0, -0.13), SIMD3(0.25, 0.72, 0.13), shirtColor),
-                                    (SIMD3(-0.26, 0, -0.14), SIMD3(0.26, 0.07, 0.14), belt)]),
-            (1, SIMD3(0, 1.47, 0), [(SIMD3(-0.22, 0, -0.22), SIMD3(0.22, 0.42, 0.22), skin),
-                                    (SIMD3(-0.13, 0.22, -0.23), SIMD3(-0.06, 0.28, -0.22), eye),
-                                    (SIMD3(0.06, 0.22, -0.23), SIMD3(0.13, 0.28, -0.22), eye),
-                                    (SIMD3(-0.34, 0.38, -0.34), SIMD3(0.34, 0.43, 0.34), hat),
-                                    (SIMD3(-0.24, 0.43, -0.24), SIMD3(0.24, 0.62, 0.24), hat),
-                                    (SIMD3(-0.245, 0.43, -0.245), SIMD3(0.245, 0.49, 0.245), band)]),
-            (2, SIMD3(-0.37, 1.4, 0), [(SIMD3(-0.12, -0.66, -0.12), SIMD3(0.12, 0.04, 0.12), shirtColor),
-                                       (SIMD3(-0.115, -0.72, -0.115), SIMD3(0.115, -0.5, 0.115), skin)]),
-            (3, SIMD3(0.37, 1.4, 0), [(SIMD3(-0.12, -0.66, -0.12), SIMD3(0.12, 0.04, 0.12), shirtColor),
-                                      (SIMD3(-0.115, -0.72, -0.115), SIMD3(0.115, -0.5, 0.115), skin)]),
-            (4, SIMD3(-0.13, 0.75, 0), [(SIMD3(-0.12, -0.75, -0.12), SIMD3(0.12, 0, 0.12), pants),
-                                        (SIMD3(-0.125, -0.75, -0.14), SIMD3(0.125, -0.58, 0.13), boots)]),
-            (5, SIMD3(0.13, 0.75, 0), [(SIMD3(-0.12, -0.75, -0.12), SIMD3(0.12, 0, 0.12), pants),
-                                       (SIMD3(-0.125, -0.75, -0.14), SIMD3(0.125, -0.58, 0.13), boots)]),
-        ]
-    }
-
-    /// Another player, with the Mac explorer model and walk/swing animation.
-    static func appendPlayer(_ v: inout [Float], name: String, at rel: SIMD3<Float>, yaw: Float, pitch: Float, walk: Float,
+    /// A player with the shared explorer model (and their cosmetics), animated like on the Mac.
+    static func appendPlayer(_ v: inout [Float], name: String, look: String?, at rel: SIMD3<Float>, yaw: Float, pitch: Float, walk: Float,
                              moving: Float, sneaking: Bool, swing: Float, hurt: Float) {
-        let shirt = shirtPalette[Int(Hashing.seed(from: name.lowercased()) % UInt64(shirtPalette.count))]
         let tint: SIMD4<Float> = hurt > 0 ? SIMD4(0.9, 0.1, 0.1, min(1, hurt / 0.35) * 0.6) : SIMD4(0, 0, 0, 0)
         let base = MathUtil.translation(rel - SIMD3(0, sneaking ? 0.25 : 0, 0)) * MathUtil.rotationY(yaw)
-        let swingLeg = sin(walk) * 0.8 * min(1, moving)
-        let armSwing = sin(swing * .pi)
-        for (kind, pivot, boxes) in playerParts(shirt: shirt) {
-            var local = MathUtil.translation(pivot)
-            switch kind {
-            case 0: if sneaking { local = local * MathUtil.rotationX(-0.4) }
-            case 1: local = local * MathUtil.rotationX(pitch * 0.8)
-            case 2: local = local * MathUtil.rotationX(swingLeg)
-            case 3: local = local * MathUtil.rotationX(-swingLeg - armSwing * 1.6)
-            case 4: local = local * MathUtil.rotationX(-swingLeg)
-            default: local = local * MathUtil.rotationX(swingLeg)
-            }
-            let model = base * local
-            for box in boxes { appendBox(&v, model, box.0, box.1, box.2, glow: false, tint: tint) }
+        for part in PlayerAvatar.parts(PlayerLook.resolve(look, name: name)) {
+            let model = base * MathUtil.translation(part.pivot)
+                * PlayerAvatar.pose(kind: part.kind, pitch: pitch, walk: walk, moving: moving, sneaking: sneaking, swing: swing)
+            for box in part.boxes { appendBox(&v, model, box.0, box.1, box.2, glow: false, tint: tint) }
         }
     }
 }

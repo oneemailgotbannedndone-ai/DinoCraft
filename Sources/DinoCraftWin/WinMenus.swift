@@ -1,6 +1,7 @@
 import Foundation
 import CSDL3
 import DinoCraftCore
+@testable import DinoCraftGame
 
 /// Mouse and keyboard input for one frame of a menu.
 struct MenuInput {
@@ -13,6 +14,9 @@ struct MenuInput {
     var tab = false
     var wheel: Float = 0
     var quit = false
+    /// Buttons held this frame (for painting in the skin creator).
+    var leftDown = false
+    var rightDown = false
 }
 
 extension UIBuilder {
@@ -50,12 +54,12 @@ extension UIBuilder {
 /// Title screen, world list, world creation, joining and settings.
 final class WinMenus {
     enum Choice {
-        case play(WorldMetadata, hostName: String?)
+        case play(WorldMetadata, isNew: Bool, hostName: String?)
         case join(WinNetwork)
         case quit
     }
 
-    private enum Page { case title, worlds, create, multiplayer, settings, connecting }
+    private enum Page { case launcher, cosmetics, skin, title, worlds, create, multiplayer, settings, connecting }
 
     private let window: OpaquePointer
     private let renderer: WinRenderer
@@ -69,6 +73,30 @@ final class WinMenus {
     private var focus = ""
     private var newName = "New World"
     private var newSeed = ""
+    /// Checks the public releases page for a newer DinoCraft.
+    private let updater = GameUpdater(assetName: "DinoCraft-Windows.zip")
+    /// The launcher shows first, once per start.
+    private var launched = false
+    private var settingsReturn = Page.title
+    private var updateError: String?
+    /// Set when the update is unpacked and DinoCraft should close so the updater can finish.
+    private var quitForUpdate = false
+    /// The cosmetics preview (camera-relative model triangles), rebuilt every frame.
+    private var previewModels: [Float] = []
+    // Skin creator
+    private var skinDraft: PlayerLook?
+    private var skinTab = 0
+    private var skinColor: UInt8 = 1
+    private var skinMirror = true
+    private var skinFill = false
+    private var skinFacePreset = 0
+    private var skinChestPreset = 0
+    private var skinMessage: String?
+    /// 0 Survival, 1 Hardcore, 2 Creative (the same order as on the Mac).
+    private var newMode = 0
+    private var newDifficulty = 2
+    private var newBonusChest = false
+    private var newCommands = true
     private var address = ""
     private var playerName = ""
     private var deleteArmed: String?
@@ -94,11 +122,25 @@ final class WinMenus {
     func run(message: String?) -> Choice {
         self.message = message
         page = .title
+        if !launched {
+            launched = true
+            page = .launcher
+            if store.settings.checkForUpdates && options.screenshotPath == nil { updater.check() }
+        }
         focus = ""
         address = store.settings.lastServerAddress
         playerName = defaultName
         refreshWorlds()
         if options.demoScreen == "worlds" { page = .worlds }
+        if options.demoScreen == "create" { page = .create; focus = "name" }
+        if options.demoScreen == "cosmetics" { page = .cosmetics }
+        if options.demoScreen == "skin" {
+            page = .skin
+            var demo = PlayerLook(encoded: store.settings.cosmetics) ?? PlayerLook()
+            demo.face = PlayerLook.presetPixels(PlayerLook.facePresets[0].pixels, count: 64)
+            demo.chest = PlayerLook.presetPixels(PlayerLook.chestPresets[3].pixels, count: 80)
+            skinDraft = demo
+        }
         _ = SDL_SetWindowRelativeMouseMode(window, false)
         _ = SDL_StartTextInput(window)
         defer { _ = SDL_StopTextInput(window) }
@@ -116,11 +158,12 @@ final class WinMenus {
             var w: Int32 = 0, h: Int32 = 0
             _ = SDL_GetWindowSizeInPixels(window, &w, &h)
             var ui = UIBuilder()
+            previewModels = []
             if let choice = build(&ui, input: input, width: Float(w), height: Float(h), now: now - startTime) {
                 if case .quit = choice {} else { audio?.stopMusic() }
                 return choice
             }
-            renderer.renderMenu(width: w, height: h, time: now - startTime, ui: ui.vertices)
+            renderer.renderMenu(width: w, height: h, time: now - startTime, ui: ui.vertices, models: previewModels)
             frames += 1
             if let path = options.screenshotPath, frames >= 40 {
                 let image = renderer.capture(width: w, height: h)
@@ -172,6 +215,10 @@ final class WinMenus {
                 if code == Int(SDL_SCANCODE_TAB.rawValue) { input.tab = true }
             }
         }
+        var mx: Float = 0, my: Float = 0
+        let buttons = SDL_GetMouseState(&mx, &my)
+        input.leftDown = buttons & 1 != 0
+        input.rightDown = buttons & 4 != 0
         return input
     }
 
@@ -204,7 +251,14 @@ final class WinMenus {
         switch page {
         case .title:
             let big = max(1, (9 * s).rounded())
-            ui.centeredText("DinoCraft", centerX: cx, y: H * 0.16, scale: big, color: SIMD4(1, 0.72, 0.25, 1))
+            let pack = renderer.texturePack
+            let top = pack.titleTop, bottom = pack.titleBottom
+            func color(_ hex: UInt32) -> SIMD4<Float> {
+                SIMD4(Float((hex >> 16) & 0xFF) / 255, Float((hex >> 8) & 0xFF) / 255, Float(hex & 0xFF) / 255, 1)
+            }
+            // The title is the top colour over the bottom colour, one pixel lower, like a two-tone logo.
+            ui.centeredText(pack.title, centerX: cx + big * 0.5, y: H * 0.16 + big, scale: big, color: color(bottom))
+            ui.centeredText(pack.title, centerX: cx, y: H * 0.16, scale: big, color: color(top))
             ui.centeredText("for Windows", centerX: cx, y: H * 0.16 + 10 * big, scale: small, color: SIMD4(0.9, 0.85, 1, 0.8))
             if let message {
                 ui.centeredText(String(message.prefix(110)), centerX: cx, y: H * 0.16 + 10 * big + 16 * small, scale: small, color: SIMD4(1, 0.6, 0.5, 1))
@@ -219,10 +273,21 @@ final class WinMenus {
             }
             y += bh + gap
             if ui.button("Settings", x: cx - bw / 2, y: y, w: bw, h: bh, scale: s, input: input) {
-                click(); message = nil; focus = ""; page = .settings
+                click(); message = nil; focus = ""; settingsReturn = .title; page = .settings
             }
             y += bh + gap
-            if ui.button("Quit", x: cx - bw / 2, y: y, w: bw, h: bh, scale: s, input: input) || input.escape { return .quit }
+            if ui.button("Back to Launcher", x: cx - bw / 2, y: y, w: bw, h: bh, scale: s, input: input) || input.escape {
+                click(); message = nil; page = .launcher
+            }
+
+        case .launcher:
+            if let choice = buildLauncher(&ui, input: input, width: W, height: H, scale: s, now: now) { return choice }
+
+        case .cosmetics:
+            buildCosmetics(&ui, input: input, width: W, height: H, scale: s, now: now)
+
+        case .skin:
+            buildSkinCreator(&ui, input: input, width: W, height: H, scale: s, now: now)
 
         case .worlds:
             header("Your Worlds")
@@ -237,20 +302,23 @@ final class WinMenus {
             formatter.dateStyle = .medium
             for world in worlds.dropFirst(scroll).prefix(visible) {
                 ui.rect(listX, y, listW, rowH, SIMD4(0.1, 0.07, 0.16, 0.9))
-                ui.text(world.name, x: listX + 14 * s, y: y + 10 * s, scale: small, color: SIMD4(1, 1, 1, 1))
-                let detail = "\(world.gameMode.rawValue.capitalized) - last played \(formatter.string(from: world.lastPlayed))"
-                ui.text(detail, x: listX + 14 * s, y: y + 10 * s + 11 * small, scale: small, color: SIMD4(0.7, 0.66, 0.8, 1))
                 let bwSmall = 92 * s, bhSmall = 36 * s, by = y + (rowH - bhSmall) / 2
+                let textChars = max(8, Int((listW - 3 * bwSmall - 52 * s) / (6 * small)))
+                func fit(_ text: String) -> String { text.count > textChars ? String(text.prefix(textChars - 1)) + "\u{2026}" : text }
+                ui.text(fit(world.name), x: listX + 14 * s, y: y + 10 * s, scale: small, color: SIMD4(1, 1, 1, 1))
+                let mode = world.isHardcore ? ((world.hardcoreDead ?? false) ? "Hardcore - Game Over" : "Hardcore") : world.gameMode.displayName
+                let detail = "\(mode) - \(world.difficulty.displayName) - \(formatter.string(from: world.lastPlayed))"
+                ui.text(fit(detail), x: listX + 14 * s, y: y + 10 * s + 11 * small, scale: small, color: SIMD4(0.7, 0.66, 0.8, 1))
                 var bx = listX + listW - 3 * bwSmall - 3 * 8 * s
                 if ui.button("Play", x: bx, y: by, w: bwSmall, h: bhSmall, scale: s, input: input, primary: true) {
                     click()
-                    return .play(world, hostName: nil)
+                    return .play(world, isNew: false, hostName: nil)
                 }
                 bx += bwSmall + 8 * s
                 if ui.button("Host", x: bx, y: by, w: bwSmall, h: bhSmall, scale: s, input: input) {
                     click()
                     store.update { $0.username = self.playerName }
-                    return .play(world, hostName: defaultName)
+                    return .play(world, isNew: false, hostName: defaultName)
                 }
                 bx += bwSmall + 8 * s
                 let armed = deleteArmed == world.id
@@ -268,7 +336,8 @@ final class WinMenus {
             }
             let footerY = H * 0.8
             if ui.button("Create New World", x: cx - bw - gap / 2, y: footerY, w: bw, h: bh, scale: s, input: input, primary: true) {
-                click(); newName = "New World"; newSeed = ""; focus = "name"; page = .create
+                click(); newName = "New World"; newSeed = ""; newMode = 0; newDifficulty = 2; newBonusChest = false; newCommands = true
+                focus = "name"; page = .create
             }
             if ui.button("Back", x: cx + gap / 2, y: footerY, w: bw, h: bh, scale: s, input: input) || input.escape {
                 click(); page = .title
@@ -279,24 +348,65 @@ final class WinMenus {
             if input.tab { focus = focus == "name" ? "seed" : "name" }
             edit(&newName, id: "name", input: input, limit: 32)
             edit(&newSeed, id: "seed", input: input, limit: 40)
-            var y = H * 0.28
-            label("World name", y)
-            y += 12 * small
-            if ui.field(newName, placeholder: "Name your world", x: cx - bw / 2, y: y, w: bw, h: bh, scale: s, focused: focus == "name", input: input, time: now) { focus = "name" }
-            y += bh + 18 * s
-            label("Seed (optional)", y)
-            y += 12 * small
-            if ui.field(newSeed, placeholder: "Leave blank for a random world", x: cx - bw / 2, y: y, w: bw, h: bh, scale: s, focused: focus == "seed", input: input, time: now) { focus = "seed" }
-            y += bh + 18 * s
-            ui.centeredText("Creative mode: fly, build and explore. Survival worlds can be joined from a Mac host.",
-                            centerX: cx, y: y, scale: small, color: SIMD4(0.8, 0.76, 0.9, 0.9))
+            var y = H * 0.2
+            let fw = min(W - 60 * s, 620 * s), fx = cx - fw / 2
+            func caption(_ text: String) {
+                ui.text(text, x: fx, y: y, scale: small, color: SIMD4(0.9, 0.85, 1, 0.9))
+                y += 12 * small
+            }
+            /// A row of buttons where one is chosen.
+            func choices(_ labels: [String], selected: Int, enabled: Bool = true) -> Int? {
+                let gapX = 8 * s, w = (fw - gapX * Float(labels.count - 1)) / Float(labels.count)
+                var picked: Int?
+                for (i, text) in labels.enumerated() {
+                    if ui.button(text, x: fx + Float(i) * (w + gapX), y: y, w: w, h: 40 * s, scale: s, input: input,
+                                 enabled: enabled || i == selected, primary: i == selected) { picked = i }
+                }
+                y += 40 * s + 14 * s
+                return picked
+            }
+            caption("World name")
+            if ui.field(newName, placeholder: "Name your world", x: fx, y: y, w: fw, h: bh, scale: s, focused: focus == "name", input: input, time: now) { focus = "name" }
+            y += bh + 14 * s
+            caption("Seed (optional)")
+            if ui.field(newSeed, placeholder: "Leave blank for a random world", x: fx, y: y, w: fw, h: bh, scale: s, focused: focus == "seed", input: input, time: now) { focus = "seed" }
+            y += bh + 14 * s
+            caption("Game mode")
+            if let pick = choices(["Survival", "Hardcore", "Creative"], selected: newMode) { click(); newMode = pick }
+            let modeInfo = [
+                "Gather resources, craft tools, manage health and hunger.",
+                "One life on Hard. If you fall, the world is lost forever.",
+                "Unlimited blocks, instant breaking and flight (double-tap jump).",
+            ][newMode]
+            ui.centeredText(modeInfo, centerX: cx, y: y - 6 * s, scale: small, color: SIMD4(0.8, 0.76, 0.9, 0.9))
+            y += 12 * small + 6 * s
+            caption("Difficulty")
+            if let pick = choices(Difficulty.allCases.map { $0.displayName }, selected: newMode == 1 ? 3 : newDifficulty, enabled: newMode != 1) {
+                click(); newDifficulty = pick
+            }
+            let half = (fw - 8 * s) / 2
+            if newMode != 2, ui.button("Bonus Chest: \(newBonusChest ? "On" : "Off")", x: fx, y: y, w: half, h: 40 * s, scale: s, input: input,
+                                       primary: newBonusChest) {
+                click(); newBonusChest.toggle()
+            }
+            if newMode != 1, ui.button("Commands: \(newCommands ? "On" : "Off")", x: fx + half + 8 * s, y: y, w: half, h: 40 * s, scale: s,
+                                       input: input, primary: newCommands) {
+                click(); newCommands.toggle()
+            }
             let valid = !newName.trimmingCharacters(in: .whitespaces).isEmpty
-            let footerY = H * 0.72
+            let footerY = H - bh - 30 * s
             if ui.button("Create", x: cx - bw - gap / 2, y: footerY, w: bw, h: bh, scale: s, input: input, enabled: valid, primary: true) || (input.enter && valid) {
                 click()
                 do {
-                    let meta = try storage.createWorld(name: newName.trimmingCharacters(in: .whitespaces), seedText: newSeed, gameMode: .creative, difficulty: .normal)
-                    return .play(meta, hostName: nil)
+                    var meta = try storage.createWorld(name: newName.trimmingCharacters(in: .whitespaces), seedText: newSeed,
+                                                       gameMode: newMode == 2 ? .creative : .survival,
+                                                       difficulty: Difficulty.allCases[newDifficulty], hardcore: newMode == 1)
+                    if (newBonusChest && newMode != 2) || (!newCommands && newMode != 1) {
+                        if newBonusChest && newMode != 2 { meta.bonusChest = true }
+                        if !newCommands && newMode != 1 { meta.allowCommands = false }
+                        try storage.saveMetadata(meta)
+                    }
+                    return .play(meta, isNew: true, hostName: nil)
                 } catch {
                     message = "Couldn't create the world: \(error)"
                     page = .title
@@ -363,39 +473,19 @@ final class WinMenus {
             header("Settings")
             edit(&playerName, id: "player", input: input, limit: 16)
             let rowW = min(W - 80 * s, 620 * s), rowX = cx - rowW / 2
-            var y = H * 0.24
+            var y = H * 0.2
             ui.text("Player name", x: rowX, y: y + bh / 2 - 3.5 * small, scale: small, color: SIMD4(1, 1, 1, 1))
             if ui.field(playerName, placeholder: "Explorer", x: rowX + rowW - 260 * s, y: y, w: 260 * s, h: bh, scale: s, focused: focus == "player", input: input, time: now) { focus = "player" }
             y += bh + gap
-            func stepper(_ title: String, _ value: String, minus: () -> Void, plus: () -> Void) {
-                ui.text(title, x: rowX, y: y + bh / 2 - 3.5 * small, scale: small, color: SIMD4(1, 1, 1, 1))
-                let bx = rowX + rowW - 260 * s
-                if ui.button("-", x: bx, y: y, w: 60 * s, h: bh, scale: s, input: input) { click(); minus() }
-                ui.centeredText(value, centerX: bx + 130 * s, y: y + bh / 2 - 3.5 * small, scale: small, color: SIMD4(1, 0.85, 0.55, 1))
-                if ui.button("+", x: bx + 200 * s, y: y, w: 60 * s, h: bh, scale: s, input: input) { click(); plus() }
-                y += bh + gap
-            }
-            let settings = store.settings
-            stepper("Render distance", "\(max(4, min(16, settings.renderDistance))) chunks",
-                    minus: { store.update { $0.renderDistance = max(4, min(16, $0.renderDistance) - 2) } },
-                    plus: { store.update { $0.renderDistance = min(16, max(4, $0.renderDistance) + 2) } })
-            stepper("Mouse sensitivity", "\(Int((settings.mouseSensitivity * 200).rounded()))%",
-                    minus: { store.update { $0.mouseSensitivity = max(0, $0.mouseSensitivity - 0.05) } },
-                    plus: { store.update { $0.mouseSensitivity = min(1, $0.mouseSensitivity + 0.05) } })
-            stepper("Music volume", "\(Int((settings.musicVolume * 100).rounded()))%",
-                    minus: { store.update { $0.musicVolume = max(0, $0.musicVolume - 0.1) } },
-                    plus: { store.update { $0.musicVolume = min(1, $0.musicVolume + 0.1) } })
-            stepper("Sound volume", "\(Int((settings.soundVolume * 100).rounded()))%",
-                    minus: { store.update { $0.soundVolume = max(0, $0.soundVolume - 0.1) } },
-                    plus: { store.update { $0.soundVolume = min(1, $0.soundVolume + 0.1) } })
-            audio?.apply(store.settings)
-            if ui.button("Done", x: cx - bw / 2, y: H * 0.8, w: bw, h: bh, scale: s, input: input, primary: true) || input.escape || input.enter {
+            let panel = SettingsPanel(store: store, renderer: renderer, audio: audio, window: window, click: { [weak self] in self?.click() })
+            _ = panel.build(&ui, input: input, width: W, top: y, scale: s)
+            if ui.button("Done", x: cx - bw / 2, y: H - bh - 24 * s, w: bw, h: bh, scale: s, input: input, primary: true) || input.escape || input.enter {
                 click()
                 let name = cleanName(playerName)
                 store.update { $0.username = name }
                 playerName = name
                 focus = ""
-                page = .title
+                page = settingsReturn
             }
         }
         return nil
@@ -431,5 +521,426 @@ final class WinMenus {
             }
             self.joinLock.unlock()
         }.start()
+    }
+}
+
+// MARK: - Launcher and cosmetics
+
+extension WinMenus {
+    private var amber: SIMD4<Float> { SIMD4(1, 0.85, 0.55, 1) }
+    private var muted: SIMD4<Float> { SIMD4(0.8, 0.76, 0.9, 0.9) }
+
+    /// The pre-launcher: news about the newest build, the update button, cosmetics, settings and Play.
+    fileprivate func buildLauncher(_ ui: inout UIBuilder, input: MenuInput, width W: Float, height H: Float, scale s: Float, now: Double) -> Choice? {
+        let small = max(1, (2 * s).rounded())
+        let cx = W / 2
+        ui.rect(0, 0, W, H, SIMD4(0.02, 0.01, 0.05, 0.45))
+
+        // Title in the texture pack's colours
+        let big = max(1, (8 * s).rounded())
+        let pack = renderer.texturePack
+        func color(_ hex: UInt32) -> SIMD4<Float> {
+            SIMD4(Float((hex >> 16) & 0xFF) / 255, Float((hex >> 8) & 0xFF) / 255, Float(hex & 0xFF) / 255, 1)
+        }
+        let titleY = H * 0.07
+        ui.centeredText(pack.title, centerX: cx + big * 0.5, y: titleY + big, scale: big, color: color(pack.titleBottom))
+        ui.centeredText(pack.title, centerX: cx, y: titleY, scale: big, color: color(pack.titleTop))
+        ui.centeredText("LAUNCHER", centerX: cx, y: titleY + 10 * big, scale: small, color: muted)
+
+        // News panel
+        let panelX = max(20 * s, cx - 600 * s), panelY = H * 0.27
+        let panelW = min(640 * s, cx - panelX - 30 * s), panelH = H * 0.6
+        ui.rect(panelX, panelY, panelW, panelH, SIMD4(0.06, 0.04, 0.1, 0.88))
+        ui.rect(panelX, panelY, 5 * s, panelH, SIMD4(0.95, 0.6, 0.12, 1))
+        let maxChars = max(10, Int((panelW - 40 * s) / (6 * small)))
+        var ny = panelY + 18 * s
+        func line(_ text: String, _ c: SIMD4<Float>) {
+            guard ny < panelY + panelH - 20 * s else { return }
+            ui.text(text, x: panelX + 22 * s, y: ny, scale: small, color: c, shadow: false)
+            ny += 11 * small
+        }
+        let state = updater.state
+        if let release = updater.latestRelease, release.build > BuildInfo.current.build {
+            ui.text("New in the update", x: panelX + 22 * s, y: ny, scale: max(1, (3 * s).rounded()), color: amber)
+            ny += 16 * max(1, (3 * s).rounded()) / 2 + 12 * s
+            line("\(release.title)\(release.published.isEmpty ? "" : " - \(release.published)")", SIMD4(1, 1, 1, 1))
+            ny += 4 * s
+            for raw in release.notes.split(separator: "\n", omittingEmptySubsequences: false) {
+                let text = raw.trimmingCharacters(in: .whitespaces)
+                if text.isEmpty { ny += 5 * s; continue }
+                if text.hasPrefix("Co-Authored-By") || text.hasPrefix("Claude-Session") { continue }
+                for part in WinMenus.wrap(text.replacingOccurrences(of: "**", with: ""), width: maxChars) { line(part, muted) }
+            }
+        } else if !BuildInfo.whatsNew.isEmpty {
+            ui.text("What's new", x: panelX + 22 * s, y: ny, scale: max(1, (3 * s).rounded()), color: amber)
+            ny += 16 * max(1, (3 * s).rounded()) / 2 + 12 * s
+            for (i, raw) in BuildInfo.whatsNew.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
+                let text = raw.trimmingCharacters(in: .whitespaces)
+                if text.isEmpty { ny += 5 * s; continue }
+                let heading = i == 0 || !text.hasPrefix("-")
+                for part in WinMenus.wrap(text, width: maxChars) { line(part, heading ? SIMD4(1, 1, 1, 1) : muted) }
+            }
+        } else {
+            ui.text("Welcome, explorer!", x: panelX + 22 * s, y: ny, scale: max(1, (3 * s).rounded()), color: amber)
+            ny += 16 * max(1, (3 * s).rounded()) / 2 + 12 * s
+            let tips = [
+                "Press Play to pick a world or join a friend.",
+                "Cosmetics: choose a hat, outfit, cape or dino tail. Friends see it in multiplayer.",
+                "Settings: texture packs, shader packs, view distance and more.",
+                "The launcher checks for new versions each time it opens.",
+                "",
+                "In game: E inventory, T chat, / commands, F1 info, F2 screenshot.",
+            ]
+            for tip in tips { if tip.isEmpty { ny += 6 * s } else { for part in WinMenus.wrap(tip, width: maxChars) { line(part, muted) } } }
+        }
+
+        // Buttons
+        let bx = panelX + panelW + 30 * s, bw = min(420 * s, W - bx - 20 * s), bh = 50 * s, gap = 12 * s
+        var y = panelY
+        if ui.button("Play", x: bx, y: y, w: bw, h: bh + 10 * s, scale: s, input: input, primary: true) || input.enter {
+            click(); message = nil; page = .title
+        }
+        y += bh + 10 * s + gap
+
+        // Update button: what it says and does follows the updater.
+        var label = "Check for Updates", enabled = true, primary = false
+        var status = BuildInfo.current.displayName
+        var action: (() -> Void)? = { [updater] in updater.check() }
+        switch state {
+        case .idle:
+            break
+        case .checking:
+            label = "Checking for Updates..."; enabled = false; action = nil
+        case .upToDate(let release):
+            label = "Up to Date"
+            status = release.map { BuildInfo.current.isDevelopment ? "Newest release is build \($0.build)" : "You have the newest build (\($0.build))" }
+                ?? "No releases published yet"
+        case .available(let release, let canInstall):
+            if canInstall {
+                label = "Update to Build \(release.build)"; primary = true
+                action = { [updater] in updater.download() }
+                status = "A new version is ready to download"
+            } else {
+                label = "Build \(release.build) Available"; enabled = false; action = nil
+                status = BuildInfo.current.isDevelopment ? "This copy was built by hand, so it can't update itself"
+                    : "This release has no Windows download yet"
+            }
+        case .downloading(let release, let fraction):
+            label = "Downloading... \(Int(fraction * 100))%"; enabled = false; action = nil
+            status = "Build \(release.build)"
+            ui.rect(bx, y + bh + 2 * s, bw, 4 * s, SIMD4(0, 0, 0, 0.5))
+            ui.rect(bx, y + bh + 2 * s, bw * Float(fraction), 4 * s, SIMD4(0.95, 0.6, 0.12, 1))
+        case .downloaded(let release, let file):
+            label = "Restart to Update"; primary = true
+            status = "Build \(release.build) downloaded"
+            action = { [weak self] in
+                if let error = WinUpdater.install(zip: file) {
+                    self?.updateError = error
+                } else {
+                    self?.updateError = nil
+                    self?.quitForUpdate = true
+                }
+            }
+        case .failed(let reason):
+            label = "Try Again"
+            status = reason
+        }
+        if ui.button(label, x: bx, y: y, w: bw, h: bh, scale: s, input: input, enabled: enabled, primary: primary), let action {
+            click()
+            action()
+        }
+        y += bh + 8 * s
+        let statusText = updateError ?? status
+        for part in WinMenus.wrap(statusText, width: max(10, Int(bw / (6 * small)))).prefix(2) {
+            ui.text(part, x: bx, y: y, scale: small, color: updateError != nil ? SIMD4(1, 0.6, 0.5, 1) : muted, shadow: false)
+            y += 10 * small
+        }
+        y += gap
+        if ui.button("Cosmetics", x: bx, y: y, w: bw, h: bh, scale: s, input: input) { click(); page = .cosmetics }
+        y += bh + gap
+        if ui.button("Skin Creator", x: bx, y: y, w: bw, h: bh, scale: s, input: input) { click(); skinDraft = nil; page = .skin }
+        y += bh + gap
+        if ui.button("Settings", x: bx, y: y, w: bw, h: bh, scale: s, input: input) { click(); settingsReturn = .launcher; page = .settings }
+        y += bh + gap
+        if ui.button("Quit", x: bx, y: y, w: bw, h: bh, scale: s, input: input) || input.escape { return .quit }
+
+        ui.text("DinoCraft for Windows - \(BuildInfo.current.displayName)", x: 16 * s, y: H - 14 * s - 7 * small, scale: small, color: muted)
+        let folderW = 230 * s
+        if ui.button("Open Game Folder", x: W - folderW - 16 * s, y: H - 44 * s, w: folderW, h: 32 * s, scale: s, input: input) {
+            click()
+            openGameFolder()
+        }
+        // Your stats, under the news panel
+        let played = worlds.reduce(0) { $0 + $1.playTimeSeconds }
+        let hours = Int(played / 3600), minutes = Int(played / 60) % 60
+        ui.text("\(worlds.count) world\(worlds.count == 1 ? "" : "s") - \(hours)h \(minutes)m played - \(store.settings.username.isEmpty ? "no name yet" : store.settings.username)",
+                x: panelX, y: panelY + panelH + 10 * s, scale: small, color: muted)
+        if quitForUpdate { return .quit }
+        return nil
+    }
+
+    /// Choose a hat, outfit colours and something to wear on your back, with a spinning preview.
+    fileprivate func buildCosmetics(_ ui: inout UIBuilder, input: MenuInput, width W: Float, height H: Float, scale s: Float, now: Double) {
+        let small = max(1, (2 * s).rounded())
+        ui.rect(0, 0, W, H, SIMD4(0.02, 0.01, 0.05, 0.35))
+        let head = max(1, (4 * s).rounded())
+        ui.centeredText("Cosmetics", centerX: W / 2, y: H * 0.06, scale: head, color: amber)
+        ui.centeredText("Friends see your look in multiplayer, on Mac and Windows.", centerX: W / 2, y: H * 0.06 + 10 * head,
+                        scale: small, color: muted)
+
+        var look = PlayerLook(encoded: store.settings.cosmetics) ?? PlayerLook.defaultLook(for: store.settings.username)
+        let before = look
+
+        // Spinning preview on the left half of the screen
+        let spin = Float(now * 0.8)
+        CreatureModels.appendPlayer(&previewModels, name: store.settings.username, look: look.encoded,
+                                    at: SIMD3(-1.45, -1.0, -4.0), yaw: spin, pitch: 0, walk: Float(now * 4),
+                                    moving: 0.35, sneaking: false, swing: 0, hurt: 0)
+
+        // Options on the right
+        let colW = min(560 * s, W * 0.5), x = W - colW - 40 * s
+        let rowH = 42 * s, rowGap = 10 * s
+        var y = H * 0.22
+        func row(_ title: String, _ value: String, minus: () -> Void, plus: () -> Void) {
+            ui.rect(x, y, colW, rowH, SIMD4(0.08, 0.06, 0.12, 0.88))
+            ui.text(title, x: x + 12 * s, y: y + rowH / 2 - 3.5 * small, scale: small, color: SIMD4(1, 1, 1, 1))
+            let bw = 40 * s, valueW = min(230 * s, colW * 0.5)
+            let bx = x + colW - bw * 2 - valueW - 8 * s
+            if ui.button("<", x: bx, y: y + 4 * s, w: bw, h: rowH - 8 * s, scale: s, input: input) { click(); minus() }
+            ui.centeredText(value, centerX: bx + bw + valueW / 2, y: y + rowH / 2 - 3.5 * small, scale: small, color: amber)
+            if ui.button(">", x: bx + bw + valueW, y: y + 4 * s, w: bw, h: rowH - 8 * s, scale: s, input: input) { click(); plus() }
+            y += rowH + rowGap
+        }
+        func cycle(_ i: inout Int, _ count: Int, _ step: Int) { i = (i + step + count) % count }
+        let hats = PlayerLook.Hat.allCases, backs = PlayerLook.Back.allCases
+        var hat = hats.firstIndex(of: look.hat) ?? 0, back = backs.firstIndex(of: look.back) ?? 0
+        row("Hat", look.hat.displayName, minus: { cycle(&hat, hats.count, -1) }, plus: { cycle(&hat, hats.count, 1) })
+        row("Shirt", PlayerLook.shirtNames[look.shirt], minus: { cycle(&look.shirt, PlayerLook.shirtColors.count, -1) },
+            plus: { cycle(&look.shirt, PlayerLook.shirtColors.count, 1) })
+        row("Trousers", PlayerLook.pantsNames[look.pants], minus: { cycle(&look.pants, PlayerLook.pantsColors.count, -1) },
+            plus: { cycle(&look.pants, PlayerLook.pantsColors.count, 1) })
+        row("Skin", PlayerLook.skinNames[look.skin], minus: { cycle(&look.skin, PlayerLook.skinTones.count, -1) },
+            plus: { cycle(&look.skin, PlayerLook.skinTones.count, 1) })
+        row("On your back", look.back.displayName, minus: { cycle(&back, backs.count, -1) }, plus: { cycle(&back, backs.count, 1) })
+        row("Accent colour", PlayerLook.accentNames[look.accent], minus: { cycle(&look.accent, PlayerLook.accentColors.count, -1) },
+            plus: { cycle(&look.accent, PlayerLook.accentColors.count, 1) })
+        look.hat = hats[hat]
+        look.back = backs[back]
+
+        y += 8 * s
+        let half = (colW - 12 * s) / 2
+        if ui.button("Surprise Me", x: x, y: y, w: half, h: 46 * s, scale: s, input: input) {
+            click()
+            look.hat = hats.randomElement()!
+            look.back = backs.randomElement()!
+            look.shirt = Int.random(in: 0..<PlayerLook.shirtColors.count)
+            look.pants = Int.random(in: 0..<PlayerLook.pantsColors.count)
+            look.skin = Int.random(in: 0..<PlayerLook.skinTones.count)
+            look.accent = Int.random(in: 0..<PlayerLook.accentColors.count)
+        }
+        if ui.button("Reset", x: x + half + 12 * s, y: y, w: half, h: 46 * s, scale: s, input: input) {
+            click()
+            look = PlayerLook.defaultLook(for: store.settings.username)
+        }
+        if look != before { store.update { $0.cosmetics = look.encoded } }
+        if ui.button("Done", x: W / 2 - 200 * s, y: H - 46 * s - 24 * s, w: 400 * s, h: 46 * s, scale: s, input: input, primary: true) || input.escape {
+            click()
+            page = .launcher
+        }
+    }
+
+    /// Splits text at spaces into lines of at most `width` characters.
+    static func wrap(_ text: String, width: Int) -> [String] {
+        var lines: [String] = [], line = ""
+        for word in text.split(separator: " ") {
+            if !line.isEmpty && line.count + word.count + 1 > width {
+                lines.append(line)
+                line = ""
+            }
+            line += (line.isEmpty ? "" : " ") + String(word.prefix(width))
+        }
+        if !line.isEmpty { lines.append(line) }
+        return lines
+    }
+}
+
+// MARK: - Skin creator
+
+extension WinMenus {
+    /// Opens DinoCraft's data folder (worlds, screenshots, texture packs) in Explorer.
+    fileprivate func openGameFolder() {
+        #if os(Windows)
+        let explorer = Process()
+        explorer.executableURL = URL(fileURLWithPath: "C:\\Windows\\explorer.exe")
+        explorer.arguments = [GamePaths.root.withUnsafeFileSystemRepresentation { $0.map { String(cString: $0) } } ?? GamePaths.root.path]
+        try? explorer.run()
+        #else
+        Log.info("Game folder: \(GamePaths.root.path)", category: "App")
+        #endif
+    }
+
+    /// Paint your own face and shirt, pixel by pixel, with a live preview. Friends see it in multiplayer.
+    fileprivate func buildSkinCreator(_ ui: inout UIBuilder, input: MenuInput, width W: Float, height H: Float, scale s: Float, now: Double) {
+        let small = max(1, (2 * s).rounded())
+        let amber = SIMD4<Float>(1, 0.85, 0.55, 1), muted = SIMD4<Float>(0.8, 0.76, 0.9, 0.9)
+        ui.rect(0, 0, W, H, SIMD4(0.02, 0.01, 0.05, 0.45))
+        let head = max(1, (4 * s).rounded())
+        ui.centeredText("Skin Creator", centerX: W / 2, y: H * 0.04, scale: head, color: amber)
+        ui.centeredText("Left-click paints, right-click rubs out. Friends see your skin in multiplayer.", centerX: W / 2,
+                        y: H * 0.04 + 10 * head, scale: small, color: muted)
+
+        var look = skinDraft ?? PlayerLook(encoded: store.settings.cosmetics) ?? PlayerLook.defaultLook(for: store.settings.username)
+        if look.face.count != 64 { look.face = Array(repeating: 0, count: 64) }
+        if look.chest.count != 80 { look.chest = Array(repeating: 0, count: 80) }
+
+        // Preview, turning gently so the front stays in view
+        CreatureModels.appendPlayer(&previewModels, name: store.settings.username, look: look.encoded,
+                                    at: SIMD3(-1.9, -1.05, -4.0), yaw: .pi + Float(sin(now * 0.7)) * 0.6, pitch: 0,
+                                    walk: 0, moving: 0, sneaking: false, swing: 0, hurt: 0)
+
+        // Face / shirt tabs
+        let face = skinTab == 0
+        let cols = face ? PlayerLook.faceWidth : PlayerLook.chestWidth, rows = face ? PlayerLook.faceHeight : PlayerLook.chestHeight
+        let cell = min(34 * s, (H * 0.56) / Float(rows))
+        let canvasW = cell * Float(cols), canvasH = cell * Float(rows)
+        let canvasX = W * 0.36, canvasY = H * 0.24
+        let tabW = (canvasW - 8 * s) / 2
+        if ui.button("Face", x: canvasX, y: canvasY - 48 * s, w: tabW, h: 38 * s, scale: s, input: input, primary: face) { click(); skinTab = 0 }
+        if ui.button("Shirt", x: canvasX + tabW + 8 * s, y: canvasY - 48 * s, w: tabW, h: 38 * s, scale: s, input: input, primary: !face) { click(); skinTab = 1 }
+
+        // Canvas: unpainted cells show the model's own colour.
+        let base = PlayerAvatar.color(face ? PlayerLook.skinTones[look.skin] : PlayerLook.shirtColors[look.shirt])
+        func srgb(_ c: SIMD4<Float>) -> SIMD4<Float> { SIMD4(pow(c.x, 1 / 2.2), pow(c.y, 1 / 2.2), pow(c.z, 1 / 2.2), 1) }
+        func paintColor(_ i: UInt8) -> SIMD4<Float> { srgb(PlayerAvatar.color(PlayerLook.paintColors[Int(i)])) }
+        ui.rect(canvasX - 4 * s, canvasY - 4 * s, canvasW + 8 * s, canvasH + 8 * s, SIMD4(0.05, 0.03, 0.08, 1))
+        var pixels = face ? look.face : look.chest
+        for r in 0..<rows {
+            for c in 0..<cols {
+                let v = pixels[r * cols + c]
+                let x = canvasX + Float(c) * cell, y = canvasY + Float(r) * cell
+                ui.rect(x, y, cell, cell, v == 0 ? srgb(base) * SIMD4(0.8, 0.8, 0.8, 1) : paintColor(v))
+                ui.rect(x, y, cell, 1, SIMD4(0, 0, 0, 0.18))
+                ui.rect(x, y, 1, cell, SIMD4(0, 0, 0, 0.18))
+            }
+        }
+        if skinMirror { ui.rect(canvasX + canvasW / 2 - 1 * s, canvasY, 2 * s, canvasH, SIMD4(1, 0.85, 0.55, 0.35)) }
+        let inCanvas = input.mouse.x >= canvasX && input.mouse.x < canvasX + canvasW && input.mouse.y >= canvasY && input.mouse.y < canvasY + canvasH
+        if inCanvas && (input.leftDown || input.rightDown || input.clicked) {
+            let c = Int((input.mouse.x - canvasX) / cell), r = Int((input.mouse.y - canvasY) / cell)
+            let value: UInt8 = input.rightDown ? 0 : skinColor
+            if skinFill && input.clicked {
+                WinMenus.floodFill(&pixels, cols: cols, rows: rows, from: r * cols + c, to: value)
+                if skinMirror { WinMenus.floodFill(&pixels, cols: cols, rows: rows, from: r * cols + (cols - 1 - c), to: value) }
+            } else if !skinFill {
+                pixels[r * cols + c] = value
+                if skinMirror { pixels[r * cols + (cols - 1 - c)] = value }
+            }
+        }
+
+        // Palette
+        let swatch = 40 * s, px = canvasX + canvasW + 40 * s
+        var py = canvasY
+        ui.text("Colours", x: px, y: py - 16 * s, scale: small, color: muted)
+        for i in 0..<16 {
+            let x = px + Float(i % 4) * (swatch + 6 * s), y = py + Float(i / 4) * (swatch + 6 * s)
+            if UInt8(i) == skinColor { ui.rect(x - 3 * s, y - 3 * s, swatch + 6 * s, swatch + 6 * s, SIMD4(1, 0.85, 0.55, 1)) }
+            if i == 0 {
+                ui.rect(x, y, swatch, swatch, srgb(base))
+                ui.centeredText("x", centerX: x + swatch / 2, y: y + swatch / 2 - 3.5 * small, scale: small, color: SIMD4(0.2, 0.1, 0.1, 1))
+            } else {
+                ui.rect(x, y, swatch, swatch, paintColor(UInt8(i)))
+            }
+            if input.clicked && input.mouse.x >= x && input.mouse.x < x + swatch && input.mouse.y >= y && input.mouse.y < y + swatch {
+                click()
+                skinColor = UInt8(i)
+            }
+        }
+        py += 4 * (swatch + 6 * s) + 14 * s
+
+        // Tools
+        let tw = 150 * s, th = 38 * s
+        func tool(_ label: String, _ col: Int, primary: Bool = false) -> Bool {
+            ui.button(label, x: px + Float(col) * (tw + 8 * s), y: py, w: tw, h: th, scale: s, input: input, primary: primary)
+        }
+        if tool(skinFill ? "Fill" : "Brush", 0, primary: skinFill) { click(); skinFill.toggle() }
+        if tool(skinMirror ? "Mirror On" : "Mirror Off", 1, primary: skinMirror) { click(); skinMirror.toggle() }
+        py += th + 8 * s
+        let presets = face ? PlayerLook.facePresets : PlayerLook.chestPresets
+        let presetIndex = face ? skinFacePreset : skinChestPreset
+        if tool("Idea: \(presets[presetIndex].name)", 0) {
+            click()
+            pixels = PlayerLook.presetPixels(presets[presetIndex].pixels, count: cols * rows)
+            if face { skinFacePreset = (skinFacePreset + 1) % presets.count } else { skinChestPreset = (skinChestPreset + 1) % presets.count }
+        }
+        if tool("Clear", 1) { click(); pixels = Array(repeating: 0, count: cols * rows) }
+        py += th + 8 * s
+        if tool("Copy Code", 0) {
+            click()
+            skinMessage = SDL_SetClipboardText(look.shareCode) ? "Skin code copied - paste it to a friend!" : "Couldn't copy the code."
+        }
+        if tool("Paste Code", 1) {
+            click()
+            if let raw = SDL_GetClipboardText() {
+                let text = String(cString: raw)
+                SDL_free(raw)
+                if let pasted = PlayerLook(shareCode: text) {
+                    look = pasted
+                    if look.face.count != 64 { look.face = Array(repeating: 0, count: 64) }
+                    if look.chest.count != 80 { look.chest = Array(repeating: 0, count: 80) }
+                    pixels = face ? look.face : look.chest
+                    skinMessage = "Skin pasted!"
+                } else {
+                    skinMessage = "The clipboard doesn't hold a DinoCraft skin code."
+                }
+            }
+        }
+        py += th + 10 * s
+        if let skinMessage {
+            for line in WinMenus.wrap(skinMessage, width: max(10, Int((2 * tw + 8 * s) / (6 * small)))).prefix(2) {
+                ui.text(line, x: px, y: py, scale: small, color: muted)
+                py += 10 * small
+            }
+        }
+
+        if face { look.face = pixels } else { look.chest = pixels }
+        skinDraft = look
+
+        let bw = 250 * s, by = H - 46 * s - 22 * s
+        if ui.button("Save & Play", x: W / 2 - bw * 1.5 - 12 * s, y: by, w: bw, h: 46 * s, scale: s, input: input, primary: true) || input.enter {
+            click()
+            store.update { $0.cosmetics = look.encoded }
+            skinDraft = nil
+            skinMessage = nil
+            page = .title
+        }
+        if ui.button("Save & Back", x: W / 2 - bw / 2, y: by, w: bw, h: 46 * s, scale: s, input: input) || input.escape {
+            click()
+            store.update { $0.cosmetics = look.encoded }
+            skinDraft = nil
+            skinMessage = nil
+            page = .launcher
+        }
+        if ui.button("Cancel", x: W / 2 + bw / 2 + 12 * s, y: by, w: bw, h: 46 * s, scale: s, input: input) {
+            click()
+            skinDraft = nil
+            skinMessage = nil
+            page = .launcher
+        }
+    }
+
+    /// Fills the area of matching colour around `start`.
+    static func floodFill(_ pixels: inout [UInt8], cols: Int, rows: Int, from start: Int, to value: UInt8) {
+        let target = pixels[start]
+        guard target != value else { return }
+        var stack = [start]
+        while let i = stack.popLast() {
+            guard pixels[i] == target else { continue }
+            pixels[i] = value
+            let r = i / cols, c = i % cols
+            if c > 0 { stack.append(i - 1) }
+            if c < cols - 1 { stack.append(i + 1) }
+            if r > 0 { stack.append(i - cols) }
+            if r < rows - 1 { stack.append(i + cols) }
+        }
     }
 }

@@ -1,13 +1,12 @@
-import AppKit
-import CoreText
+import Foundation
 import Metal
 import simd
 import DinoCraftCore
 @testable import DinoCraftGame
 
 enum FontFace: Int {
-    case body = 0      // SF Pro Rounded Semibold
-    case display = 1   // SF Pro Rounded Heavy
+    case body = 0      // the 5×7 pixel font
+    case display = 1   // the pixel font in bold (each pixel doubled to the right)
 }
 
 struct Glyph {
@@ -19,11 +18,15 @@ struct Glyph {
     var advance: Float
 }
 
-/// Signed-distance-field glyph atlas rendered from the system rounded font at
-/// startup. SDF text stays crisp at every size and Retina scale from a single
-/// texture and supports cheap shadows and outlines in the shader.
+/// Signed-distance-field glyph atlas built at startup from DinoCraft's 5×7 pixel font
+/// (`PixelFont`, the same letters the Windows version draws). SDF text stays crisp at every
+/// size and Retina scale from a single texture and supports cheap shadows and outlines in the shader.
 final class FontAtlas {
-    static let sourceSize: CGFloat = 56
+    /// Atlas texels per font pixel.
+    static let texelsPerPixel = 8
+    /// Font pixels per em: 7-pixel capitals are 0.7 em tall, like the system font they replace.
+    static let pixelsPerEm = 10
+    static let sourceSize = Float(texelsPerPixel * pixelsPerEm)
     static let padding = 8
     static let spread: Float = 7
 
@@ -36,70 +39,54 @@ final class FontAtlas {
     static let characters: String = {
         var s = ""
         for v in 32...126 { s.unicodeScalars.append(UnicodeScalar(v)!) }
-        return s + "•…–—©×✓←→↑↓°·★♪♥●○’‘“”éèêáàüöäñ€£¥§¶±÷≈∞"
+        let extra = "•…–—©×✓✗←→↑↓°·★♪♥●○▸’‘“”éèêáàüöäñ€£±÷≈∞"
+        return s + String(extra.filter { PixelFont.hasGlyph($0) })
     }()
 
     enum FontError: Error { case atlasFull, textureFailed }
 
     init(device: MTLDevice) throws {
-        let t0 = CFAbsoluteTimeGetCurrent()
-        let width = 2048, height = 2048
+        let t0 = Date.timeIntervalSinceReferenceDate
+        let width = 2048, height = 1024
         var atlas = [UInt8](repeating: 0, count: width * height)
         var penX = 1, penY = 1, rowH = 0
+        let size = FontAtlas.sourceSize
+        let em = Float(FontAtlas.pixelsPerEm)
 
         for face in [FontFace.body, .display] {
-            let font = FontAtlas.makeFont(face)
-            let size = Float(FontAtlas.sourceSize)
-            ascent[face.rawValue] = Float(CTFontGetAscent(font)) / size
-            descent[face.rawValue] = Float(CTFontGetDescent(font)) / size
-            capHeight[face.rawValue] = Float(CTFontGetCapHeight(font)) / size
+            let bold = face == .display
+            // Line metrics match the system font this replaced, so every screen keeps its layout.
+            ascent[face.rawValue] = 9.5 / em
+            descent[face.rawValue] = 2.4 / em
+            capHeight[face.rawValue] = Float(PixelFont.height) / em
+            let advance = Float(PixelFont.advance + (bold ? 1 : 0)) / em
 
             for scalar in FontAtlas.characters.unicodeScalars {
-                var utf16 = Array(String(scalar).utf16)
-                var cgGlyphs = [CGGlyph](repeating: 0, count: utf16.count)
-                guard CTFontGetGlyphsForCharacters(font, &utf16, &cgGlyphs, utf16.count), cgGlyphs[0] != 0 else { continue }
-                var glyph = cgGlyphs[0]
-                var bbox = CGRect.zero
-                CTFontGetBoundingRectsForGlyphs(font, .default, &glyph, &bbox, 1)
-                var adv = CGSize.zero
-                CTFontGetAdvancesForGlyphs(font, .default, &glyph, &adv, 1)
-
-                let pad = FontAtlas.padding
-                let gw = max(1, Int(ceil(bbox.width))) + pad * 2
-                let gh = max(1, Int(ceil(bbox.height))) + pad * 2
-                if scalar == " " || bbox.isEmpty {
-                    glyphs[face.rawValue][scalar.value] = Glyph(uvMin: .zero, uvMax: .zero, offset: .zero, size: .zero,
-                                                                advance: Float(adv.width) / size)
+                let character = Character(scalar)
+                let rows = PixelFont.rows(for: character)
+                if scalar == " " || rows.allSatisfy({ $0 == 0 }) {
+                    glyphs[face.rawValue][scalar.value] = Glyph(uvMin: .zero, uvMax: .zero, offset: .zero, size: .zero, advance: advance)
                     continue
                 }
+                let cell = FontAtlas.rasterize(rows, bold: bold)
+                let gw = cell.width, gh = cell.height
                 if penX + gw + 1 > width { penX = 1; penY += rowH + 1; rowH = 0 }
                 guard penY + gh + 1 < height else { throw FontError.atlasFull }
 
-                // Rasterise coverage
-                var coverage = [UInt8](repeating: 0, count: gw * gh)
-                let drawn = coverage.withUnsafeMutableBytes { raw -> Bool in
-                    guard let ctx = CGContext(data: raw.baseAddress, width: gw, height: gh, bitsPerComponent: 8, bytesPerRow: gw,
-                                              space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return false }
-                    ctx.setFillColor(gray: 1, alpha: 1)
-                    ctx.setShouldAntialias(true)
-                    var position = CGPoint(x: CGFloat(pad) - bbox.minX, y: CGFloat(pad) - bbox.minY)
-                    CTFontDrawGlyphs(font, &glyph, &position, 1, ctx)
-                    return true
-                }
-                guard drawn else { continue }
-
-                let sdf = FontAtlas.signedDistance(coverage, w: gw, h: gh, spread: FontAtlas.spread)
+                let sdf = FontAtlas.signedDistance(cell.coverage, w: gw, h: gh, spread: FontAtlas.spread)
                 for y in 0..<gh {
                     for x in 0..<gw {
                         atlas[(penY + y) * width + penX + x] = sdf[y * gw + x]
                     }
                 }
+                let pad = Float(FontAtlas.padding)
                 let uvMin = SIMD2<Float>(Float(penX) / Float(width), Float(penY) / Float(height))
                 let uvMax = SIMD2<Float>(Float(penX + gw) / Float(width), Float(penY + gh) / Float(height))
-                let offset = SIMD2<Float>((Float(bbox.minX) - Float(pad)) / size, -(Float(bbox.maxY) + Float(pad)) / size)
+                // The glyph's bottom row sits on the baseline.
+                let top = Float(PixelFont.height * FontAtlas.texelsPerPixel)
+                let offset = SIMD2<Float>(-pad / size, -(top + pad) / size)
                 glyphs[face.rawValue][scalar.value] = Glyph(uvMin: uvMin, uvMax: uvMax, offset: offset,
-                                                            size: SIMD2(Float(gw) / size, Float(gh) / size),
-                                                            advance: Float(adv.width) / size)
+                                                            size: SIMD2(Float(gw) / size, Float(gh) / size), advance: advance)
                 penX += gw + 1
                 rowH = max(rowH, gh)
             }
@@ -110,18 +97,29 @@ final class FontAtlas {
         desc.usage = .shaderRead
         guard let tex = device.makeTexture(descriptor: desc) else { throw FontError.textureFailed }
         tex.replace(region: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0, withBytes: atlas, bytesPerRow: width)
-        tex.label = "SDF Font Atlas"
+        tex.label = "SDF Pixel Font Atlas"
         texture = tex
-        Log.info(String(format: "Font atlas built: %d + %d glyphs in %.0f ms", glyphs[0].count, glyphs[1].count, (CFAbsoluteTimeGetCurrent() - t0) * 1000), category: "UI")
+        Log.info(String(format: "Font atlas built: %d + %d glyphs in %.0f ms", glyphs[0].count, glyphs[1].count, (Date.timeIntervalSinceReferenceDate - t0) * 1000), category: "UI")
     }
 
-    static func makeFont(_ face: FontFace) -> CTFont {
-        let weight: NSFont.Weight = face == .display ? .heavy : .semibold
-        let base = NSFont.systemFont(ofSize: sourceSize, weight: weight)
-        if let rounded = base.fontDescriptor.withDesign(.rounded), let f = NSFont(descriptor: rounded, size: sourceSize) {
-            return f as CTFont
+    /// One glyph's coverage (0 or 255) with `padding` empty texels around it. Bold glyphs
+    /// repeat every pixel one to the right, so they are one font pixel wider.
+    static func rasterize(_ rows: [UInt8], bold: Bool) -> (coverage: [UInt8], width: Int, height: Int) {
+        let p = texelsPerPixel, pad = padding
+        let columns = PixelFont.width + (bold ? 1 : 0)
+        let w = columns * p + pad * 2, h = PixelFont.height * p + pad * 2
+        var coverage = [UInt8](repeating: 0, count: w * h)
+        for (row, bits) in rows.enumerated() {
+            for column in 0..<columns {
+                let on = { (c: Int) -> Bool in c >= 0 && c < PixelFont.width && bits & (UInt8(16) >> UInt8(c)) != 0 }
+                guard on(column) || (bold && on(column - 1)) else { continue }
+                for y in 0..<p {
+                    let base = (pad + row * p + y) * w + pad + column * p
+                    for x in 0..<p { coverage[base + x] = 255 }
+                }
+            }
         }
-        return base as CTFont
+        return (coverage, w, h)
     }
 
     func glyph(_ scalar: UInt32, _ face: FontFace) -> Glyph? {

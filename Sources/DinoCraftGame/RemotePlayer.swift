@@ -20,6 +20,8 @@ final class RemotePlayer {
     var sneaking = false
     var swing: Double = 0
     var held: String?
+    /// Their cosmetics (`PlayerLook.encoded`), or nil for the default look.
+    var look: String?
     var health: Double = 20
     var dead = false
     var hurtTimer: Double = 0
@@ -43,6 +45,7 @@ final class RemotePlayer {
         sneaking = s.sneaking
         if s.swinging { swing = 1 }
         held = s.held
+        if let l = s.look { look = l }
         health = Double(s.health)
         dead = s.dead
         lastUpdate = now

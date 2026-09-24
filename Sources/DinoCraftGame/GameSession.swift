@@ -1198,8 +1198,11 @@ final class GameSession {
                            moving: Float(player.onGround ? min(1, player.horizontalSpeed / 4.3) : 0),
                            sneaking: player.isSneaking, swinging: swingTimer >= 0,
                            held: inventory.selectedStack.flatMap { items[$0.item]?.name },
-                           health: Float(health), dead: isDead || spectator)
+                           health: Float(health), dead: isDead || spectator, look: playerLook.isEmpty ? nil : playerLook)
     }
+
+    /// This player's cosmetics (`PlayerLook.encoded`), sent to friends with every update.
+    var playerLook = ""
 
     /// Host: applies a block edit made by a connected player (even in unloaded chunks).
     func applyRemoteBlockChange(_ pos: BlockPos, _ id: BlockID, harvest: Bool) {

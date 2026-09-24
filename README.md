@@ -2,6 +2,16 @@
 
 An original prehistoric voxel sandbox built from scratch as a **native macOS app for Apple Silicon**. It uses Swift, AppKit, and Metal, with no Electron, no web views, and no engine middleware.
 
+## What's new
+
+The launcher update, for Mac and Windows (the full list is in `Resources/Data/whatsnew.txt`, which the launcher shows):
+
+- **Launcher** with Play, Update, Cosmetics, Skin Creator, Settings and Quit. The Update button downloads new versions and restarts into them.
+- **Skin Creator**: draw your own face and shirt, then Save & Play. Share skins with codes; friends see them in multiplayer.
+- **Cosmetics**: hats, outfit colours, capes, dino tails and backpacks. Press F5 in game to see yourself.
+- **Windows plays like the Mac**: the full survival game, texture and shader packs, particles, weather and settings.
+- **Looks**: the Mac uses the Windows pixel font, and every built-in texture pack keeps natural colours.
+
 ## Features
 
 - **Worlds.** Endless procedural terrain with biomes, rivers, caves, and ores (coal, iron, gold, diamond, amber, emerald). There are also two extra dimensions, the Underworld and the Amber Skylands, reached through gateways.
@@ -50,7 +60,7 @@ An original prehistoric voxel sandbox built from scratch as a **native macOS app
   - Host any world from the pause menu with **Open to LAN**, and friends join from **Multiplayer**.
   - Shared chests and furnaces, and dropped items, stay in sync.
   - Includes chat, name tags, and PvP.
-- **Packs.** Texture packs: the default **Dino** pack, the built-in **TunefulCraft** remix (which also rebrands the title), and your own packs. Shader packs: Vibrant, Cinematic, Retro, and Dreamy.
+- **Packs.** Texture packs: the default **Dino** pack, **TunefulCraft** (a bright remix that also rebrands the title), **Pastel Picnic**, **Retro Pixels** and **Autumn Woods**, plus your own packs. Every built-in pack keeps natural colours, so grass stays green and water stays blue (except autumn leaves). Shader packs: Vibrant, Cinematic, Retro, and Dreamy. Both work on Mac and Windows.
 - **Other.** Usernames, an FPS counter, rebindable controls, a debug profiler, Discord Rich Presence, and local saves.
 
 ## Requirements
@@ -58,7 +68,7 @@ An original prehistoric voxel sandbox built from scratch as a **native macOS app
 - macOS 14 or later on Apple Silicon (developed and tested on an M4)
 - Xcode Command Line Tools (`xcode-select --install`). Full Xcode is **not** required, because shaders are compiled at runtime by Metal.
 
-> **Windows:** DinoCraft is a native Mac game. Its renderer (Metal), windowing (AppKit), and audio (AVAudioEngine) are Apple frameworks, so there is no Windows build. `DinoCraftCore` (world generation, meshing, physics, inventory, crafting, saves) is platform-independent Swift and could back a future port.
+> **Windows:** there is also a Windows version (SDL3 + OpenGL 3.3), built by the Windows workflow in `.github/workflows/windows.yml`. Your own worlds run the same shared game as the Mac (`Sources/DinoCraftGame`): Survival, Hardcore and Creative, creatures, crafting, furnaces, chests, farming, bows, armor, beds, villagers, portals, weather, advancements and chat commands, with rain and snow, particles, textured dropped items, the item in your hand, texture packs and shader packs. Windows players can host worlds for Mac and Windows friends, and join games hosted on a Mac. Both versions draw their text with the same 5×7 pixel font (`Sources/DinoCraftCore/Util/PixelFont.swift`).
 
 ## Build and run
 
@@ -71,7 +81,7 @@ Options:
 
 ```bash
 Scripts/build_app.sh --test     # run the core self-test suite first
-Scripts/build_app.sh --assets   # regenerate textures (including TunefulCraft), sounds, music and icons first
+Scripts/build_app.sh --assets   # regenerate textures (including the built-in texture packs), sounds, music and icons first
 Scripts/build_app.sh --install  # also copy the app into /Applications, replacing any older copy
 ```
 
@@ -82,6 +92,24 @@ Development loop without packaging:
 ```bash
 swift build -c release --product DinoCraft && .build/release/DinoCraft
 ```
+
+## Launcher, updates and cosmetics
+
+DinoCraft opens on a **launcher** (Mac and Windows) with **Play**, **Update**, **Cosmetics**, **Skin Creator**, **Settings** and **Quit**, a "What's new" panel with the notes of the newest build, your stats (worlds and time played) and **Open Game Folder**.
+
+- **Updates.** The launcher checks the public **DinoCraft-Releases** repository. When a newer build is there, **Update to Build N** downloads it and **Restart to Update** swaps it in and reopens the game. Worlds and settings are kept. Copies you built yourself are "development builds" and never replace themselves.
+- **Skin Creator.** Paint your own face (8×8) and shirt front (8×10) with 16 colours: brush or fill, mirror painting, and ideas to start from (smile, sunglasses, dino, beard; stripes, heart, star, dino, tuxedo). **Copy Code** puts a `DINOSKIN:…` code on the clipboard for a friend to **Paste Code**. Friends see your skin in multiplayer, and **F5** in game lets you see yourself.
+- **Cosmetics.** Pick a hat (Explorer Hat, Cap, Crown, Top Hat, Dino Hood, Flower Crown or none), shirt, trousers and skin colours, and something for your back (Cape, Dino Tail or Backpack) with an accent colour. Friends see your look in multiplayer on both Mac and Windows. Older versions just see the default explorer.
+
+### Publishing updates (one-time setup)
+
+The game's code stays private; each build is published to a separate public repository that the launcher can read.
+
+1. On GitHub, create a **public** repository named `DinoCraft-Releases` under the same account (it can be empty).
+2. Create a token that can publish there: GitHub → Settings → Developer settings → **Fine-grained tokens** → Generate new token. Under *Repository access* choose *Only select repositories* → `DinoCraft-Releases`, and under *Permissions* set **Contents** to *Read and write*.
+3. In **this** repository: Settings → Secrets and variables → Actions → **New repository secret**, name `RELEASES_TOKEN`, paste the token.
+
+From then on every push to `main` builds Windows and Mac and publishes them as `build-N`. You can also publish from the Actions tab: run the **Windows** workflow with *Publish* ticked. Without the secret the workflow still builds and just skips publishing.
 
 ## Playing with a friend
 
@@ -102,7 +130,7 @@ If the router refuses, or your internet provider hides your public address (comm
 
 The router mapping is removed when you stop hosting or quit.
 
-> **Friends on Windows can't join yet.** DinoCraft is a native Mac app built on Apple-only technology (Metal, AppKit, AVAudioEngine), so there is no Windows version to install. A Windows port would need a new renderer, window layer and audio layer. `DinoCraftCore` (worlds, blocks, crafting, saves) and the network protocol (`Sources/DinoCraft/Network/NetProtocol.swift`) are platform-independent, so they could be reused.
+> **Friends on Windows** can join with the same invite code or address, using the Windows version (see Requirements).
 
 While playing:
    - **T** opens chat and **Tab** shows who's online.
@@ -161,7 +189,7 @@ Commands work in single-player and for the host of a multiplayer game. Friends w
 
 Open **Settings → Packs**.
 
-**Texture packs.** Built in are **Dino (Default)** and **TunefulCraft**, a neon remix of every block and item that also renames the game on the title screen. To add your own:
+**Texture packs.** Built in are **Dino (Default)**, **TunefulCraft** (saturated colours with equalizer stripes; it also renames the game on the title screen), **Pastel Picnic** (soft pastels), **Retro Pixels** (chunky 16-pixel look) and **Autumn Woods** (golden grass, red and orange leaves). They're made by `Tools/AssetForge/Packs.swift` from DinoCraft's own art. On Windows, choose a pack under Settings. To add your own:
 
 1. Click **Open Texture Packs Folder**, which opens `~/Library/Application Support/DinoCraft/texturepacks/`.
 2. Create a folder containing:
@@ -255,6 +283,7 @@ Other flags:
 | Hotbar | 1–9 or scroll |
 | Chat / player list (multiplayer) | T / Tab |
 | Advancements | L |
+| Camera: first person / behind / facing you | F5 |
 | Pause | Esc |
 | Debug overlay | F1 |
 | Screenshot | F2 |
@@ -321,16 +350,20 @@ Sources/DinoCraftCore      platform-independent engine logic (unit-tested)
 Sources/DinoCraft          the macOS application
   App/       AppKit lifecycle, window, crash handler, launch options
   Engine/    GameEngine (state machine & frame loop), JobSystem, Profiler, ScriptRunner
-  Renderer/  Metal renderer, chunk/sky/model/overlay/UI passes, SDF fonts,
+  Renderer/  Metal renderer, chunk/sky/model/overlay/UI passes, SDF pixel font,
              creature & player models, texture packs, shader-pack post-processing
-  World/     World: multithreaded chunk streaming (local or from a host), GPU meshes, saving
-  Game/      GameSession, entities, creatures & AI, villagers, containers, block variants
+  World/     Metal chunk meshes for the shared world
   Network/   framed TCP protocol, GameServer (host), GameClient, Bonjour LAN discovery
   UI/        immediate-mode widgets, menus, HUD, inventories, chests/furnaces, trading, multiplayer
   Audio/     AVAudioEngine effects, ambience loops and music
   Discord/   DiscordIPCClient + PresenceManager
 
-Tools/AssetForge           generates every texture (and the TunefulCraft pack), sound, music track and icon
+Sources/DinoCraftGame      the shared game both apps run: GameSession, world streaming, creatures,
+                           items, containers, crops, weather, advancements, chat commands
+Sources/DinoCraftWin       the Windows application: SDL3 window, input and audio, OpenGL renderer,
+                           menus, single-player on the shared game, hosting and joining
+
+Tools/AssetForge           generates every texture (and the built-in texture packs), sound, music track and icon
 Resources/                 data, shaders, texture packs, and the generated art and audio
 ```
 

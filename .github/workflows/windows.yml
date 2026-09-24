@@ -1,9 +1,18 @@
 name: Windows
 
+# Builds DinoCraft for Windows and Mac. On pushes to main (or when "publish" is ticked) both
+# downloads go to the public DinoCraft-Releases repository, where the launcher's update button finds them.
+# Publishing needs a RELEASES_TOKEN secret: a GitHub token that can create releases in that repository.
+
 on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish this build to DinoCraft-Releases
+        type: boolean
+        default: false
 
 jobs:
   build:
@@ -21,6 +30,14 @@ jobs:
 
       - name: Swift version
         run: swift --version
+
+      - name: Stamp build number
+        shell: pwsh
+        run: |
+          $commit = "${{ github.sha }}".Substring(0, 7)
+          $date = Get-Date -Format yyyy-MM-dd
+          "{`"build`": ${{ github.run_number }}, `"commit`": `"$commit`", `"date`": `"$date`"}" | Out-File Resources/Data/build.json -Encoding ascii
+          Get-Content Resources/Data/build.json
 
       - name: Build core self-test
         run: swift build -c release --product DinoCraftSelfTest
@@ -64,6 +81,7 @@ jobs:
           Copy-Item Resources/Data "$out/Resources/Data" -Recurse
           Copy-Item Resources/Textures/blocks "$out/Resources/Textures/blocks" -Recurse
           Copy-Item Resources/Textures/items "$out/Resources/Textures/items" -Recurse
+          Copy-Item Resources/TexturePacks "$out/Resources/TexturePacks" -Recurse
           Copy-Item Resources/Sounds "$out/Resources/Sounds" -Recurse
           Copy-Item Resources/Music "$out/Resources/Music" -Recurse
           Remove-Item "$out/Resources/Music/*.m4a" -ErrorAction SilentlyContinue
@@ -97,6 +115,16 @@ jobs:
           $p4 = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--screenshot `"$shot4`" --demo-screen worlds --hide-console" -PassThru -Wait -NoNewWindow
           Write-Host "World list check exit code: $($p4.ExitCode)"
           if (-not (Test-Path $shot4)) { throw "The game did not produce the world list screenshot" }
+          foreach ($screen in @("creative", "furnace", "pause", "settings")) {
+            $shotN = "$PWD/screenshot-$screen.png"
+            $pN = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--screenshot `"$shotN`" --frames 5 --render-distance 4 --seed dino --demo-entities --demo-screen $screen" -PassThru -Wait -NoNewWindow
+            Write-Host "$screen check exit code: $($pN.ExitCode)"
+            if (-not (Test-Path $shotN)) { throw "The game did not produce the $screen screenshot" }
+          }
+          $shotC = "$PWD/screenshot-create.png"
+          $pC = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--screenshot `"$shotC`" --demo-screen create --hide-console" -PassThru -Wait -NoNewWindow
+          Write-Host "Create world check exit code: $($pC.ExitCode)"
+          if (-not (Test-Path $shotC)) { throw "The game did not produce the create world screenshot" }
           Get-ChildItem smoke-home/logs -ErrorAction SilentlyContinue | ForEach-Object { Select-String -Path $_.FullName -Pattern "Audio|Music|error" | Select-Object -Last 20 }
 
       - name: Upload screenshot and logs
@@ -109,6 +137,11 @@ jobs:
             screenshot-inventory.png
             screenshot-menu.png
             screenshot-worlds.png
+            screenshot-creative.png
+            screenshot-furnace.png
+            screenshot-pause.png
+            screenshot-settings.png
+            screenshot-create.png
             smoke-home/logs/
           if-no-files-found: ignore
 
@@ -117,3 +150,84 @@ jobs:
         with:
           name: DinoCraft-Windows
           path: DinoCraft-Windows
+
+      - name: Zip for the launcher's updater
+        shell: pwsh
+        run: Compress-Archive -Path DinoCraft-Windows/* -DestinationPath DinoCraft-Windows.zip
+
+      - name: Upload Windows zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-zip
+          path: DinoCraft-Windows.zip
+
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Stamp build number
+        run: |
+          echo "{\"build\": ${{ github.run_number }}, \"commit\": \"${GITHUB_SHA::7}\", \"date\": \"$(date +%F)\"}" > Resources/Data/build.json
+          cat Resources/Data/build.json
+
+      - name: Build DinoCraft.app
+        run: zsh Scripts/build_app.sh
+
+      - name: Zip for the launcher's updater
+        run: ditto -c -k --keepParent dist/DinoCraft.app DinoCraft-Mac.zip
+
+      - name: Upload Mac zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-zip
+          path: DinoCraft-Mac.zip
+
+  release:
+    needs: [build, mac]
+    if: always() && needs.build.result == 'success' && (github.event_name == 'push' || inputs.publish)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Windows zip
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-zip
+          path: out
+
+      - name: Download Mac zip
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: mac-zip
+          path: out
+
+      - name: Publish to DinoCraft-Releases
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning::The RELEASES_TOKEN secret isn't set, so this build wasn't published."
+            exit 0
+          fi
+          {
+            echo "## Download"
+            echo ""
+            echo "- **Windows:** download **DinoCraft-Windows.zip**, right-click it and choose *Extract All*, then open **DinoCraft.exe**."
+            echo "- **Mac (Apple Silicon):** download **DinoCraft-Mac.zip**, double-click it, then right-click **DinoCraft.app** and choose *Open* the first time."
+            echo ""
+            echo "Already playing? The launcher's **Update** button installs this version for you."
+            echo ""
+            echo "## What's new"
+            echo ""
+            if [ -s Resources/Data/whatsnew.txt ]; then cat Resources/Data/whatsnew.txt; else git log -1 --pretty=%B; fi
+          } > notes.txt
+          ls -la out
+          gh release create "build-${{ github.run_number }}" out/*.zip \
+            --repo oneemailgotbannedndone-ai/DinoCraft-Releases \
+            --title "DinoCraft build ${{ github.run_number }}" \
+            --notes-file notes.txt

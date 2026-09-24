@@ -43,6 +43,16 @@ enum GLC {
     static let VENDOR: UInt32 = 0x1F00
     static let RENDERER: UInt32 = 0x1F01
     static let VERSION: UInt32 = 0x1F02
+    static let TEXTURE_2D: UInt32 = 0x0DE1
+    static let LINEAR: Int32 = 0x2601
+    static let CLAMP_TO_EDGE: Int32 = 0x812F
+    static let RGBA16F: Int32 = 0x881A
+    static let FRAMEBUFFER: UInt32 = 0x8D40
+    static let RENDERBUFFER: UInt32 = 0x8D41
+    static let COLOR_ATTACHMENT0: UInt32 = 0x8CE0
+    static let DEPTH_ATTACHMENT: UInt32 = 0x8D00
+    static let DEPTH_COMPONENT24: UInt32 = 0x81A6
+    static let FRAMEBUFFER_COMPLETE: UInt32 = 0x8CD5
 }
 
 enum GLError: Error, CustomStringConvertible {
@@ -97,6 +107,7 @@ final class GL {
     let uniform1f: @convention(c) (Int32, Float) -> Void
     let uniform1i: @convention(c) (Int32, Int32) -> Void
     let genTextures: @convention(c) (Int32, UnsafeMutablePointer<UInt32>?) -> Void
+    let deleteTextures: @convention(c) (Int32, UnsafeMutablePointer<UInt32>?) -> Void
     let bindTexture: @convention(c) (UInt32, UInt32) -> Void
     let activeTexture: @convention(c) (UInt32) -> Void
     let texImage3D: @convention(c) (UInt32, Int32, Int32, Int32, Int32, Int32, Int32, UInt32, UInt32, UnsafeRawPointer?) -> Void
@@ -107,6 +118,17 @@ final class GL {
     let readPixels: @convention(c) (Int32, Int32, Int32, Int32, UInt32, UInt32, UnsafeMutableRawPointer?) -> Void
     let pixelStorei: @convention(c) (UInt32, Int32) -> Void
     let getString: @convention(c) (UInt32) -> UnsafePointer<UInt8>?
+    let texImage2D: @convention(c) (UInt32, Int32, Int32, Int32, Int32, Int32, UInt32, UInt32, UnsafeRawPointer?) -> Void
+    let genFramebuffers: @convention(c) (Int32, UnsafeMutablePointer<UInt32>?) -> Void
+    let deleteFramebuffers: @convention(c) (Int32, UnsafeMutablePointer<UInt32>?) -> Void
+    let bindFramebuffer: @convention(c) (UInt32, UInt32) -> Void
+    let framebufferTexture2D: @convention(c) (UInt32, UInt32, UInt32, UInt32, Int32) -> Void
+    let checkFramebufferStatus: @convention(c) (UInt32) -> UInt32
+    let genRenderbuffers: @convention(c) (Int32, UnsafeMutablePointer<UInt32>?) -> Void
+    let deleteRenderbuffers: @convention(c) (Int32, UnsafeMutablePointer<UInt32>?) -> Void
+    let bindRenderbuffer: @convention(c) (UInt32, UInt32) -> Void
+    let renderbufferStorage: @convention(c) (UInt32, UInt32, Int32, Int32) -> Void
+    let framebufferRenderbuffer: @convention(c) (UInt32, UInt32, UInt32, UInt32) -> Void
 
     /// Requires a current OpenGL context.
     init() throws {
@@ -152,6 +174,7 @@ final class GL {
         uniform1f = try load("glUniform1f")
         uniform1i = try load("glUniform1i")
         genTextures = try load("glGenTextures")
+        deleteTextures = try load("glDeleteTextures")
         bindTexture = try load("glBindTexture")
         activeTexture = try load("glActiveTexture")
         texImage3D = try load("glTexImage3D")
@@ -162,6 +185,17 @@ final class GL {
         readPixels = try load("glReadPixels")
         pixelStorei = try load("glPixelStorei")
         getString = try load("glGetString")
+        texImage2D = try load("glTexImage2D")
+        genFramebuffers = try load("glGenFramebuffers")
+        deleteFramebuffers = try load("glDeleteFramebuffers")
+        bindFramebuffer = try load("glBindFramebuffer")
+        framebufferTexture2D = try load("glFramebufferTexture2D")
+        checkFramebufferStatus = try load("glCheckFramebufferStatus")
+        genRenderbuffers = try load("glGenRenderbuffers")
+        deleteRenderbuffers = try load("glDeleteRenderbuffers")
+        bindRenderbuffer = try load("glBindRenderbuffer")
+        renderbufferStorage = try load("glRenderbufferStorage")
+        framebufferRenderbuffer = try load("glFramebufferRenderbuffer")
     }
 
     // MARK: Helpers
@@ -187,6 +221,11 @@ final class GL {
         var id: UInt32 = 0
         genTextures(1, &id)
         return id
+    }
+
+    func deleteTexture(_ id: UInt32) {
+        var copy = id
+        deleteTextures(1, &copy)
     }
 
     func deleteBuffer(_ id: UInt32) {

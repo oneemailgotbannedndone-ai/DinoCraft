@@ -1,5 +1,6 @@
 import Foundation
 import DinoCraftCore
+@testable import DinoCraftGame
 
 struct WinCamera {
     var position = DVec3(0, 100, 0)
@@ -61,6 +62,46 @@ struct SkyState {
         s.skyLight = simd_mix(s.skyLight, SIMD3(1.0, 0.82, 0.68), SIMD3(repeating: sunset * 0.35))
         return s
     }
+
+    /// The sky for any dimension, dimmed and greyed by rain and storms in the overworld.
+    static func at(worldTime: Double, dimension: WorldDimension, weather: Float) -> SkyState {
+        switch dimension {
+        case .underworld:
+            var s = SkyState()
+            s.sunDirection = SIMD3(0, -1, 0)
+            s.daylight = 0.35
+            s.zenith = lin(0.12, 0.03, 0.02)
+            s.horizon = lin(0.32, 0.09, 0.04)
+            s.skyLight = SIMD3(1, 0.62, 0.45)
+            return s
+        case .skylands:
+            var s = SkyState.at(worldTime: 300)
+            s.zenith = lin(0.55, 0.62, 0.95)
+            s.horizon = lin(1.0, 0.86, 0.6)
+            s.skyLight = SIMD3(1, 0.95, 0.85)
+            return s
+        default:
+            var s = SkyState.at(worldTime: worldTime)
+            guard weather > 0 else { return s }
+            let grey = SIMD3<Float>(repeating: simd_dot(s.horizon, SIMD3(0.3, 0.55, 0.15)))
+            s.horizon = simd_mix(s.horizon, grey * 0.8, SIMD3(repeating: weather * 0.75))
+            s.zenith = simd_mix(s.zenith, grey * 0.6, SIMD3(repeating: weather * 0.75))
+            s.daylight *= 1 - weather * 0.35
+            s.sunsetGlow *= 1 - weather
+            s.stars *= 1 - weather
+            return s
+        }
+    }
+}
+
+/// Extra things drawn in the world, built by `EffectBuilder` (11 floats per vertex).
+struct WorldEffects {
+    /// Dropped items and other solid textured shapes, drawn with the creatures.
+    var solid: [Float] = []
+    /// Particles, rain and snow, blended over the world.
+    var blended: [Float] = []
+    /// The held item or arm, drawn last so it never goes inside walls.
+    var hand: [Float] = []
 }
 
 /// Draws the sky, the voxel world, players and creatures, and the 2D overlay with OpenGL 3.3.
@@ -90,11 +131,27 @@ final class WinRenderer {
     private let skyProgram: UInt32
     private let overlayProgram: UInt32
     private let modelProgram: UInt32
-    private let blockTexture: UInt32
-    private let itemTexture: UInt32
+    private let effectProgram: UInt32
+    private let postProgram: UInt32
+    /// Offscreen scene for shader packs: colour texture, depth buffer and framebuffer, sized to the window.
+    private var sceneTarget: (framebuffer: UInt32, color: UInt32, depth: UInt32, width: Int32, height: Int32)?
+    /// Shader pack: 0 off, 1 vibrant, 2 cinematic, 3 retro, 4 dreamy (the Mac's `ShaderPack` order).
+    var shaderPack = 0
+    var shaderStrength: Float = 1
+    private let effectVertexArray: UInt32
+    private let effectBuffer: UInt32
+    private var blockTexture: UInt32
+    private var itemTexture: UInt32
     /// Texture-array layer for each block and item texture name.
     let blockLayers: [String: UInt16]
     let itemLayers: [String: UInt16]
+    /// Average colour (linear) of each block and item texture layer, for dropped items.
+    private var blockLayerColors: [SIMD3<Float>]
+    private var itemLayerColors: [SIMD3<Float>]
+    private let blockNames: [String]
+    private let itemNames: [String]
+    /// The texture pack whose art is loaded ("dino" is DinoCraft's own).
+    private(set) var texturePack = TexturePackLibrary.defaultPack
     private let quadIndices: UInt32
     private let maxQuads = 1 << 18
     private let emptyVertexArray: UInt32
@@ -103,8 +160,10 @@ final class WinRenderer {
     private let modelVertexArray: UInt32
     private let modelBuffer: UInt32
     private(set) var visibleChunks = 0
+    /// The Brightness setting (0 moody … 1 bright), used by the chunk shader.
+    var brightness: Float = 0.5
 
-    init(gl: GL, blocks: BlockRegistry, items: ItemRegistry) throws {
+    init(gl: GL, blocks: BlockRegistry, items: ItemRegistry, pack: TexturePack = TexturePackLibrary.defaultPack) throws {
         self.gl = gl
         chunkPrograms = try ["OPAQUE", "CUTOUT", "TRANSLUCENT"].map { pass in
             ChunkProgram(gl: gl, id: try gl.makeProgram(vertex: Shaders.chunkVertex, fragment: Shaders.chunkFragment(pass: pass), label: "chunk \(pass)"))
@@ -112,15 +171,22 @@ final class WinRenderer {
         skyProgram = try gl.makeProgram(vertex: Shaders.skyVertex, fragment: Shaders.skyFragment, label: "sky")
         overlayProgram = try gl.makeProgram(vertex: Shaders.overlayVertex, fragment: Shaders.overlayFragment, label: "overlay")
         modelProgram = try gl.makeProgram(vertex: Shaders.boxVertex, fragment: Shaders.boxFragment, label: "models")
+        effectProgram = try gl.makeProgram(vertex: Shaders.effectVertex, fragment: Shaders.effectFragment, label: "effects")
+        postProgram = try gl.makeProgram(vertex: Shaders.postVertex, fragment: Shaders.postFragment, label: "shader pack")
 
-        let blockArray = WinRenderer.loadTextureArray(gl: gl, names: blocks.textureNames, folders: ["blocks"])
+        blockNames = blocks.textureNames
+        itemNames = items.textureNames
+        texturePack = pack
+        let blockArray = WinRenderer.loadTextureArray(gl: gl, names: blocks.textureNames, folders: ["blocks"], pack: pack)
         blockTexture = blockArray.texture
         blockLayers = blockArray.layers
+        blockLayerColors = blockArray.colors
         let layers = blockArray.layers
         blocks.bindTextureLayers { layers[$0] ?? 0 }
-        let itemArray = WinRenderer.loadTextureArray(gl: gl, names: items.textureNames, folders: ["items", "blocks"])
+        let itemArray = WinRenderer.loadTextureArray(gl: gl, names: items.textureNames, folders: ["items", "blocks"], pack: pack)
         itemTexture = itemArray.texture
         itemLayers = itemArray.layers
+        itemLayerColors = itemArray.colors
         gl.activeTexture(GLC.TEXTURE0)
 
         // Shared quad index buffer: (0,1,2)(0,2,3) per quad.
@@ -157,21 +223,51 @@ final class WinRenderer {
         gl.vertexAttribPointer(2, 1, GLC.FLOAT, 0, 28, UnsafeRawPointer(bitPattern: 24))
         for i: UInt32 in 0..<3 { gl.enableVertexAttribArray(i) }
         gl.bindVertexArray(0)
+
+        effectVertexArray = gl.makeVertexArray()
+        effectBuffer = gl.makeBuffer()
+        gl.bindVertexArray(effectVertexArray)
+        gl.bindBuffer(GLC.ARRAY_BUFFER, effectBuffer)
+        let stride = Int32(EffectBuilder.floatsPerVertex * 4)
+        gl.vertexAttribPointer(0, 3, GLC.FLOAT, 0, stride, nil)
+        gl.vertexAttribPointer(1, 2, GLC.FLOAT, 0, stride, UnsafeRawPointer(bitPattern: 12))
+        gl.vertexAttribPointer(2, 1, GLC.FLOAT, 0, stride, UnsafeRawPointer(bitPattern: 20))
+        gl.vertexAttribPointer(3, 4, GLC.FLOAT, 0, stride, UnsafeRawPointer(bitPattern: 24))
+        gl.vertexAttribPointer(4, 1, GLC.FLOAT, 0, stride, UnsafeRawPointer(bitPattern: 40))
+        for i: UInt32 in 0..<5 { gl.enableVertexAttribArray(i) }
+        gl.bindVertexArray(0)
     }
 
     /// Loads 32×32 PNGs into an sRGB texture array (premultiplied alpha), trying each folder in order.
-    private static func loadTextureArray(gl: GL, names rawNames: [String], folders: [String]) -> (texture: UInt32, layers: [String: UInt16]) {
+    /// Switches to another texture pack's art. Layers keep their numbers, so chunk meshes stay valid.
+    func applyTexturePack(_ pack: TexturePack) {
+        guard pack.id != texturePack.id else { return }
+        let blockArray = WinRenderer.loadTextureArray(gl: gl, names: blockNames, folders: ["blocks"], pack: pack)
+        let itemArray = WinRenderer.loadTextureArray(gl: gl, names: itemNames, folders: ["items", "blocks"], pack: pack)
+        gl.deleteTexture(blockTexture)
+        gl.deleteTexture(itemTexture)
+        blockTexture = blockArray.texture
+        blockLayerColors = blockArray.colors
+        itemTexture = itemArray.texture
+        itemLayerColors = itemArray.colors
+        texturePack = pack
+        Log.info("Texture pack '\(pack.name)' active", category: "Renderer")
+    }
+
+    private static func loadTextureArray(gl: GL, names rawNames: [String], folders: [String], pack: TexturePack)
+        -> (texture: UInt32, layers: [String: UInt16], colors: [SIMD3<Float>]) {
         var seen = Set<String>()
         let names = rawNames.filter { seen.insert($0).inserted }
         let size = 32
         var pixels = [UInt8](repeating: 0, count: size * size * 4 * max(1, names.count))
         var layers: [String: UInt16] = [:]
+        var colors: [SIMD3<Float>] = []
         var missing = 0
         for (i, name) in names.enumerated() {
             layers[name] = UInt16(i)
             var rgba: [UInt8]?
             for folder in folders where rgba == nil {
-                if let url = try? ResourceLocator.url("Textures/\(folder)/\(name).png"),
+                if let url = pack.url(folder, name),
                    let image = try? PNG.decode(Data(contentsOf: url)), image.width == size, image.height == size {
                     rgba = image.rgba
                 }
@@ -186,6 +282,12 @@ final class WinRenderer {
             }
             let source = rgba!
             let base = i * size * size * 4
+            var sum = SIMD3<Float>(0, 0, 0), weight: Float = 0
+            for p in 0..<(size * size) where source[p * 4 + 3] > 127 {
+                sum += SIMD3(pow(Float(source[p * 4]) / 255, 2.2), pow(Float(source[p * 4 + 1]) / 255, 2.2), pow(Float(source[p * 4 + 2]) / 255, 2.2))
+                weight += 1
+            }
+            colors.append(weight > 0 ? sum / weight : SIMD3(0.5, 0.5, 0.5))
             for p in 0..<(size * size) {
                 let a = UInt16(source[p * 4 + 3])
                 pixels[base + p * 4] = UInt8(UInt16(source[p * 4]) * a / 255)
@@ -208,7 +310,34 @@ final class WinRenderer {
         gl.texParameteri(GLC.TEXTURE_2D_ARRAY, GLC.TEXTURE_WRAP_S, GLC.REPEAT)
         gl.texParameteri(GLC.TEXTURE_2D_ARRAY, GLC.TEXTURE_WRAP_T, GLC.REPEAT)
         Log.info("Loaded \(names.count) textures from \(folders.first ?? "?")", category: "Renderer")
-        return (texture, layers)
+        return (texture, layers, colors)
+    }
+
+    /// The overlay layer for an item's icon (see `UIBuilder.icon`), or -1 when it has none.
+    func iconLayer(_ item: ItemID, items: ItemRegistry, blocks: BlockRegistry) -> Float {
+        guard let info = items[item] else { return -1 }
+        if let texture = info.texture {
+            if let layer = itemLayers[texture] { return UIBuilder.itemLayerOffset + Float(layer) }
+            if let layer = blockLayers[texture] { return Float(layer) }
+        }
+        if let block = info.block { return Float(blocks.faceLayers[Int(block) * 6 + BlockFace.south.rawValue]) }
+        return -1
+    }
+
+    /// The average colour of an item's icon, for drawing it as a small model.
+    func itemColor(_ item: ItemID, items: ItemRegistry, blocks: BlockRegistry) -> SIMD4<Float> {
+        let layer = iconLayer(item, items: items, blocks: blocks)
+        let color: SIMD3<Float>
+        if layer >= UIBuilder.itemLayerOffset {
+            let i = Int(layer - UIBuilder.itemLayerOffset)
+            color = i < itemLayerColors.count ? itemLayerColors[i] : SIMD3(0.5, 0.5, 0.5)
+        } else if layer >= 0 {
+            let i = Int(layer)
+            color = i < blockLayerColors.count ? blockLayerColors[i] : SIMD3(0.5, 0.5, 0.5)
+        } else {
+            color = SIMD3(0.5, 0.5, 0.5)
+        }
+        return SIMD4(color, 1)
     }
 
     // MARK: Chunk meshes
@@ -274,7 +403,7 @@ final class WinRenderer {
     }
 
     /// Menu background: a slowly turning evening sky with drifting clouds, plus the menu UI.
-    func renderMenu(width: Int32, height: Int32, time: Double, ui: [Float]) {
+    func renderMenu(width: Int32, height: Int32, time: Double, ui: [Float], models: [Float] = []) {
         gl.viewport(0, 0, width, height)
         gl.enable(GLC.FRAMEBUFFER_SRGB)
         gl.depthMask(1)
@@ -285,16 +414,27 @@ final class WinRenderer {
         camera.yaw = time * 0.02
         camera.pitch = 0.18
         let aspect = Float(width) / Float(max(1, height))
-        drawSky(camera: camera, aspect: aspect, sky: SkyState.at(worldTime: 520 + time * 0.5), time: Float(time.truncatingRemainder(dividingBy: 3600)))
+        let sky = SkyState.at(worldTime: 520 + time * 0.5)
+        drawSky(camera: camera, aspect: aspect, sky: sky, time: Float(time.truncatingRemainder(dividingBy: 3600)))
+        if !models.isEmpty {
+            // Models in front of a fixed camera looking down -Z (for the cosmetics preview).
+            gl.enable(GLC.DEPTH_TEST)
+            gl.depthFunc(GLC.LESS)
+            gl.clear(GLC.DEPTH_BUFFER_BIT)
+            var lit = sky
+            lit.daylight = 1
+            drawModels(models, viewProj: WinCamera().viewProjection(aspect: aspect), sky: lit, fogEnd: 1000)
+        }
         drawOverlay(width: width, height: height, vertices: ui)
         gl.bindVertexArray(0)
     }
 
-    func render(world: WinWorld, camera: WinCamera, sky: SkyState, time: Double, now: Double,
-                width: Int32, height: Int32, ui: [Float], models: [Float] = []) {
+    func render(world: World, camera: WinCamera, sky: SkyState, time: Double, now: Double,
+                width: Int32, height: Int32, ui: [Float], models: [Float] = [], effects: WorldEffects = WorldEffects()) {
         let aspect = Float(width) / Float(max(1, height))
         let viewProj = camera.viewProjection(aspect: aspect)
         let t = Float(time.truncatingRemainder(dividingBy: 3600))
+        let post = shaderPack > 0 && bindSceneTarget(width: width, height: height)
 
         gl.viewport(0, 0, width, height)
         gl.enable(GLC.FRAMEBUFFER_SRGB)
@@ -310,7 +450,7 @@ final class WinRenderer {
         let maxDist = Double((world.renderDistance + 1) * 16)
         var visible: [(mesh: GPUMesh, ox: Float, oy: Float, oz: Float, fade: Float, d2: Double, pos: ChunkPos)] = []
         for (pos, slot) in world.slots {
-            guard let mesh = slot.mesh else { continue }
+            guard let mesh = slot.mesh as? GPUMesh else { continue }
             let ox = Double(pos.originX) - camera.position.x
             let oz = Double(pos.originZ) - camera.position.z
             let oy = -camera.position.y
@@ -328,7 +468,10 @@ final class WinRenderer {
         gl.depthFunc(GLC.LESS)
         let fogEnd = Float(world.renderDistance * 16) - 6
         for (pass, program) in chunkPrograms.enumerated() {
-            if pass == 2 && !models.isEmpty { drawModels(models, viewProj: viewProj, sky: sky, fogEnd: fogEnd) }
+            if pass == 2 {
+                if !models.isEmpty { drawModels(models, viewProj: viewProj, sky: sky, fogEnd: fogEnd) }
+                if !effects.solid.isEmpty { drawEffects(effects.solid, viewProj: viewProj, sky: sky, fogEnd: fogEnd, blended: false) }
+            }
             gl.useProgram(program.id)
             gl.setMatrix(program.viewProj, viewProj)
             gl.uniform1f(program.time, t)
@@ -338,7 +481,7 @@ final class WinRenderer {
             gl.uniform4f(program.fogColorStart, sky.horizon.x, sky.horizon.y, sky.horizon.z, fogEnd * 0.55)
             gl.uniform2f(program.fogParams, fogEnd, 0)
             gl.uniform3f(program.skyHorizon, sky.horizon.x, sky.horizon.y, sky.horizon.z)
-            gl.uniform1f(program.brightness, 0.5)
+            gl.uniform1f(program.brightness, brightness)
             gl.activeTexture(GLC.TEXTURE0)
             gl.bindTexture(GLC.TEXTURE_2D_ARRAY, blockTexture)
 
@@ -368,6 +511,12 @@ final class WinRenderer {
                 gl.disable(GLC.BLEND)
             }
         }
+        if !effects.blended.isEmpty { drawEffects(effects.blended, viewProj: viewProj, sky: sky, fogEnd: fogEnd, blended: true) }
+        if !effects.hand.isEmpty {
+            gl.clear(GLC.DEPTH_BUFFER_BIT)
+            drawEffects(effects.hand, viewProj: viewProj, sky: sky, fogEnd: 10_000, blended: false)
+        }
+        if post { drawShaderPack(width: width, height: height, time: t) }
 
         drawOverlay(width: width, height: height, vertices: ui)
         gl.bindVertexArray(0)
@@ -384,6 +533,99 @@ final class WinRenderer {
         gl.bindBuffer(GLC.ARRAY_BUFFER, modelBuffer)
         v.withUnsafeBytes { gl.bufferData(GLC.ARRAY_BUFFER, $0.count, $0.baseAddress, GLC.DYNAMIC_DRAW) }
         gl.drawArrays(GLC.TRIANGLES, 0, Int32(v.count / 7))
+    }
+
+    private func drawEffects(_ v: [Float], viewProj: Mat4, sky: SkyState, fogEnd: Float, blended: Bool) {
+        gl.useProgram(effectProgram)
+        gl.setMatrix(gl.uniform(effectProgram, "uViewProj"), viewProj)
+        gl.uniform4f(gl.uniform(effectProgram, "uFogColorStart"), sky.horizon.x, sky.horizon.y, sky.horizon.z, fogEnd * 0.55)
+        gl.uniform1f(gl.uniform(effectProgram, "uFogEnd"), fogEnd)
+        gl.uniform1f(gl.uniform(effectProgram, "uDaylight"), sky.daylight)
+        gl.uniform1i(gl.uniform(effectProgram, "uBlocks"), 0)
+        gl.uniform1i(gl.uniform(effectProgram, "uItems"), 1)
+        gl.activeTexture(GLC.TEXTURE0)
+        gl.bindTexture(GLC.TEXTURE_2D_ARRAY, blockTexture)
+        gl.activeTexture(GLC.TEXTURE0 + 1)
+        gl.bindTexture(GLC.TEXTURE_2D_ARRAY, itemTexture)
+        gl.activeTexture(GLC.TEXTURE0)
+        if blended {
+            gl.enable(GLC.BLEND)
+            gl.blendFunc(GLC.ONE, GLC.ONE_MINUS_SRC_ALPHA)
+            gl.depthMask(0)
+        }
+        gl.bindVertexArray(effectVertexArray)
+        gl.bindBuffer(GLC.ARRAY_BUFFER, effectBuffer)
+        v.withUnsafeBytes { gl.bufferData(GLC.ARRAY_BUFFER, $0.count, $0.baseAddress, GLC.DYNAMIC_DRAW) }
+        gl.drawArrays(GLC.TRIANGLES, 0, Int32(v.count / EffectBuilder.floatsPerVertex))
+        if blended {
+            gl.depthMask(1)
+            gl.disable(GLC.BLEND)
+        }
+    }
+
+    /// Points drawing at the offscreen scene (made or resized as needed). Returns false if the driver can't.
+    private func bindSceneTarget(width: Int32, height: Int32) -> Bool {
+        if let target = sceneTarget, target.width == width, target.height == height {
+            gl.bindFramebuffer(GLC.FRAMEBUFFER, target.framebuffer)
+            return true
+        }
+        if let old = sceneTarget {
+            var fb = old.framebuffer, depth = old.depth
+            gl.deleteFramebuffers(1, &fb)
+            gl.deleteRenderbuffers(1, &depth)
+            gl.deleteTexture(old.color)
+            sceneTarget = nil
+        }
+        let color = gl.makeTexture()
+        gl.activeTexture(GLC.TEXTURE0)
+        gl.bindTexture(GLC.TEXTURE_2D, color)
+        gl.texImage2D(GLC.TEXTURE_2D, 0, GLC.RGBA16F, width, height, 0, GLC.RGBA, GLC.FLOAT, nil)
+        gl.texParameteri(GLC.TEXTURE_2D, GLC.TEXTURE_MIN_FILTER, GLC.LINEAR)
+        gl.texParameteri(GLC.TEXTURE_2D, GLC.TEXTURE_MAG_FILTER, GLC.LINEAR)
+        gl.texParameteri(GLC.TEXTURE_2D, GLC.TEXTURE_WRAP_S, GLC.CLAMP_TO_EDGE)
+        gl.texParameteri(GLC.TEXTURE_2D, GLC.TEXTURE_WRAP_T, GLC.CLAMP_TO_EDGE)
+        var depth: UInt32 = 0
+        gl.genRenderbuffers(1, &depth)
+        gl.bindRenderbuffer(GLC.RENDERBUFFER, depth)
+        gl.renderbufferStorage(GLC.RENDERBUFFER, GLC.DEPTH_COMPONENT24, width, height)
+        var framebuffer: UInt32 = 0
+        gl.genFramebuffers(1, &framebuffer)
+        gl.bindFramebuffer(GLC.FRAMEBUFFER, framebuffer)
+        gl.framebufferTexture2D(GLC.FRAMEBUFFER, GLC.COLOR_ATTACHMENT0, GLC.TEXTURE_2D, color, 0)
+        gl.framebufferRenderbuffer(GLC.FRAMEBUFFER, GLC.DEPTH_ATTACHMENT, GLC.RENDERBUFFER, depth)
+        guard gl.checkFramebufferStatus(GLC.FRAMEBUFFER) == GLC.FRAMEBUFFER_COMPLETE else {
+            Log.warning("Shader packs aren't available on this graphics driver", category: "Renderer")
+            gl.bindFramebuffer(GLC.FRAMEBUFFER, 0)
+            gl.deleteFramebuffers(1, &framebuffer)
+            gl.deleteRenderbuffers(1, &depth)
+            gl.deleteTexture(color)
+            shaderPack = 0
+            return false
+        }
+        sceneTarget = (framebuffer, color, depth, width, height)
+        return true
+    }
+
+    /// Draws the offscreen scene to the window through the chosen shader pack.
+    private func drawShaderPack(width: Int32, height: Int32, time: Float) {
+        guard let target = sceneTarget else { return }
+        gl.bindFramebuffer(GLC.FRAMEBUFFER, 0)
+        gl.viewport(0, 0, width, height)
+        gl.disable(GLC.DEPTH_TEST)
+        gl.disable(GLC.BLEND)
+        gl.useProgram(postProgram)
+        gl.activeTexture(GLC.TEXTURE0)
+        gl.bindTexture(GLC.TEXTURE_2D, target.color)
+        gl.uniform1i(gl.uniform(postProgram, "uScene"), 0)
+        gl.uniform4f(gl.uniform(postProgram, "uParams"), Float(shaderPack), time, Float(width), Float(height))
+        gl.uniform1f(gl.uniform(postProgram, "uStrength"), shaderStrength)
+        gl.bindVertexArray(emptyVertexArray)
+        gl.drawArrays(GLC.TRIANGLES, 0, 3)
+    }
+
+    /// The linear colour of a block texture layer (for untextured stand-ins).
+    func blockLayerColor(_ layer: Int) -> SIMD3<Float> {
+        layer >= 0 && layer < blockLayerColors.count ? blockLayerColors[layer] : SIMD3(0.5, 0.5, 0.5)
     }
 
     private func drawOverlay(width: Int32, height: Int32, vertices v: [Float]) {
