@@ -249,6 +249,7 @@
     {"id": 246, "name": "toon_log", "displayName": "Toon Log", "textures": {"top": "toon_log_top", "bottom": "toon_log_top", "side": "toon_log_side"}, "hardness": 2.0, "tool": "axe", "sound": "wood"},
     {"id": 247, "name": "toon_leaves", "displayName": "Puffball Leaves", "layer": "cutout", "opaque": false, "lightFilter": 1, "hardness": 0.2, "sound": "leaves", "waving": true, "drops": [{"item": "stick", "chance": 0.08}]},
     {"id": 248, "name": "checker_block", "displayName": "Checker Block", "hardness": 1.5, "tool": "pickaxe", "sound": "stone"},
-    {"id": 249, "name": "toonland_portal", "displayName": "Toonland Gateway", "layer": "translucent", "solid": false, "opaque": false, "emission": 11, "lightFilter": 0, "hardness": -1, "hasItem": false, "sound": "glass", "drops": []}
+    {"id": 249, "name": "toonland_portal", "displayName": "Toonland Gateway", "layer": "translucent", "solid": false, "opaque": false, "emission": 11, "lightFilter": 0, "hardness": -1, "hasItem": false, "sound": "glass", "drops": []},
+    {"id": 250, "name": "deep_slate", "displayName": "Deep Slate", "hardness": 3.0, "tool": "pickaxe", "toolLevel": 1, "sound": "stone"}
   ]
 }

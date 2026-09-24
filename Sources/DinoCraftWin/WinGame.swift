@@ -108,7 +108,7 @@ final class WinGame {
         let inventory = Inventory(registry: items)
         let welcome = network.welcome
         let creative = welcome.gameMode == "creative"
-        let generator = WorldDimension.overworld.makeGenerator(seed: UInt64(welcome.seed) ?? 0)
+        let generator = WorldDimension.overworld.makeGenerator(seed: UInt64(welcome.seed) ?? 0, deep: welcome.deep == true)
         let world = World(registry: blocks, generator: generator, storage: nil, worldID: nil,
                           meshFactory: GLChunkMeshFactory(renderer: renderer), jobs: jobs, renderDistance: options.renderDistance ?? 8)
         world.remoteRequest = { network.requestChunks($0) }
@@ -847,7 +847,7 @@ extension WinGame {
     private func updateAmbience(dt: Double) {
         guard let audio, options.screenshotPath == nil else { return }
         let night = SkyState.at(worldTime: worldTime).daylight < 0.45
-        let underground = player.position.y < 48
+        let underground = player.position.y < Double(world.generator.seaLevel - 14)
         let surface = !underground && !player.headInWater
         audio.setLoop("amb_underwater", volume: player.headInWater ? 0.8 : 0)
         audio.setLoop("amb_cave", volume: underground && !player.headInWater ? 0.7 : 0)

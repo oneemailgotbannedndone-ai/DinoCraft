@@ -9,6 +9,7 @@
     { "id": "iron_pick", "category": "Story", "title": "Isn't It Iron Pick", "description": "Craft an Iron Pickaxe", "icon": "iron_pickaxe", "type": "craft", "target": "iron_pickaxe" },
     { "id": "diamonds", "category": "Story", "title": "Diamonds!", "description": "Pick up a diamond", "icon": "diamond", "type": "pickup", "target": "diamond" },
     { "id": "deep_down", "category": "Story", "title": "Deep Down", "description": "Dig below Y 12", "icon": "bedrock", "type": "depth" },
+    { "id": "rock_bottom", "category": "Adventure", "title": "Rock Bottom", "description": "Dig down past Y -60 into the Deep Slate", "icon": "deep_slate", "type": "depth", "target": "bottom" },
     { "id": "sky_high", "category": "Story", "title": "Sky High", "description": "Climb above Y 180", "icon": "snow", "type": "height" },
     { "id": "underworld", "category": "Story", "title": "Into the Underworld", "description": "Travel through a Bone Gateway", "icon": "basalt", "type": "dimension", "target": "underworld" },
     { "id": "skylands", "category": "Story", "title": "Head in the Clouds", "description": "Travel through an Amber Gateway", "icon": "cloud", "type": "dimension", "target": "skylands" },

@@ -446,7 +446,7 @@ enum HUD {
             d.fill(bar, Color(linear: 0, 0, 0, 0.55), radius: 4)
             d.fill(Rect(bar.x, bar.y, bar.w * frac, bar.h), mob.species.hostile ? Theme.danger : Theme.jungle, radius: 4)
         }
-        if e.settings.showGuide, !s.isRemote, let goal = GameGuide.current(s.advancements) {
+        if e.settings.showGuide, !e.showDebug, !s.isRemote, let goal = GameGuide.current(s.advancements) {
             // The guide to beating the game, in the top-left corner
             let box = Rect(14, 118, 420, 84)
             d.fill(box, Color(hex: 0x120A20, alpha: 0.62), radius: 10)
@@ -600,7 +600,7 @@ enum DebugOverlay {
         if let s = e.session {
             let pos = s.player.position
             lines += [
-                String(format: "XYZ %.2f / %.2f / %.2f", pos.x, pos.y, pos.z),
+                String(format: "XYZ %.2f / %.2f / %.2f", pos.x, pos.y - Double(s.world.generator.depthOffset), pos.z),
                 "Biome \(s.biome.displayName) · \(SkyModel.periodName(worldTime: s.worldTime))",
                 s.target.map { "Target \(e.blocks[$0.id]?.displayName ?? "?") at \($0.block)" } ?? "Target none",
             ]

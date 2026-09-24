@@ -176,7 +176,8 @@ final class GameServer: SessionNetwork {
             peer.connection.send(.welcome, WelcomeMessage(playerID: peer.id, worldName: s.meta.name, seed: s.meta.seed,
                                                           dimension: s.dimension.rawValue, gameMode: s.meta.gameMode.rawValue,
                                                           difficulty: s.meta.difficulty.rawValue, hardcore: false,
-                                                          x: spawn.x, y: spawn.y, z: spawn.z, worldTime: s.worldTime, players: others))
+                                                          x: spawn.x, y: spawn.y, z: spawn.z, worldTime: s.worldTime, players: others,
+                                                          deep: s.meta.isDeep))
             broadcast(.playerJoined, PlayerInfo(id: peer.id, name: name), except: peer.id)
             onChat?("", "\(name) joined the game")
             Log.info("\(name) joined (player \(peer.id))", category: "Net")

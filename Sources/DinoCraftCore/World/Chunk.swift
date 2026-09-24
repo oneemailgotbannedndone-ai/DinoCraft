@@ -2,12 +2,16 @@ import Foundation
 
 public enum WorldConst {
     public static let chunkSize = 16
-    public static let height = 256
-    public static let seaLevel = 62
+    /// Layers of deep slate under the old bedrock: the bottom of the world is Y -70.
+    public static let deepLayers = 70
+    public static let height = 256 + deepLayers
+    /// Sea level in new (deep) overworlds. Worlds from before the deep update keep theirs at 62
+    /// (see `WorldGenerator.seaLevel`).
+    public static let seaLevel = 62 + deepLayers
     public static let blocksPerChunk = chunkSize * chunkSize * height
 }
 
-/// A 16 × 256 × 16 column of blocks.
+/// A 16 × 326 × 16 column of blocks.
 ///
 /// Storage is a single contiguous byte buffer indexed as `y << 8 | z << 4 | x`.
 /// Chunks are mutated only on the main (game) thread; background meshing jobs
@@ -140,13 +144,14 @@ public final class Chunk: @unchecked Sendable {
             guard let written = BlockRLE.decode(payload, into: chunk.blocks, capacity: WorldConst.blocksPerChunk) else {
                 throw ChunkIOError.compressionFailed
             }
-            guard written == WorldConst.blocksPerChunk else { throw ChunkIOError.sizeMismatch }
+            // Chunks saved before the deep update are 256 blocks tall; the extra layers above them stay air.
+            guard written == WorldConst.blocksPerChunk || written == 256 * 256 else { throw ChunkIOError.sizeMismatch }
         #if canImport(Darwin)
         case 1:
             let raw: NSData
             do { raw = try (payload as NSData).decompressed(using: .lzfse) } catch { throw ChunkIOError.compressionFailed }
-            guard raw.length == WorldConst.blocksPerChunk else { throw ChunkIOError.sizeMismatch }
-            raw.getBytes(chunk.blocks, length: WorldConst.blocksPerChunk)
+            guard raw.length == WorldConst.blocksPerChunk || raw.length == 256 * 256 else { throw ChunkIOError.sizeMismatch }
+            raw.getBytes(chunk.blocks, length: raw.length)
         #endif
         default:
             throw ChunkIOError.badVersion(version)

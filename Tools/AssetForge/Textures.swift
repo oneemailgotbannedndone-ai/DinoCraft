@@ -635,6 +635,7 @@ enum TexturePainter {
             c.disc(25, 7, 4, RGBA(hex: 0xD9CEB2)); c.disc(22, 5, 2.5, RGBA(hex: 0xF2EBD6))
         default:
             if let special = NewTextures.item(name) { return special }
+            if name.hasSuffix("_pickaxe"), let pick = BetterTextures.pickaxe(String(name.dropLast("_pickaxe".count))) { return pick }
             let parts = name.split(separator: "_")
             guard parts.count == 2, let mat = materials[String(parts[0])] else {
                 c.disc(16, 16, 10, RGBA(hex: 0xFF00FF))   // missing-texture magenta
@@ -724,6 +725,7 @@ enum TexturePainter {
         t["bone_block_side"] = paintBoneSide()
         t["bone_block_top"] = paintBoneTop()
         NewTextures.add(to: &t)
+        BetterTextures.add(to: &t)
         return t
     }
 }

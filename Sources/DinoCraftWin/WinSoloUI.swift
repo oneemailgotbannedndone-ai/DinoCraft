@@ -164,7 +164,7 @@ extension WinSolo {
             ui.rect(bx, by, bw, bh, SIMD4(0.25, 0.25, 0.25, 1))
             ui.rect(bx, by, bw * frac, bh, boss.enraged ? SIMD4(0.95, 0.3, 0.3, 1) : SIMD4(0.95, 0.95, 0.95, 1))
         }
-        if settings.showGuide, !s.isRemote, let goal = GameGuide.current(s.advancements) {
+        if settings.showGuide, !showDebug, !s.isRemote, let goal = GameGuide.current(s.advancements) {
             // The guide to beating the game, in the top-left corner
             let small = max(1, (2 * sc).rounded())
             let x = 14 * sc, y = 118 * sc
@@ -301,7 +301,7 @@ extension WinSolo {
             let p = s.player.position
             var lines = [
                 "DinoCraft for Windows - \(fps) FPS",
-                String(format: "XYZ %.1f / %.1f / %.1f", p.x, p.y, p.z),
+                String(format: "XYZ %.1f / %.1f / %.1f", p.x, p.y - Double(s.world.generator.depthOffset), p.z),
                 "\(s.dimension.displayName) - \(s.biome.rawValue) - \(s.modeName)",
                 "Chunks \(renderer.visibleChunks) drawn, \(s.world.slots.count) loaded",
                 "Creatures \(s.mobs.mobs.count) - items \(s.entities.items.count)",

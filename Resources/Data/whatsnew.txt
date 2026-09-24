@@ -16,7 +16,12 @@ Guide and loading screens
 - Press G for your next goal, step by step, from the first log to the final boss.
 - New loading screens with tips and a look for every dimension.
 
+Deeper world
+- New worlds now go all the way down to Y -70: a layer of Deep Slate with caverns, lava pools and richer ores.
+- Reach the bottom for the new "Rock Bottom" advancement. Older worlds keep their old floor.
+
 More
+- New pickaxe and bedrock textures.
 - Sprinting is faster. VSync is off by default, with a Max FPS setting.
 - Three new texture packs: Comic Ink, Frostbite and Neon Nights.
 - Herds sometimes stampede past, and the music repeats less.

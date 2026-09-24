@@ -1,7 +1,8 @@
 import Foundation
 
 public struct WorldMetadata: Codable, Sendable, Identifiable {
-    public static let currentFormat = 1
+    /// 2: deep overworlds that go down to Y -70. Worlds from format 1 keep their old floor at 0.
+    public static let currentFormat = 2
 
     public var formatVersion: Int
     public var id: String                  // folder name
@@ -48,6 +49,8 @@ public struct WorldMetadata: Codable, Sendable, Identifiable {
     }
 
     public var isHardcore: Bool { hardcore ?? false }
+    /// Whether this world's overworld has the deep layers (made since the deep update).
+    public var isDeep: Bool { formatVersion >= 2 }
 
     public init(formatVersion: Int = WorldMetadata.currentFormat, id: String, name: String, seedText: String, seed: String,
                 gameMode: GameMode, difficulty: Difficulty, createdAt: Date, lastPlayed: Date, playTimeSeconds: Double,

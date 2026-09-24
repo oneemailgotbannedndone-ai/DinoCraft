@@ -55,9 +55,10 @@ public enum WorldDimension: String, Codable, CaseIterable, Sendable {
         allCases.compactMap { d in d.portalBlock.flatMap { p in d.frameBlock.map { (p, $0) } } }
     }
 
-    public func makeGenerator(seed: UInt64) -> WorldGenerator {
+    /// `deep`: overworlds made since the deep update go down to Y -70 (older worlds keep their old floor).
+    public func makeGenerator(seed: UInt64, deep: Bool = true) -> WorldGenerator {
         switch self {
-        case .overworld: return TerrainGenerator(seed: seed)
+        case .overworld: return TerrainGenerator(seed: seed, deep: deep)
         case .underworld: return UnderworldGenerator(seed: Hashing.hash(seed, 0, 0, 0, salt: 0xDEAD))
         case .skylands: return SkylandsGenerator(seed: Hashing.hash(seed, 0, 0, 0, salt: 0xA3BE))
         case .toonland: return ToonlandGenerator(seed: Hashing.hash(seed, 0, 0, 0, salt: 0x7005))
@@ -75,10 +76,20 @@ public protocol WorldGenerator: AnyObject, Sendable {
     func biome(x: Int, z: Int) -> Biome
     /// Rough standing height used before chunks exist (players are placed precisely later).
     func estimatedSurface(x: Int, z: Int) -> Int
+    /// Sea level, for underground checks and cave spawning.
+    var seaLevel: Int { get }
+    /// How far below 0 the world goes: shown Y = stored Y - `depthOffset` (70 in deep overworlds).
+    var depthOffset: Int { get }
+}
+
+extension WorldGenerator {
+    public var seaLevel: Int { TerrainGenerator.baseSeaLevel }
+    public var depthOffset: Int { 0 }
 }
 
 extension TerrainGenerator: WorldGenerator {
     public var dimension: WorldDimension { .overworld }
+    public var depthOffset: Int { depth }
     public func biome(x: Int, z: Int) -> Biome { columnInfo(x: x, z: z).biome }
     public func estimatedSurface(x: Int, z: Int) -> Int { columnInfo(x: x, z: z).height }
 }

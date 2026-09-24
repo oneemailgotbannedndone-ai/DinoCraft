@@ -807,7 +807,7 @@ final class MobManager {
             let biome = s.world.generator.biome(x: x, z: z)
             if allowHostile && (biome == .mountains || biome == .snowyPeaks) && light.sky > 0.6 && roll < 0.12 { return .ptero }
             if allowHostile && (dark || nightSurface) {
-                if dark && y < WorldConst.seaLevel { return roll < 0.45 ? .crawler : (roll < 0.75 ? .boneWalker : .raptor) }
+                if dark && y < s.world.generator.seaLevel { return roll < 0.45 ? .crawler : (roll < 0.75 ? .boneWalker : .raptor) }
                 if (biome == .swamp || biome == .fernJungle) && roll < 0.35 { return .spitter }
                 if biome == .desert && roll < 0.5 { return .scorpion }
                 if (biome == .forest || biome == .fernJungle) && roll < 0.55 { return .troodon }

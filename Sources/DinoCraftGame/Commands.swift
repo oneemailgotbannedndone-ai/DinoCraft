@@ -166,7 +166,7 @@ enum Commands {
             var spot = s.player.position + horizontalLook(s) * 3
             var count = 1
             if rest.count >= 4 {
-                guard let p = coordinates(Array(rest[1...3]), base: s.player.position) else { return reply("Couldn't read those coordinates.") }
+                guard let p = coordinates(Array(rest[1...3]), base: s.player.position, yOffset: s.world.generator.depthOffset) else { return reply("Couldn't read those coordinates.") }
                 spot = p
             } else {
                 if rest.count == 2, let n = Int(rest[1]) { count = max(1, min(25, n)) }
@@ -189,9 +189,9 @@ enum Commands {
                 teleport(friend.position + DVec3(1, 0, 0))
                 return reply("Teleported to \(friend.name).")
             }
-            guard rest.count == 3, let p = coordinates(rest, base: s.player.position) else { return reply("Usage: \(command.usage)") }
+            guard rest.count == 3, let p = coordinates(rest, base: s.player.position, yOffset: s.world.generator.depthOffset) else { return reply("Usage: \(command.usage)") }
             teleport(p)
-            reply(String(format: "Teleported to %.0f, %.0f, %.0f.", p.x, p.y, p.z))
+            reply(String(format: "Teleported to %.0f, %.0f, %.0f.", p.x, p.y - Double(s.world.generator.depthOffset), p.z))
 
         case "back":
             guard let previous = s.lastPosition else { return reply("There's nowhere to go back to yet.") }
@@ -205,11 +205,11 @@ enum Commands {
 
         case "sethome":
             s.setHome(s.player.position)
-            reply(String(format: "Home set to %.0f, %.0f, %.0f.", s.player.position.x, s.player.position.y, s.player.position.z))
+            reply(String(format: "Home set to %.0f, %.0f, %.0f.", s.player.position.x, s.player.position.y - Double(s.world.generator.depthOffset), s.player.position.z))
 
         case "spawnpoint":
             s.setSpawnPoint(s.player.position)
-            reply(String(format: "Spawn point set to %.0f, %.0f, %.0f.", s.player.position.x, s.player.position.y, s.player.position.z))
+            reply(String(format: "Spawn point set to %.0f, %.0f, %.0f.", s.player.position.x, s.player.position.y - Double(s.world.generator.depthOffset), s.player.position.z))
 
         case "time", "day", "night":
             let presets: [String: Double] = ["day": 100, "noon": 300, "sunset": 580, "night": 700, "midnight": 900]
@@ -315,7 +315,7 @@ enum Commands {
             }
 
         case "setblock":
-            guard rest.count == 4, let p = coordinates(Array(rest[0...2]), base: s.player.position),
+            guard rest.count == 4, let p = coordinates(Array(rest[0...2]), base: s.player.position, yOffset: s.world.generator.depthOffset),
                   let id = resolveBlock(rest[3], e, note: reply) else { return reply("Usage: \(command.usage)") }
             let pos = BlockPos(Int(floor(p.x)), Int(floor(p.y)), Int(floor(p.z)))
             if s.world.setBlock(pos, id) || s.world.block(pos) == id {
@@ -325,8 +325,8 @@ enum Commands {
             }
 
         case "fill":
-            guard rest.count == 7 || rest.count == 9, let a = coordinates(Array(rest[0...2]), base: s.player.position),
-                  let b = coordinates(Array(rest[3...5]), base: s.player.position), let id = resolveBlock(rest[6], e, note: reply) else {
+            guard rest.count == 7 || rest.count == 9, let a = coordinates(Array(rest[0...2]), base: s.player.position, yOffset: s.world.generator.depthOffset),
+                  let b = coordinates(Array(rest[3...5]), base: s.player.position, yOffset: s.world.generator.depthOffset), let id = resolveBlock(rest[6], e, note: reply) else {
                 return reply("Usage: \(command.usage)")
             }
             var only: BlockID?
@@ -381,7 +381,8 @@ enum Commands {
             }
             guard let f = found else { return reply("No \(what.replacingOccurrences(of: "_", with: " ")) found nearby.") }
             let distance = Int(hypot(Double(f.x - px), Double(f.z - pz)))
-            reply("Nearest \(f.label): \(f.x), \(f.y), \(f.z) (\(distance) blocks away). Try /tp \(f.x) \(f.y + 2) \(f.z)")
+            let shownY = f.y - generator.depthOffset
+            reply("Nearest \(f.label): \(f.x), \(shownY), \(f.z) (\(distance) blocks away). Try /tp \(f.x) \(shownY + 2) \(f.z)")
 
         case "biome":
             reply("You're in: \(s.biome.displayName)")
@@ -389,7 +390,7 @@ enum Commands {
         case "coords":
             let p = s.player.position
             let facing = BlockRegistry.name(of: BlockVariants.horizontalFacing(s.player.lookDirection))
-            reply(String(format: "Position %.1f, %.1f, %.1f · facing %@ · %@", p.x, p.y, p.z, facing, s.biome.displayName))
+            reply(String(format: "Position %.1f, %.1f, %.1f · facing %@ · %@", p.x, p.y - Double(s.world.generator.depthOffset), p.z, facing, s.biome.displayName))
 
         case "list":
             let names = [e.settings.username.isEmpty ? "You" : e.settings.username] + e.remotePlayers.map { $0.name }
@@ -624,7 +625,8 @@ enum Commands {
     }
 
     /// Parses three coordinates, where `~` or `~n` is relative to `base`.
-    static func coordinates(_ parts: [String], base: DVec3) -> DVec3? {
+    /// Absolute Y values are as shown on screen (`yOffset` below the stored height in deep worlds).
+    static func coordinates(_ parts: [String], base: DVec3, yOffset: Int = 0) -> DVec3? {
         guard parts.count == 3 else { return nil }
         var out = [Double]()
         for (i, part) in parts.enumerated() {
@@ -634,7 +636,7 @@ enum Commands {
                 guard let offset else { return nil }
                 out.append(origin + offset)
             } else if let v = Double(part) {
-                out.append(i == 1 ? v : v + (v == v.rounded() ? 0.5 : 0))
+                out.append(i == 1 ? v + Double(yOffset) : v + (v == v.rounded() ? 0.5 : 0))
             } else {
                 return nil
             }

@@ -42,9 +42,12 @@ public enum Wire {
         public var x: Double, y: Double, z: Double
         public var worldTime: Double
         public var players: [PlayerInfo]
+        /// Whether the host's overworld goes down to Y -70 (nil from older hosts: no).
+        public var deep: Bool?
 
         public init(playerID: Int, worldName: String, seed: String, dimension: String, gameMode: String, difficulty: String,
-                    hardcore: Bool, x: Double, y: Double, z: Double, worldTime: Double, players: [PlayerInfo]) {
+                    hardcore: Bool, x: Double, y: Double, z: Double, worldTime: Double, players: [PlayerInfo], deep: Bool? = nil) {
+            self.deep = deep
             self.playerID = playerID; self.worldName = worldName; self.seed = seed; self.dimension = dimension
             self.gameMode = gameMode; self.difficulty = difficulty; self.hardcore = hardcore
             self.x = x; self.y = y; self.z = z; self.worldTime = worldTime; self.players = players

@@ -36,7 +36,7 @@ extension TerrainGenerator {
         let x = cx * cell + 10 + Int((h >> 8) % UInt64(cell - 20))
         let z = cz * cell + 10 + Int((h >> 20) % UInt64(cell - 20))
         let y = 14 + Int((h >> 32) % 34)
-        let info = columnInfo(x: x, z: z)
+        let info = baseColumnInfo(x: x, z: z)
         guard info.height > y + 10, info.biome != .ocean, info.biome != .river else { return nil }
         return StructureInfo(kind: .dungeon, x: x, y: y, z: z, seed: h)
     }
@@ -47,8 +47,8 @@ extension TerrainGenerator {
         let cell = TerrainGenerator.ruinCell
         let x = cx * cell + 16 + Int((h >> 8) % UInt64(cell - 32))
         let z = cz * cell + 16 + Int((h >> 20) % UInt64(cell - 32))
-        let info = columnInfo(x: x, z: z)
-        guard info.height > WorldConst.seaLevel + 1, info.height < WorldConst.seaLevel + 60,
+        let info = baseColumnInfo(x: x, z: z)
+        guard info.height > TerrainGenerator.baseSeaLevel + 1, info.height < TerrainGenerator.baseSeaLevel + 60,
               !isCarved(x: x, y: info.height - 1, z: z, surfaceHeight: info.height) else { return nil }
         let kind: StructureKind
         switch info.biome {
@@ -56,12 +56,12 @@ extension TerrainGenerator {
         case .plains, .forest, .fernJungle, .redwoodTaiga, .snowyTundra, .swamp, .mountains, .savanna, .blossomGrove, .silverForest, .flowerMeadow, .fungalMarsh: kind = .ruin
         default: return nil
         }
-        guard villages(near: x, z: z, radius: 24).isEmpty else { return nil }
+        guard baseVillages(near: x, z: z, radius: 24).isEmpty else { return nil }
         return StructureInfo(kind: kind, x: x, y: info.height, z: z, seed: h)
     }
 
     /// Dungeons and ruins within `radius` blocks of (x, z), nearest first.
-    public func structures(near x: Int, z: Int, radius: Int) -> [StructureInfo] {
+    func baseStructures(near x: Int, z: Int, radius: Int) -> [StructureInfo] {
         let reach = radius + TerrainGenerator.structureReach
         var out: [StructureInfo] = []
         func scan(_ cell: Int, _ find: (Int, Int) -> StructureInfo?) {
@@ -108,11 +108,11 @@ extension TerrainGenerator {
 
     /// The loot table for a generated chest at this position ("dungeon", "ruin",
     /// "desertRuin" or "village"), or nil if no structure put a chest there.
-    public func lootTable(x: Int, y: Int, z: Int) -> String? {
-        for s in structures(near: x, z: z, radius: 2) where chestPositions(s).contains(where: { $0 == (x, y, z) }) {
+    func baseLootTable(x: Int, y: Int, z: Int) -> String? {
+        for s in baseStructures(near: x, z: z, radius: 2) where chestPositions(s).contains(where: { $0 == (x, y, z) }) {
             return s.kind.rawValue
         }
-        for v in villages(near: x, z: z, radius: 2) where villageChestPositions(v).contains(where: { $0 == (x, y, z) }) {
+        for v in baseVillages(near: x, z: z, radius: 2) where villageChestPositions(v).contains(where: { $0 == (x, y, z) }) {
             return "village"
         }
         return nil
@@ -120,7 +120,7 @@ extension TerrainGenerator {
 
     func placeStructures(_ chunk: Chunk) {
         let ox = Int(chunk.pos.originX), oz = Int(chunk.pos.originZ)
-        for s in structures(near: ox + 8, z: oz + 8, radius: 8) {
+        for s in baseStructures(near: ox + 8, z: oz + 8, radius: 8) {
             switch s.kind {
             case .dungeon: buildDungeon(s, chunk: chunk, ox: ox, oz: oz)
             case .ruin, .desertRuin: buildRuin(s, chunk: chunk, ox: ox, oz: oz)
@@ -131,7 +131,7 @@ extension TerrainGenerator {
     private func buildDungeon(_ s: StructureInfo, chunk: Chunk, ox: Int, oz: Int) {
         func inChunk(_ x: Int, _ z: Int) -> Bool { x >= ox && x < ox + 16 && z >= oz && z < oz + 16 }
         func set(_ x: Int, _ y: Int, _ z: Int, _ id: BlockID) {
-            guard inChunk(x, z), y > 0, y < WorldConst.height else { return }
+            guard inChunk(x, z), y > 0, y < TerrainGenerator.baseHeight else { return }
             if chunk.block(x - ox, y, z - oz) == Blocks.bedrock { return }
             chunk.setRaw(x - ox, y, z - oz, id)
         }
@@ -165,11 +165,11 @@ extension TerrainGenerator {
     private func buildRuin(_ s: StructureInfo, chunk: Chunk, ox: Int, oz: Int) {
         func inChunk(_ x: Int, _ z: Int) -> Bool { x >= ox && x < ox + 16 && z >= oz && z < oz + 16 }
         func set(_ x: Int, _ y: Int, _ z: Int, _ id: BlockID) {
-            guard inChunk(x, z), y > 0, y < WorldConst.height else { return }
+            guard inChunk(x, z), y > 0, y < TerrainGenerator.baseHeight else { return }
             chunk.setRaw(x - ox, y, z - oz, id)
         }
         func get(_ x: Int, _ y: Int, _ z: Int) -> BlockID {
-            guard inChunk(x, z), y >= 0, y < WorldConst.height else { return Blocks.air }
+            guard inChunk(x, z), y >= 0, y < TerrainGenerator.baseHeight else { return Blocks.air }
             return chunk.block(x - ox, y, z - oz)
         }
         let desert = s.kind == .desertRuin
@@ -211,8 +211,8 @@ extension TerrainGenerator {
         for t in 0..<4 {
             let x = s.x + fx * 7 + (-fz) * (t + shift - 2), z = s.z + fz * 7 + fx * (t + shift - 2)
             guard inChunk(x, z) else { continue }
-            let h = columnInfo(x: x, z: z).height
-            if h > WorldConst.seaLevel { set(x, h, z, t % 2 == 0 ? wallA : wallB) }
+            let h = baseColumnInfo(x: x, z: z).height
+            if h > TerrainGenerator.baseSeaLevel { set(x, h, z, t % 2 == 0 ? wallA : wallB) }
         }
 
         let chest = chestPositions(s)[0]

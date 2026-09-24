@@ -503,7 +503,7 @@ final class WinSolo: CommandHost {
         guard let audio, let s = session, options.screenshotPath == nil else { return }
         let p = s.player
         let night = s.isNight
-        let underground = s.dimension == .overworld && p.position.y < 48
+        let underground = s.dimension == .overworld && p.position.y < Double(s.world.generator.seaLevel - 14)
         let surface = s.dimension == .overworld && !underground && !p.headInWater
         let raining = s.weather.kind != .clear && s.dimension == .overworld
         audio.setLoop("amb_underwater", volume: p.headInWater ? 0.8 : 0)
@@ -723,6 +723,15 @@ final class WinSolo: CommandHost {
             screen = .settings
         case "advancements":
             openScreen(.advancements)
+        case "deep":
+            // Down in the deep layers: a room carved out of the Deep Slate at shown Y -45
+            let p = s.player.position
+            let x = Int(floor(p.x)), z = Int(floor(p.z)), y = 25
+            for dy in 0..<5 { for dz in -6...6 { for dx in -6...6 { s.world.setBlock(BlockPos(x + dx, y + dy, z + dz), Blocks.air) } } }
+            s.world.setBlock(BlockPos(x + 3, y + 1, z - 5), Blocks.torch)
+            s.player.teleport(to: DVec3(Double(x) + 0.5, Double(y), Double(z) + 0.5))
+            if let pick = items.id(named: "diamond_pickaxe") { s.inventory.slots[0] = ItemStack(item: pick, count: 1) }
+            showDebug = true
         case "thirdperson":
             cameraView = .behind
         case "front":
@@ -739,11 +748,11 @@ final class WinSolo: CommandHost {
     func startHosting() {
         guard host == nil, let s = session else { return }
         let meta = s.meta
-        let generator = WorldDimension.overworld.makeGenerator(seed: meta.numericSeed)
+        let generator = WorldDimension.overworld.makeGenerator(seed: meta.numericSeed, deep: meta.isDeep)
         let server: WireHost
         do {
             server = try WireHost(settings: .init(worldName: meta.name, seed: meta.seed, gameMode: meta.gameMode.rawValue,
-                                                  difficulty: meta.difficulty.rawValue, hostName: hostName),
+                                                  difficulty: meta.difficulty.rawValue, hostName: hostName, deep: meta.isDeep),
                                   makeChunk: { [storage, generator, id = meta.id] pos in
                                       storage.loadChunk(worldID: id, pos: pos) ?? generator.generate(pos)
                                   })

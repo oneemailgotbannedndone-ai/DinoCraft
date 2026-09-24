@@ -222,7 +222,7 @@ enum Shaders {
         }
 
         if (abs(y) > 0.015) {
-            float dist = (200.0 - uCamPos.y) / y;
+            float dist = (270.0 - uCamPos.y) / y;
             if (dist > 0.0) {
                 vec2 p = uCamPos.xz + dir.xz * dist;
                 p = p * 0.0045 + vec2(uTime * 0.004, uTime * 0.0015);

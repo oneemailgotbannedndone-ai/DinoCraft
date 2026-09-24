@@ -67,8 +67,15 @@ public final class TerrainGenerator: @unchecked Sendable {
     private static let treeCell = 5
     private static let treeMargin = 5
 
-    public init(seed: UInt64) {
+    /// Sea level and world height the terrain is designed in; deep worlds sit `depth` blocks higher.
+    public static let baseSeaLevel = 62
+    public static let baseHeight = 256
+    /// Blocks of deep slate under the old bedrock (0 for worlds made before the deep update).
+    public let depth: Int
+
+    public init(seed: UInt64, deep: Bool = true) {
         self.seed = seed
+        depth = deep ? WorldConst.deepLayers : 0
         func sub(_ salt: UInt64) -> SimplexNoise { SimplexNoise(seed: Hashing.hash(seed, 0, 0, 0, salt: salt)) }
         warpX = sub(11); warpZ = sub(12)
         continent = sub(21); erosion = sub(22); ridge = sub(23); detail = sub(24); river = sub(25)
@@ -98,7 +105,7 @@ public final class TerrainGenerator: @unchecked Sendable {
         return t * t * (3 - 2 * t)
     }
 
-    public func columnInfo(x: Int, z: Int) -> ColumnInfo {
+    func baseColumnInfo(x: Int, z: Int) -> ColumnInfo {
         let fx = Double(x), fz = Double(z)
         let wx = fx + warpX.fbm2(fx / 320, fz / 320, octaves: 2) * 70
         let wz = fz + warpZ.fbm2(fx / 320, fz / 320, octaves: 2) * 70
@@ -112,7 +119,7 @@ public final class TerrainGenerator: @unchecked Sendable {
         let mountainMask = TerrainGenerator.smooth(0.02, 0.35, c) * (1 - TerrainGenerator.smooth(-0.45, 0.1, e))
         let hillAmp = (3 + 13 * (1 - TerrainGenerator.smooth(-0.3, 0.45, e))) * (0.35 + 0.65 * land)
 
-        var h = Double(WorldConst.seaLevel)
+        var h = Double(TerrainGenerator.baseSeaLevel)
             + TerrainGenerator.spline(TerrainGenerator.continentSpline, c)
             + d * hillAmp
             + pow(r, 1.7) * 125 * mountainMask
@@ -120,7 +127,7 @@ public final class TerrainGenerator: @unchecked Sendable {
 
         // River valleys: carve toward just below sea level along noise zero-crossings.
         let rv = abs(river.fbm2(wx / 950, wz / 950, octaves: 3) * 1.6)
-        let riverBed = Double(WorldConst.seaLevel - 4)
+        let riverBed = Double(TerrainGenerator.baseSeaLevel - 4)
         if c > -0.12 && h > riverBed {
             let width = 0.05 + 0.12 * mountainMask
             let f = TerrainGenerator.smooth(0.008, width, rv)
@@ -128,12 +135,12 @@ public final class TerrainGenerator: @unchecked Sendable {
         }
         let height = Int(min(236, max(6, h.rounded())))
 
-        let altitudeChill = max(0, Double(height - WorldConst.seaLevel - 28)) / 120
+        let altitudeChill = max(0, Double(height - TerrainGenerator.baseSeaLevel - 28)) / 120
         let temperature = temperatureNoise.fbm2(fx / 1700, fz / 1700, octaves: 4) * 1.7 - altitudeChill
         let humidity = humidityNoise.fbm2(fx / 1400, fz / 1400, octaves: 4) * 1.7
 
         let biome: Biome
-        let sea = WorldConst.seaLevel
+        let sea = TerrainGenerator.baseSeaLevel
         if height < sea - 1 {
             biome = (rv < 0.035 && c > -0.12) ? .river : .ocean
         } else if height <= sea + 1 && rv >= 0.035 && c < 0.12 {
@@ -210,17 +217,18 @@ public final class TerrainGenerator: @unchecked Sendable {
 
     // MARK: - Chunk generation
 
-    public func generate(_ pos: ChunkPos) -> Chunk {
+    /// The terrain in "base" heights (sea level 62, bedrock at 0), before the deep layers go underneath.
+    func generateBase(_ pos: ChunkPos) -> Chunk {
         let chunk = Chunk(pos: pos)
         let ox = Int(pos.originX), oz = Int(pos.originZ)
-        let sea = WorldConst.seaLevel
+        let sea = TerrainGenerator.baseSeaLevel
 
         var columns = [ColumnInfo]()
         columns.reserveCapacity(256)
         var maxH = sea
         for z in 0..<16 {
             for x in 0..<16 {
-                let info = columnInfo(x: ox + x, z: oz + z)
+                let info = baseColumnInfo(x: ox + x, z: oz + z)
                 columns.append(info)
                 maxH = max(maxH, info.height)
             }
@@ -257,7 +265,7 @@ public final class TerrainGenerator: @unchecked Sendable {
 
     private func fillColumn(_ chunk: Chunk, x: Int, z: Int, info: ColumnInfo, worldX: Int, worldZ: Int,
                             lattice: [(Float, Float, Float)], latticeHeight ny: Int) {
-        let sea = WorldConst.seaLevel
+        let sea = TerrainGenerator.baseSeaLevel
         let h = info.height
         let underwater = h < sea
         let (top, filler, fillerDepth, deepFiller) = surfaceBlocks(info, worldX: worldX, worldZ: worldZ)
@@ -319,7 +327,7 @@ public final class TerrainGenerator: @unchecked Sendable {
 
     /// (top block, filler block, filler depth, optional deeper layer)
     private func surfaceBlocks(_ info: ColumnInfo, worldX: Int, worldZ: Int) -> (BlockID, BlockID, Int, BlockID?) {
-        let sea = WorldConst.seaLevel
+        let sea = TerrainGenerator.baseSeaLevel
         let jitter = Int(Hashing.hash(seed, Int32(worldX), 0, Int32(worldZ), salt: 9) % 2)
         switch info.biome {
         case .ocean, .river:
@@ -394,7 +402,7 @@ public final class TerrainGenerator: @unchecked Sendable {
                     if chunk.block(x, y, z) == Blocks.stone { chunk.setRaw(x, y, z, ore.block) }
                     switch rng.nextInt(3) {
                     case 0: x = max(0, min(15, x + (rng.nextInt(2) == 0 ? -1 : 1)))
-                    case 1: y = max(1, min(WorldConst.height - 1, y + (rng.nextInt(2) == 0 ? -1 : 1)))
+                    case 1: y = max(1, min(TerrainGenerator.baseHeight - 1, y + (rng.nextInt(2) == 0 ? -1 : 1)))
                     default: z = max(0, min(15, z + (rng.nextInt(2) == 0 ? -1 : 1)))
                     }
                 }
@@ -445,8 +453,8 @@ public final class TerrainGenerator: @unchecked Sendable {
                 guard abs(wx - (ox + 8)) <= 8 + margin, abs(wz - (oz + 8)) <= 8 + margin else { continue }
                 // Cheap rejection before evaluating the column.
                 guard roll < 0.8 else { continue }
-                let info = columnInfo(x: wx, z: wz)
-                guard info.height > WorldConst.seaLevel, let kind = treeKind(for: info.biome, roll: roll) else { continue }
+                let info = baseColumnInfo(x: wx, z: wz)
+                guard info.height > TerrainGenerator.baseSeaLevel, let kind = treeKind(for: info.biome, roll: roll) else { continue }
                 let (top, _, _, _) = surfaceBlocks(info, worldX: wx, worldZ: wz)
                 guard top == Blocks.grass || top == Blocks.snowyGrass || top == Blocks.mud || top == Blocks.mossBlock
                         || ((kind == .palm || kind == .deadTree) && top == Blocks.sand)
@@ -459,7 +467,7 @@ public final class TerrainGenerator: @unchecked Sendable {
     }
 
     @inline(__always) private func put(_ chunk: Chunk, _ x: Int, _ y: Int, _ z: Int, _ id: BlockID, overwrite: Bool) {
-        guard x >= 0, x < 16, z >= 0, z < 16, y > 0, y < WorldConst.height else { return }
+        guard x >= 0, x < 16, z >= 0, z < 16, y > 0, y < TerrainGenerator.baseHeight else { return }
         let cur = chunk.block(x, y, z)
         if overwrite {
             if cur == Blocks.air || cur == Blocks.leaves || cur == Blocks.redwoodNeedles || cur == Blocks.pinkLeaves || cur == Blocks.silverLeaves || cur == Blocks.tallGrass || cur == Blocks.fern {
@@ -640,11 +648,11 @@ public final class TerrainGenerator: @unchecked Sendable {
                 guard roll < 0.2 else { continue }
                 let wx = cx * cell + Int((h >> 8) % UInt64(cell)), wz = cz * cell + Int((h >> 16) % UInt64(cell))
                 guard abs(wx - (ox + 8)) <= 8 + margin, abs(wz - (oz + 8)) <= 8 + margin else { continue }
-                let info = columnInfo(x: wx, z: wz)
-                guard info.height > WorldConst.seaLevel + 1 else { continue }
+                let info = baseColumnInfo(x: wx, z: wz)
+                guard info.height > TerrainGenerator.baseSeaLevel + 1 else { continue }
                 if isCarved(x: wx, y: info.height - 1, z: wz, surfaceHeight: info.height) { continue }
-                guard villages(near: wx, z: wz, radius: 10).isEmpty,
-                      !structures(near: wx, z: wz, radius: 8).contains(where: { $0.kind != .dungeon }) else { continue }
+                guard baseVillages(near: wx, z: wz, radius: 10).isEmpty,
+                      !baseStructures(near: wx, z: wz, radius: 8).contains(where: { $0.kind != .dungeon }) else { continue }
                 var rng = SplitMix64(seed: h)
                 let biome = info.biome
                 if biome == .snowyTundra && roll < 0.08 {
@@ -703,11 +711,11 @@ public final class TerrainGenerator: @unchecked Sendable {
         let length = 3 + rng.nextInt(3)
         let alongX = rng.nextInt(2) == 0
         let mushrooms = rng.next()
-        let base = columnInfo(x: wx, z: wz).height
+        let base = baseColumnInfo(x: wx, z: wz).height
         for i in 0..<length {
             let x = wx + (alongX ? i : 0), z = wz + (alongX ? 0 : i)
             guard x - ox >= 0, x - ox < 16, z - oz >= 0, z - oz < 16 else { continue }
-            let h = columnInfo(x: x, z: z).height
+            let h = baseColumnInfo(x: x, z: z).height
             guard abs(h - base) <= 1 else { continue }
             put(chunk, x - ox, h, z - oz, log, overwrite: true)
             if (mushrooms >> UInt64(i * 3)) & 3 == 0 { put(chunk, x - ox, h + 1, z - oz, Blocks.brownMushroom, overwrite: false) }
@@ -725,7 +733,7 @@ public final class TerrainGenerator: @unchecked Sendable {
     }
 
     @inline(__always) private func force(_ chunk: Chunk, _ x: Int, _ y: Int, _ z: Int, _ id: BlockID) {
-        guard x >= 0, x < 16, z >= 0, z < 16, y > 0, y < WorldConst.height else { return }
+        guard x >= 0, x < 16, z >= 0, z < 16, y > 0, y < TerrainGenerator.baseHeight else { return }
         chunk.setRaw(x, y, z, id)
     }
 
@@ -760,7 +768,7 @@ public final class TerrainGenerator: @unchecked Sendable {
     /// A dinosaur skeleton half-buried in the sand: spine, rib arches and a fossil skull.
     private func fossil(_ chunk: Chunk, wx: Int, wz: Int, ox: Int, oz: Int, rng: inout SplitMix64) {
         let alongX = rng.nextInt(2) == 0
-        let y = columnInfo(x: wx, z: wz).height
+        let y = baseColumnInfo(x: wx, z: wz).height
         for i in 0..<7 {
             let x = wx + (alongX ? i : 0) - ox, z = wz + (alongX ? 0 : i) - oz
             put(chunk, x, y + 2, z, Blocks.boneBlock, overwrite: true)
@@ -805,7 +813,7 @@ public final class TerrainGenerator: @unchecked Sendable {
 
     private func placePlants(_ chunk: Chunk, columns: [ColumnInfo]) {
         let ox = Int(chunk.pos.originX), oz = Int(chunk.pos.originZ)
-        let sea = WorldConst.seaLevel
+        let sea = TerrainGenerator.baseSeaLevel
         for z in 0..<16 {
             for x in 0..<16 {
                 let info = columns[z * 16 + x]
@@ -819,7 +827,7 @@ public final class TerrainGenerator: @unchecked Sendable {
                     }
                     continue
                 }
-                guard y > sea, y < WorldConst.height - 3 else { continue }
+                guard y > sea, y < TerrainGenerator.baseHeight - 3 else { continue }
                 let ground = chunk.block(x, y - 1, z)
                 guard chunk.block(x, y, z) == Blocks.air else { continue }
 
@@ -893,8 +901,8 @@ public final class TerrainGenerator: @unchecked Sendable {
             for i in 0..<steps {
                 let angle = Double(i) / Double(steps) * 2 * .pi
                 let x = Int((cos(angle) * Double(r)).rounded()), z = Int((sin(angle) * Double(r)).rounded())
-                let info = columnInfo(x: x, z: z)
-                guard info.height > WorldConst.seaLevel + 1, info.height < WorldConst.seaLevel + 40 else { continue }
+                let info = baseColumnInfo(x: x, z: z)
+                guard info.height > TerrainGenerator.baseSeaLevel + 1, info.height < TerrainGenerator.baseSeaLevel + 40 else { continue }
                 if isCarved(x: x, y: info.height - 1, z: z, surfaceHeight: info.height) { continue }
                 if good.contains(info.biome) { return (x, z) }
                 if fallback == nil { fallback = (x, z) }

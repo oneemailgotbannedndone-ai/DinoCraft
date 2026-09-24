@@ -10,9 +10,11 @@ public final class WireHost: @unchecked Sendable {
         public var gameMode: String
         public var difficulty: String
         public var hostName: String
+        public var deep: Bool
 
-        public init(worldName: String, seed: String, gameMode: String, difficulty: String, hostName: String) {
+        public init(worldName: String, seed: String, gameMode: String, difficulty: String, hostName: String, deep: Bool = true) {
             self.worldName = worldName; self.seed = seed; self.gameMode = gameMode; self.difficulty = difficulty; self.hostName = hostName
+            self.deep = deep
         }
     }
 
@@ -183,7 +185,7 @@ public final class WireHost: @unchecked Sendable {
                 + peers.values.filter { $0.joined && $0.id != peer.id }.map { Wire.PlayerInfo(id: $0.id, name: $0.name) }
             peer.connection.send(.welcome, Wire.Welcome(playerID: peer.id, worldName: settings.worldName, seed: settings.seed, dimension: "overworld",
                                                         gameMode: settings.gameMode, difficulty: settings.difficulty, hardcore: false,
-                                                        x: spawn.x, y: spawn.y, z: spawn.z, worldTime: worldTime(), players: others))
+                                                        x: spawn.x, y: spawn.y, z: spawn.z, worldTime: worldTime(), players: others, deep: settings.deep))
             broadcast(.playerJoined, Wire.PlayerInfo(id: peer.id, name: name), except: peer.id)
             Log.info("\(name) joined (player \(peer.id))", category: "Net")
             onEvent("\(name) joined the game")

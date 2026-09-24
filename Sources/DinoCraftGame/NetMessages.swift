@@ -56,6 +56,8 @@ struct WelcomeMessage: Codable {
     var x: Double, y: Double, z: Double
     var worldTime: Double
     var players: [PlayerInfo]
+    /// Whether the host's overworld goes down to Y -70 (nil from older hosts: no).
+    var deep: Bool? = nil
 }
 
 struct PlayerInfo: Codable {

@@ -131,8 +131,8 @@ final class GameSession {
         let saved = remote ? nil : storage.loadPlayer(id: meta.id)
         let dim = saved?.dimension.flatMap(WorldDimension.init(rawValue:)) ?? .overworld
         dimension = dim
-        let overworld = TerrainGenerator(seed: meta.numericSeed)
-        let generator: WorldGenerator = dim == .overworld ? overworld : dim.makeGenerator(seed: meta.numericSeed)
+        let generator: WorldGenerator = dim.makeGenerator(seed: meta.numericSeed, deep: meta.isDeep)
+        let overworld = TerrainGenerator(seed: meta.numericSeed, deep: meta.isDeep)
         world = World(registry: blocks, generator: generator, storage: remote ? nil : storage, worldID: remote ? nil : meta.id,
                       meshFactory: meshFactory, jobs: jobs, renderDistance: renderDistance)
         inventory = Inventory(registry: items)
@@ -1006,7 +1006,7 @@ final class GameSession {
         let destination = arrival ?? DVec3(player.position.x * scale, player.position.y, player.position.z * scale)
         Log.info("Travelling \(dimension.rawValue) → \(target.rawValue)", category: "Game")
         dimension = target
-        let generator: WorldGenerator = target.makeGenerator(seed: meta.numericSeed)
+        let generator: WorldGenerator = target.makeGenerator(seed: meta.numericSeed, deep: meta.isDeep)
         world = World(registry: blocks, generator: generator, storage: isRemote ? nil : storage, worldID: isRemote ? nil : meta.id,
                       meshFactory: meshFactory, jobs: jobs, renderDistance: renderDistance)
         world.onBlockChanged = blockObserver
@@ -1072,8 +1072,10 @@ final class GameSession {
     /// Periodic checks for exploration advancements: depth, height, creatures nearby, villages and structures.
     private func checkExploration() {
         let p = player.position
-        if p.y < 12 { advancements.record("depth") }
-        if p.y > 180 { advancements.record("height") }
+        let shownY = p.y - Double(world.generator.depthOffset)
+        if shownY < 12 { advancements.record("depth") }
+        if shownY < -60 { advancements.record("depth", "bottom") }
+        if shownY > 180 { advancements.record("height") }
         for m in mobs.mobs where !m.isDying && simd_distance(m.position, p) < 8 {
             advancements.record("near", m.species.kind.rawValue)
         }
@@ -1567,7 +1569,7 @@ final class GameSession {
         biome = world.generator.biome(x: x, z: z)
         let eyeY = Int(floor(player.eyePosition.y))
         if dimension == .overworld, let top = world.topSolidY(x, z) {
-            isUnderground = eyeY < top - 3 && eyeY < WorldConst.seaLevel + 8
+            isUnderground = eyeY < top - 3 && eyeY < world.generator.seaLevel + 8
         } else {
             isUnderground = false
         }

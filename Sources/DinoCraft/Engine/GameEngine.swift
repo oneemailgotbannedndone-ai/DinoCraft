@@ -520,7 +520,7 @@ final class GameEngine: NSObject, MTKViewDelegate {
         menuWorld?.shutdown()
         menuWorld = nil
         let now = Date()
-        let meta = WorldMetadata(id: "remote", name: w.worldName, seedText: w.seed, seed: w.seed,
+        let meta = WorldMetadata(formatVersion: w.deep == true ? WorldMetadata.currentFormat : 1, id: "remote", name: w.worldName, seedText: w.seed, seed: w.seed,
                                  gameMode: GameMode(rawValue: w.gameMode) ?? .survival, difficulty: Difficulty(rawValue: w.difficulty) ?? .normal,
                                  createdAt: now, lastPlayed: now, playTimeSeconds: 0, worldTime: w.worldTime,
                                  spawnX: Int(floor(w.x)), spawnY: Int(floor(w.y)), spawnZ: Int(floor(w.z)))

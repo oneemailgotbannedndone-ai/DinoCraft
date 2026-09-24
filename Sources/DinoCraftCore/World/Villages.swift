@@ -34,15 +34,15 @@ extension TerrainGenerator {
         let span = UInt64(cell - 160)
         let x = cx * cell + 80 + Int((h >> 8) % span)
         let z = cz * cell + 80 + Int((h >> 24) % span)
-        let info = columnInfo(x: x, z: z)
+        let info = baseColumnInfo(x: x, z: z)
         let suitable: Set<Biome> = [.plains, .forest, .desert, .snowyTundra, .redwoodTaiga, .savanna, .flowerMeadow]
-        guard suitable.contains(info.biome), info.height > WorldConst.seaLevel + 1, info.height < WorldConst.seaLevel + 36,
+        guard suitable.contains(info.biome), info.height > TerrainGenerator.baseSeaLevel + 1, info.height < TerrainGenerator.baseSeaLevel + 36,
               !isCarved(x: x, y: info.height - 1, z: z, surfaceHeight: info.height) else { return nil }
         return VillageInfo(x: x, y: info.height, z: z, seed: h)
     }
 
     /// Villages whose area comes within `radius` blocks of (x, z), nearest first.
-    public func villages(near x: Int, z: Int, radius: Int) -> [VillageInfo] {
+    func baseVillages(near x: Int, z: Int, radius: Int) -> [VillageInfo] {
         let cell = Double(TerrainGenerator.villageCell)
         let reach = radius + TerrainGenerator.villageReach
         let x0 = Int(floor(Double(x - reach) / cell)), x1 = Int(floor(Double(x + reach) / cell))
@@ -71,8 +71,8 @@ extension TerrainGenerator {
                 let offset = big ? 7 : 6
                 let hx = v.x + dx * along + px * side * offset
                 let hz = v.z + dz * along + pz * side * offset
-                let info = columnInfo(x: hx, z: hz)
-                guard info.height > WorldConst.seaLevel, abs(info.height - v.y) <= 6 else { continue }
+                let info = baseColumnInfo(x: hx, z: hz)
+                guard info.height > TerrainGenerator.baseSeaLevel, abs(info.height - v.y) <= 6 else { continue }
                 let toPath = (-px * side, -pz * side)
                 let door = TerrainGenerator.directions.firstIndex { $0 == toPath } ?? 0
                 plans.append(HousePlan(cx: hx, cz: hz, y: info.height, halfX: big ? 3 : 2, halfZ: big ? 3 : 2, door: door, kind: kind))
@@ -83,7 +83,7 @@ extension TerrainGenerator {
 
     func placeVillages(_ chunk: Chunk) {
         let ox = Int(chunk.pos.originX), oz = Int(chunk.pos.originZ)
-        for v in villages(near: ox + 8, z: oz + 8, radius: 8) {
+        for v in baseVillages(near: ox + 8, z: oz + 8, radius: 8) {
             buildVillage(v, chunk: chunk, ox: ox, oz: oz)
         }
     }
@@ -91,11 +91,11 @@ extension TerrainGenerator {
     private func buildVillage(_ v: VillageInfo, chunk: Chunk, ox: Int, oz: Int) {
         func inChunk(_ x: Int, _ z: Int) -> Bool { x >= ox && x < ox + 16 && z >= oz && z < oz + 16 }
         func set(_ x: Int, _ y: Int, _ z: Int, _ id: BlockID) {
-            guard inChunk(x, z), y > 0, y < WorldConst.height else { return }
+            guard inChunk(x, z), y > 0, y < TerrainGenerator.baseHeight else { return }
             chunk.setRaw(x - ox, y, z - oz, id)
         }
         func get(_ x: Int, _ y: Int, _ z: Int) -> BlockID {
-            guard inChunk(x, z), y >= 0, y < WorldConst.height else { return Blocks.air }
+            guard inChunk(x, z), y >= 0, y < TerrainGenerator.baseHeight else { return Blocks.air }
             return chunk.block(x - ox, y, z - oz)
         }
         let soft: Set<BlockID> = [Blocks.air, Blocks.leaves, Blocks.redwoodNeedles, Blocks.tallGrass, Blocks.fern, Blocks.emberbloom,
@@ -104,8 +104,8 @@ extension TerrainGenerator {
 
         func path(_ x: Int, _ z: Int) {
             guard inChunk(x, z) else { return }
-            let h = columnInfo(x: x, z: z).height
-            guard h > WorldConst.seaLevel else { return }
+            let h = baseColumnInfo(x: x, z: z).height
+            guard h > TerrainGenerator.baseSeaLevel else { return }
             let top = get(x, h - 1, z)
             if [Blocks.grass, Blocks.dirt, Blocks.sand, Blocks.snowyGrass, Blocks.mud, Blocks.skyGrass].contains(top) {
                 set(x, h - 1, z, Blocks.gravel)
@@ -122,8 +122,8 @@ extension TerrainGenerator {
             }
             let lx = v.x + dx * (arm + 2), lz = v.z + dz * (arm + 2)
             if inChunk(lx, lz) {
-                let h = columnInfo(x: lx, z: lz).height
-                if h > WorldConst.seaLevel {
+                let h = baseColumnInfo(x: lx, z: lz).height
+                if h > TerrainGenerator.baseSeaLevel {
                     set(lx, h, lz, Blocks.log)
                     set(lx, h + 1, lz, Blocks.log)
                     set(lx, h + 2, lz, Blocks.amberLantern)

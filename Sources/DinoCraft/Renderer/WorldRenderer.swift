@@ -52,7 +52,7 @@ final class WorldRenderer {
         u.viewport = SIMD4(drawableSize.x, drawableSize.y, 1 / max(1, drawableSize.x), 1 / max(1, drawableSize.y))
         switch dimension {
         case .overworld, .toonland:
-            u.dimension = SIMD4(0, 200, 1, 0)
+            u.dimension = SIMD4(0, 270, 1, 0)   // cloud height
         case .skylands:
             u.dimension = SIMD4(0.06, 22, 1, 0)
         case .underworld:
