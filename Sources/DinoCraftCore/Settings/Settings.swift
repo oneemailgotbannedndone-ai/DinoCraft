@@ -95,6 +95,8 @@ public struct GameSettings: Codable, Equatable, Sendable {
     public var guiScale: Double = 1.0
     public var clouds = true
     public var showFPS = false
+    /// The step-by-step guide to beating DinoCraft, shown in the corner (G toggles it).
+    public var showGuide = true
 
     // Profile & multiplayer
     public var username = ""
@@ -153,6 +155,7 @@ public struct GameSettings: Codable, Equatable, Sendable {
         guiScale = v(.guiScale, guiScale)
         clouds = v(.clouds, clouds)
         showFPS = v(.showFPS, showFPS)
+        showGuide = v(.showGuide, showGuide)
         username = v(.username, username)
         lastServerAddress = v(.lastServerAddress, lastServerAddress)
         texturePack = v(.texturePack, texturePack)

@@ -373,6 +373,9 @@ final class WinSolo: CommandHost {
             showDebug.toggle()
         } else if `is`(SDL_SCANCODE_F5) {
             cameraView = cameraView.next
+        } else if `is`(SDL_SCANCODE_G) {
+            store.update { $0.showGuide.toggle() }
+            showToast(settings.showGuide ? "Guide shown (G to hide)" : "Guide hidden (G to show)")
         } else if bound(.toggleHUD) {
             hudHidden.toggle()
         } else if bound(.advancements) {
@@ -563,7 +566,8 @@ final class WinSolo: CommandHost {
                 framesSinceReady += 1
             }
             let timedOut = clock > 150
-            if framesSinceReady >= options.frames || timedOut {
+            let loadingShot = options.demoScreen == "loading" && s.isLoading && clock > 1.5
+            if framesSinceReady >= options.frames || timedOut || loadingShot {
                 if timedOut { Log.warning("Screenshot taken before the world finished loading", category: "Game") }
                 saveScreenshot(to: URL(fileURLWithPath: path), width: w, height: h)
                 Log.info("Automated check: \(renderer.visibleChunks) chunks visible, \(s.world.slots.count) loaded, \(s.mobs.mobs.count) creatures", category: "Game")

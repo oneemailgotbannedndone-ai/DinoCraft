@@ -1008,7 +1008,7 @@ extension MobManager {
         let happy = spawn(.grinasaurus, at: m.position)
         happy.yaw = m.yaw
         happy.home = m.home
-        s.onToast?("You cheered up King Grumblesaurus! Toonland is happy again!")
+        s.onToast?("You cheered up King Grumblesaurus! You beat DinoCraft! Keep exploring and building.")
         s.onSound?("discover", 1, 1.4)
     }
 }

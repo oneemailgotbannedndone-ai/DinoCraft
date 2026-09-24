@@ -15,17 +15,10 @@ extension WinSolo {
         var ui = UIBuilder()
         guard let s = session else { return [] }
         let sc = max(1, min(W / 1280, H / 720))
-        let small = max(1, (2 * sc).rounded())
         let now = clock
 
         if s.isLoading {
-            ui.rect(0, 0, W, H, SIMD4(0.03, 0.02, 0.06, 1))
-            let big = max(1, (5 * sc).rounded())
-            ui.centeredText(s.loadingTitle, centerX: W / 2, y: H * 0.4, scale: big, color: amber)
-            let bw = 420 * sc, bh = 10 * sc, by = H * 0.4 + 12 * big
-            ui.rect(W / 2 - bw / 2, by, bw, bh, SIMD4(0, 0, 0, 0.6))
-            ui.rect(W / 2 - bw / 2, by, bw * max(0, min(1, s.loadingProgress)), bh, SIMD4(0.95, 0.6, 0.12, 1))
-            ui.centeredText(s.loadingDetail, centerX: W / 2, y: by + bh + 10 * sc, scale: small, color: dim)
+            buildLoadingScreen(&ui, session: s, width: W, height: H, scale: sc, now: now)
             return ui.vertices
         }
 
@@ -78,6 +71,64 @@ extension WinSolo {
         return ui.vertices
     }
 
+    /// Loading screen: a backdrop for the dimension you're entering, drifting blocks, the title,
+    /// a progress bar, your next goal and a rotating tip.
+    private func buildLoadingScreen(_ ui: inout UIBuilder, session s: GameSession, width W: Float, height H: Float, scale sc: Float, now: Double) {
+        let (top, bottom): (SIMD3<Float>, SIMD3<Float>)
+        switch s.dimension {
+        case .underworld: (top, bottom) = (SIMD3(0.23, 0.06, 0.04), SIMD3(0.07, 0.02, 0.02))
+        case .skylands: (top, bottom) = (SIMD3(0.42, 0.35, 0.6), SIMD3(0.9, 0.63, 0.29))
+        case .toonland: (top, bottom) = (SIMD3(0.23, 0.23, 0.23), SIMD3(0.06, 0.06, 0.06))
+        default: (top, bottom) = (SIMD3(0.11, 0.07, 0.21), SIMD3(0.04, 0.02, 0.08))
+        }
+        let bands = 24
+        for i in 0..<bands {
+            let t = Float(i) / Float(bands - 1)
+            ui.rect(0, H * Float(i) / Float(bands), W, H / Float(bands) + 1, SIMD4(top + (bottom - top) * t, 1))
+        }
+        // Drifting voxel silhouettes
+        for i in 0..<18 {
+            let h1 = Hashing.unit(7, Int32(i), 0, 0), h2 = Hashing.unit(7, Int32(i), 1, 0)
+            let size = (20 + h2 * 60) * sc
+            let x = (h1 * W + Float(now) * (8 + h2 * 20) * sc).truncatingRemainder(dividingBy: W + 120 * sc) - 60 * sc
+            ui.rect(x, H * (0.55 + h2 * 0.4), size, size, SIMD4(1, 0.8, 0.4, 0.03 + h1 * 0.05))
+        }
+        if s.dimension == .toonland {
+            let cell = 40 * sc
+            let shift = Float(now * 30).truncatingRemainder(dividingBy: cell * 2)
+            for row in 0..<2 {
+                let y = row == 0 ? 0 : H - cell
+                for k in -2..<Int(W / cell) + 3 where (k + row) % 2 == 0 {
+                    ui.rect(Float(k) * cell + (row == 0 ? shift : -shift), y, cell, cell, SIMD4(0.95, 0.95, 0.95, 1))
+                }
+            }
+        }
+        let small = max(1, (2 * sc).rounded())
+        let huge = max(2, (9 * sc).rounded())
+        let bob = Float(sin(now * 1.5)) * 4 * sc
+        let titleY = H * 0.2 + bob
+        ui.centeredText("DinoCraft", centerX: W / 2 + 4 * sc, y: titleY + 4 * sc, scale: huge, color: SIMD4(0.16, 0.09, 0.25, 1))
+        ui.centeredText("DinoCraft", centerX: W / 2, y: titleY, scale: huge, color: SIMD4(1, 0.8, 0.35, 1))
+        let big = max(1, (3 * sc).rounded())
+        let infoY = titleY + 7 * huge + 30 * sc
+        ui.centeredText(s.loadingTitle, centerX: W / 2, y: infoY, scale: big, color: white)
+        ui.centeredText(s.meta.name, centerX: W / 2, y: infoY + 7 * big + 12 * sc, scale: small, color: dim)
+        let bw = 480 * sc, bh = 14 * sc, bx = W / 2 - bw / 2, by = infoY + 7 * big + 40 * sc
+        let progress = Float(max(0, min(1, s.loadingProgress)))
+        ui.rect(bx - 2 * sc, by - 2 * sc, bw + 4 * sc, bh + 4 * sc, SIMD4(1, 0.8, 0.4, 0.3))
+        ui.rect(bx, by, bw, bh, SIMD4(0.06, 0.04, 0.11, 0.95))
+        ui.rect(bx, by, max(8 * sc, bw * progress), bh, SIMD4(0.95, 0.6, 0.12, 1))
+        let shimmer = bx + Float(now * 0.6).truncatingRemainder(dividingBy: 1) * bw * progress
+        ui.rect(shimmer - 16 * sc, by, 32 * sc, bh, SIMD4(1, 1, 1, 0.22))
+        ui.centeredText("\(Int(progress * 100))%  -  \(s.loadingDetail)", centerX: W / 2, y: by + bh + 12 * sc, scale: small, color: dim)
+        if let goal = GameGuide.current(s.advancements), !s.isRemote {
+            ui.centeredText("NEXT GOAL: \(goal.step.title.uppercased())", centerX: W / 2, y: H - 150 * sc, scale: small, color: SIMD4(0.55, 0.95, 0.5, 1))
+        }
+        let tip = GameGuide.tips[Int(now / 5) % GameGuide.tips.count]
+        ui.centeredText("TIP", centerX: W / 2, y: H - 112 * sc, scale: small, color: amber)
+        ui.centeredText(tip, centerX: W / 2, y: H - 90 * sc, scale: small, color: white)
+    }
+
     // MARK: HUD
 
     private func buildHUD(_ ui: inout UIBuilder, width W: Float, height H: Float, scale sc: Float, camera: WinCamera, now: Double) {
@@ -112,6 +163,17 @@ extension WinSolo {
             ui.rect(bx - 3 * sc, by - 3 * sc, bw + 6 * sc, bh + 6 * sc, SIMD4(0, 0, 0, 0.7))
             ui.rect(bx, by, bw, bh, SIMD4(0.25, 0.25, 0.25, 1))
             ui.rect(bx, by, bw * frac, bh, boss.enraged ? SIMD4(0.95, 0.3, 0.3, 1) : SIMD4(0.95, 0.95, 0.95, 1))
+        }
+        if settings.showGuide, !s.isRemote, let goal = GameGuide.current(s.advancements) {
+            // The guide to beating the game, in the top-left corner
+            let small = max(1, (2 * sc).rounded())
+            let x = 14 * sc, y = 118 * sc
+            let w = max(UIBuilder.textWidth(goal.step.hint, scale: small), UIBuilder.textWidth(goal.step.title, scale: small)) + 20 * sc
+            ui.rect(x, y, w, 7 * small * 3 + 30 * sc, SIMD4(0.05, 0.03, 0.1, 0.6))
+            ui.rect(x, y, 3 * sc, 7 * small * 3 + 30 * sc, amber)
+            ui.text("GUIDE \(goal.number)/\(GameGuide.steps.count)  (G)", x: x + 10 * sc, y: y + 6 * sc, scale: small, color: amber)
+            ui.text(goal.step.title, x: x + 10 * sc, y: y + 6 * sc + 7 * small + 6 * sc, scale: small, color: white)
+            ui.text(goal.step.hint, x: x + 10 * sc, y: y + 6 * sc + 14 * small + 12 * sc, scale: small, color: dim)
         }
         if s.dimension == .toonland, let line = SongLyrics.line(track: audio?.currentTrack, time: audio?.musicTime) {
             // Sing-along lyrics

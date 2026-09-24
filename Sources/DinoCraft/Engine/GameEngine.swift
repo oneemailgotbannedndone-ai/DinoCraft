@@ -618,6 +618,10 @@ final class GameEngine: NSObject, MTKViewDelegate {
         if input.keyPressed(settings.binding(for: .toggleDebug).code) { showDebug.toggle() }
         if input.keyPressed(settings.binding(for: .toggleHUD).code) { hudHidden.toggle() }
         if session != nil && screens.isEmpty && input.keyPressed(96) { cameraView = cameraView.next }   // F5
+        if session != nil && screens.isEmpty && input.keyPressed(5) {   // G: show or hide the guide
+            settingsStore.update { $0.showGuide.toggle() }
+            showToast(settings.showGuide ? "Guide shown (G to hide)" : "Guide hidden (G to show)")
+        }
         if input.keyPressed(settings.binding(for: .screenshot).code) {
             pendingScreenshot = Screenshot.nextURL()
             showToast("Screenshot saved")

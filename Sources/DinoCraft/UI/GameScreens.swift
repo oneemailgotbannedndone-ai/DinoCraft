@@ -339,7 +339,22 @@ enum LoadingView {
     static func draw(_ ui: UIContext, session: GameSession) {
         let d = ui.draw
         let W = ui.size.x, H = ui.size.y
-        d.fill(Rect(0, 0, W, H), Color(hex: 0x1C1236), bottom: Color(hex: 0x0A0614))
+        // Each dimension has its own loading backdrop
+        switch session.dimension {
+        case .underworld: d.fill(Rect(0, 0, W, H), Color(hex: 0x3A0E0A), bottom: Color(hex: 0x120404))
+        case .skylands: d.fill(Rect(0, 0, W, H), Color(hex: 0x6A5A9A), bottom: Color(hex: 0xE8A04A))
+        case .toonland:
+            d.fill(Rect(0, 0, W, H), Color(hex: 0x3A3A3A), bottom: Color(hex: 0x101010))
+            let cell: Float = 40
+            let shift = Float(ui.time * 30).truncatingRemainder(dividingBy: cell * 2)
+            for row in 0..<2 {
+                let y = row == 0 ? Float(0) : H - cell
+                for k in -2..<Int(W / cell) + 3 where (k + row) % 2 == 0 {
+                    d.fill(Rect(Float(k) * cell + (row == 0 ? shift : -shift), y, cell, cell), Color(hex: 0xF2F2F2))
+                }
+            }
+        default: d.fill(Rect(0, 0, W, H), Color(hex: 0x1C1236), bottom: Color(hex: 0x0A0614))
+        }
         // Drifting voxel silhouettes
         for i in 0..<18 {
             let h1 = Float(Hashing.unit(7, Int32(i), 0, 0)), h2 = Float(Hashing.unit(7, Int32(i), 1, 0))
@@ -366,7 +381,11 @@ enum LoadingView {
         d.fill(Rect(shimmerX - 20, fill.y, 40, fill.h), Color(linear: 1, 1, 1, 0.25), radius: 5, blur: 6)
         d.text("\(Int(progress * 100))%  ·  \(session.loadingDetail)", x: W / 2, y: bar.maxY + 14, size: 14, color: Theme.textMuted, align: .center)
 
-        let tip = tips[Int(ui.time / 5) % tips.count]
+        if let goal = GameGuide.current(session.advancements), !session.isRemote {
+            d.text("NEXT GOAL: \(goal.step.title.uppercased())", x: W / 2, y: H - 150, size: 13, color: Theme.jungle, face: .display, align: .center, tracking: 0.1)
+        }
+        let allTips = tips + GameGuide.tips
+        let tip = allTips[Int(ui.time / 5) % allTips.count]
         d.text("TIP", x: W / 2, y: H - 110, size: 12, color: Theme.amber, face: .display, align: .center, tracking: 0.2)
         d.text(tip, x: W / 2, y: H - 88, size: 16, color: Theme.text.alpha(0.85), align: .center)
     }
@@ -426,6 +445,15 @@ enum HUD {
                    face: .display, align: .center, shadow: Color(linear: 0, 0, 0, 0.8))
             d.fill(bar, Color(linear: 0, 0, 0, 0.55), radius: 4)
             d.fill(Rect(bar.x, bar.y, bar.w * frac, bar.h), mob.species.hostile ? Theme.danger : Theme.jungle, radius: 4)
+        }
+        if e.settings.showGuide, !s.isRemote, let goal = GameGuide.current(s.advancements) {
+            // The guide to beating the game, in the top-left corner
+            let box = Rect(14, 118, 420, 84)
+            d.fill(box, Color(hex: 0x120A20, alpha: 0.62), radius: 10)
+            d.fill(Rect(box.x, box.y + 8, 3, box.h - 16), Theme.amber, radius: 1.5)
+            d.text("GUIDE \(goal.number)/\(GameGuide.steps.count)  (G)", x: box.x + 14, y: box.y + 8, size: 12, color: Theme.amber, face: .display)
+            d.text(goal.step.title, x: box.x + 14, y: box.y + 30, size: 16, color: Theme.text, face: .display)
+            d.text(goal.step.hint, x: box.x + 14, y: box.y + 56, size: 13, color: Theme.text.alpha(0.7))
         }
         if s.dimension == .toonland, let line = SongLyrics.line(track: e.audio.currentTrack, time: e.audio.musicTime) {
             // Sing-along lyrics
