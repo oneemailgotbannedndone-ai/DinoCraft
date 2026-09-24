@@ -50,7 +50,7 @@ An original prehistoric voxel sandbox built from scratch as a **native macOS app
   - Host any world from the pause menu with **Open to LAN**, and friends join from **Multiplayer**.
   - Shared chests and furnaces, and dropped items, stay in sync.
   - Includes chat, name tags, and PvP.
-- **Packs.** Texture packs: the default **Dino** pack, the built-in **TunefulCraft** remix (which also rebrands the title), and your own packs. Shader packs: Vibrant, Cinematic, Retro, and Dreamy.
+- **Packs.** Texture packs: the default **Dino** pack, **TunefulCraft** (a bright remix that also rebrands the title), **Pastel Picnic**, **Retro Pixels** and **Autumn Woods**, plus your own packs. Every built-in pack keeps natural colours, so grass stays green and water stays blue (except autumn leaves). Shader packs: Vibrant, Cinematic, Retro, and Dreamy. Both work on Mac and Windows.
 - **Other.** Usernames, an FPS counter, rebindable controls, a debug profiler, Discord Rich Presence, and local saves.
 
 ## Requirements
@@ -58,7 +58,7 @@ An original prehistoric voxel sandbox built from scratch as a **native macOS app
 - macOS 14 or later on Apple Silicon (developed and tested on an M4)
 - Xcode Command Line Tools (`xcode-select --install`). Full Xcode is **not** required, because shaders are compiled at runtime by Metal.
 
-> **Windows:** there is also a Windows version (SDL3 + OpenGL 3.3), built by the Windows workflow in `.github/workflows/windows.yml`. Your own worlds run the same shared game as the Mac (`Sources/DinoCraftGame`): Survival, Hardcore and Creative, creatures, crafting, furnaces, chests, farming, bows, armor, beds, villagers, portals, weather, advancements and chat commands. Windows players can host worlds for Mac and Windows friends, and join games hosted on a Mac. Both versions draw their text with the same 5×7 pixel font (`Sources/DinoCraftCore/Util/PixelFont.swift`).
+> **Windows:** there is also a Windows version (SDL3 + OpenGL 3.3), built by the Windows workflow in `.github/workflows/windows.yml`. Your own worlds run the same shared game as the Mac (`Sources/DinoCraftGame`): Survival, Hardcore and Creative, creatures, crafting, furnaces, chests, farming, bows, armor, beds, villagers, portals, weather, advancements and chat commands, with rain and snow, particles, textured dropped items, the item in your hand, texture packs and shader packs. Windows players can host worlds for Mac and Windows friends, and join games hosted on a Mac. Both versions draw their text with the same 5×7 pixel font (`Sources/DinoCraftCore/Util/PixelFont.swift`).
 
 ## Build and run
 
@@ -71,7 +71,7 @@ Options:
 
 ```bash
 Scripts/build_app.sh --test     # run the core self-test suite first
-Scripts/build_app.sh --assets   # regenerate textures (including TunefulCraft), sounds, music and icons first
+Scripts/build_app.sh --assets   # regenerate textures (including the built-in texture packs), sounds, music and icons first
 Scripts/build_app.sh --install  # also copy the app into /Applications, replacing any older copy
 ```
 
@@ -161,7 +161,7 @@ Commands work in single-player and for the host of a multiplayer game. Friends w
 
 Open **Settings → Packs**.
 
-**Texture packs.** Built in are **Dino (Default)** and **TunefulCraft**, a neon remix of every block and item that also renames the game on the title screen. To add your own:
+**Texture packs.** Built in are **Dino (Default)**, **TunefulCraft** (saturated colours with equalizer stripes; it also renames the game on the title screen), **Pastel Picnic** (soft pastels), **Retro Pixels** (chunky 16-pixel look) and **Autumn Woods** (golden grass, red and orange leaves). They're made by `Tools/AssetForge/Packs.swift` from DinoCraft's own art. On Windows, choose a pack under Settings. To add your own:
 
 1. Click **Open Texture Packs Folder**, which opens `~/Library/Application Support/DinoCraft/texturepacks/`.
 2. Create a folder containing:
@@ -334,7 +334,7 @@ Sources/DinoCraftGame      the shared game both apps run: GameSession, world str
 Sources/DinoCraftWin       the Windows application: SDL3 window, input and audio, OpenGL renderer,
                            menus, single-player on the shared game, hosting and joining
 
-Tools/AssetForge           generates every texture (and the TunefulCraft pack), sound, music track and icon
+Tools/AssetForge           generates every texture (and the built-in texture packs), sound, music track and icon
 Resources/                 data, shaders, texture packs, and the generated art and audio
 ```
 

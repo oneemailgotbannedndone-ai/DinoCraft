@@ -44,9 +44,11 @@ if all || args.contains("textures") {
     for stage in 0..<10 {
         try TexturePainter.paintCrack(stage: stage).write(to: miscDir.appendingPathComponent("crack_\(stage).png"))
     }
-    let tuneful = try Tuneful.generate(into: resources.appendingPathComponent("TexturePacks/tunefulcraft"), blocks: painted,
-                                       blockNames: registry.textureNames, itemNames: items.textureNames)
-    print("texture pack tunefulcraft: \(tuneful) textures")
+    var paintedBlocks: [String: Canvas] = [:], paintedItems: [String: Canvas] = [:]
+    for name in registry.textureNames { paintedBlocks[name] = painted[name] }
+    for name in items.textureNames { paintedItems[name] = TexturePainter.paintItem(name) }
+    let packs = try TexturePackForge.generate(into: resources.appendingPathComponent("TexturePacks"), blocks: paintedBlocks, items: paintedItems)
+    for (id, count) in packs.sorted(by: { $0.key < $1.key }) { print("texture pack \(id): \(count) textures") }
     print("textures: \(registry.textureNames.count) block, \(items.textureNames.count) item, 10 crack stages")
 }
 

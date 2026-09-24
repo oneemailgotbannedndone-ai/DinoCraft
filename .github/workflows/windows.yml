@@ -64,6 +64,7 @@ jobs:
           Copy-Item Resources/Data "$out/Resources/Data" -Recurse
           Copy-Item Resources/Textures/blocks "$out/Resources/Textures/blocks" -Recurse
           Copy-Item Resources/Textures/items "$out/Resources/Textures/items" -Recurse
+          Copy-Item Resources/TexturePacks "$out/Resources/TexturePacks" -Recurse
           Copy-Item Resources/Sounds "$out/Resources/Sounds" -Recurse
           Copy-Item Resources/Music "$out/Resources/Music" -Recurse
           Remove-Item "$out/Resources/Music/*.m4a" -ErrorAction SilentlyContinue
@@ -97,7 +98,7 @@ jobs:
           $p4 = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--screenshot `"$shot4`" --demo-screen worlds --hide-console" -PassThru -Wait -NoNewWindow
           Write-Host "World list check exit code: $($p4.ExitCode)"
           if (-not (Test-Path $shot4)) { throw "The game did not produce the world list screenshot" }
-          foreach ($screen in @("creative", "furnace", "pause")) {
+          foreach ($screen in @("creative", "furnace", "pause", "settings")) {
             $shotN = "$PWD/screenshot-$screen.png"
             $pN = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--screenshot `"$shotN`" --frames 5 --render-distance 4 --seed dino --demo-entities --demo-screen $screen" -PassThru -Wait -NoNewWindow
             Write-Host "$screen check exit code: $($pN.ExitCode)"
@@ -122,6 +123,7 @@ jobs:
             screenshot-creative.png
             screenshot-furnace.png
             screenshot-pause.png
+            screenshot-settings.png
             screenshot-create.png
             smoke-home/logs/
           if-no-files-found: ignore

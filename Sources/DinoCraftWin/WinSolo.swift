@@ -9,7 +9,7 @@ import DinoCraftCore
 /// it SDL input, draws it with OpenGL, and can open the world to friends on Mac and Windows.
 final class WinSolo: CommandHost {
     enum Screen {
-        case closed, pause, inventory, crafting, creative, advancements
+        case closed, pause, settings, inventory, crafting, creative, advancements
         case container(BlockPos, ContainerKind)
         case trade(Mob)
         case sleep(started: Double)
@@ -31,6 +31,7 @@ final class WinSolo: CommandHost {
     let storage = WorldStorage()
     let jobs: JobSystem
     let input = SDLGameInput()
+    let particles = ParticleSystem()
     private(set) var session: GameSession?
     /// The session, which exists from `init` until the game ends.
     var game: GameSession { session! }
@@ -126,6 +127,14 @@ final class WinSolo: CommandHost {
             self.audio?.play("thunder", volume: 0.25 + 0.75 * closeness, pitch: 1.15 - 0.3 * closeness)
         }
         s.advancements.onUnlock = { [weak self] def in self?.announceAdvancement(def) }
+        s.onBlockBroken = { [weak self] pos, id in
+            guard let self else { return }
+            self.particles.blockBroken(pos, id: id, blocks: self.blocks)
+        }
+        s.onBlockHit = { [weak self, weak s] pos, id in
+            guard let self, let s else { return }
+            self.particles.blockHit(pos, id: id, blocks: self.blocks, eye: s.player.eyePosition)
+        }
         s.blockObserver = { [weak self] pos, id in
             guard let self, let host = self.host, !self.applyingRemoteEdit, self.session?.dimension == .overworld else { return }
             host.broadcastBlock(pos, id)
@@ -340,6 +349,10 @@ final class WinSolo: CommandHost {
             if case .sleep = screen { return }
             let typing: Bool
             if case .creative = screen { typing = paletteSearchFocused } else { typing = false }
+            if case .settings = screen, `is`(SDL_SCANCODE_ESCAPE) {
+                screen = .pause
+                return
+            }
             if `is`(SDL_SCANCODE_ESCAPE) || (bound(.inventory) && !typing) || (bound(.advancements) && isAdvancements) { closeScreen() }
             return
         }
@@ -433,9 +446,13 @@ final class WinSolo: CommandHost {
         }
         let gameSettings = WinSolo.gameSettings(settings, options)
         let paused: Bool
-        if case .pause = screen { paused = host == nil } else { paused = false }
+        switch screen {
+        case .pause, .settings: paused = host == nil
+        default: paused = false
+        }
         s.update(dt: dt, input: isPlaying ? input : nil, settings: gameSettings, paused: paused)
         input.endFrame()
+        if !s.isLoading { particles.update(dt: paused ? 0 : dt, session: s, blocks: blocks) }
 
         if case .sleep(let started) = screen {
             let elapsed = clock - started
@@ -512,11 +529,18 @@ final class WinSolo: CommandHost {
         camera.position = s.player.eyePosition
         camera.yaw = s.player.yaw
         camera.pitch = s.player.pitch
+        camera.fovY = max(50, min(110, settings.fov)) * .pi / 180
         if s.player.isSprinting { camera.fovY *= 1.08 }
+        if settings.viewBobbing && !s.player.flying {
+            // Gentle head bob while walking, like on the Mac.
+            let phase = s.bobPhase * .pi, amount = s.bobAmount
+            camera.position.y += abs(cos(phase)) * 0.045 * amount
+            camera.yaw += sin(phase) * 0.004 * amount
+        }
         let ui = buildUI(width: Float(w), height: Float(h), camera: camera)
         let sky = SkyState.at(worldTime: s.worldTime, dimension: s.dimension, weather: s.weather.intensity)
         renderer.render(world: s.world, camera: camera, sky: sky, time: clock, now: Date.timeIntervalSinceReferenceDate,
-                        width: w, height: h, ui: ui, models: models(camera: camera))
+                        width: w, height: h, ui: ui, models: models(camera: camera), effects: worldEffects(camera: camera))
 
         if let path = options.screenshotPath {
             if !s.isLoading {
@@ -551,7 +575,7 @@ final class WinSolo: CommandHost {
         }
     }
 
-    /// Creatures, dropped items, arrows and friends as camera-relative triangles.
+    /// Creatures, arrows and friends as camera-relative triangles.
     private func models(camera: WinCamera) -> [Float] {
         guard let s = session, !s.isLoading else { return [] }
         var v: [Float] = []
@@ -582,22 +606,6 @@ final class WinSolo: CommandHost {
             let m = MathUtil.translation(r) * MathUtil.rotationY(yaw) * MathUtil.rotationX(pitch)
             CreatureModels.appendBox(&v, m, SIMD3(-0.025, -0.025, -0.3), SIMD3(0.025, 0.025, 0.3), CreatureModels.c(0x8A6A44), glow: false, tint: none)
             CreatureModels.appendBox(&v, m, SIMD3(-0.05, -0.05, 0.22), SIMD3(0.05, 0.05, 0.3), CreatureModels.c(0xE8E2D6), glow: false, tint: none)
-        }
-        for e in s.entities.items where !e.removed {
-            guard let r = rel(e.position), let info = items[e.stack.item] else { continue }
-            let color = renderer.itemColor(e.stack.item, items: items, blocks: blocks)
-            let cube = info.block != nil
-            let size: Float = cube ? 0.25 : 0.36
-            let bob = Float(sin((time + e.spinOffset) * 2.6)) * 0.06 + 0.08 + size * 0.5
-            let spin = Float(time * 1.7 + e.spinOffset)
-            let copies = e.stack.count > 32 ? 3 : (e.stack.count > 1 ? 2 : 1)
-            for k in 0..<copies {
-                let offset = SIMD3<Float>(Float(k) * 0.06, Float(k) * 0.05, Float(k) * -0.05)
-                let m = MathUtil.translation(r + SIMD3(0, bob, 0) + offset) * MathUtil.rotationY(spin)
-                let half = size / 2
-                let depth: Float = cube ? half : 0.03
-                CreatureModels.appendBox(&v, m, SIMD3(-half, -half, -depth), SIMD3(half, half, depth), color, glow: false, tint: none)
-            }
         }
         for p in hostEntities.values where p.dying == 0 {
             guard let r = rel(p.position) else { continue }
@@ -660,6 +668,9 @@ final class WinSolo: CommandHost {
             openScreen(.creative)
         case "pause":
             openPause()
+        case "settings":
+            openPause()
+            screen = .settings
         case "advancements":
             openScreen(.advancements)
         default:

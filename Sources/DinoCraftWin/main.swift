@@ -1,6 +1,7 @@
 import Foundation
 import CSDL3
 import DinoCraftCore
+@testable import DinoCraftGame
 #if os(Windows)
 import WinSDK
 #endif
@@ -131,7 +132,10 @@ do {
     let items = try ItemRegistry.loadDefault(blocks: blocks)
     let recipes = try RecipeRegistry.loadDefault(items: items)
     let smelting = try SmeltingRegistry.loadDefault(items: items)
-    let renderer = try WinRenderer(gl: gl, blocks: blocks, items: items)
+    let pack = TexturePackLibrary.all().first { $0.id == settingsStore.settings.texturePack } ?? TexturePackLibrary.defaultPack
+    let renderer = try WinRenderer(gl: gl, blocks: blocks, items: items, pack: pack)
+    SettingsPanel.applyLooks(settingsStore.settings, to: renderer)
+    if settingsStore.settings.fullscreen { _ = SDL_SetWindowFullscreen(window, true) }
     let content = GameContent(blocks: blocks, items: items, recipes: recipes, smelting: smelting, renderer: renderer)
     let audio = WinAudio()
     audio.apply(settingsStore.settings)

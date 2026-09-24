@@ -1,7 +1,4 @@
 import Foundation
-import CoreGraphics
-import ImageIO
-import UniformTypeIdentifiers
 import DinoCraftCore
 
 struct RGBA {
@@ -93,22 +90,24 @@ final class Canvas {
         for i in 0..<(size * size) {
             let p = px[i]
             let a = max(0, min(1, p.a))
-            bytes[i * 4] = UInt8(max(0, min(255, (p.r * a * 255).rounded())))
-            bytes[i * 4 + 1] = UInt8(max(0, min(255, (p.g * a * 255).rounded())))
-            bytes[i * 4 + 2] = UInt8(max(0, min(255, (p.b * a * 255).rounded())))
+            guard a > 0 else { continue }
+            bytes[i * 4] = UInt8(max(0, min(255, (p.r * 255).rounded())))
+            bytes[i * 4 + 1] = UInt8(max(0, min(255, (p.g * 255).rounded())))
+            bytes[i * 4 + 2] = UInt8(max(0, min(255, (p.b * 255).rounded())))
             bytes[i * 4 + 3] = UInt8((a * 255).rounded())
         }
-        let space = CGColorSpace(name: CGColorSpace.sRGB)!
-        guard let provider = CGDataProvider(data: Data(bytes) as CFData),
-              let image = CGImage(width: size, height: size, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: size * 4,
-                                  space: space, bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
-                                  provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent),
-              let dest = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil)
-        else { throw NSError(domain: "AssetForge", code: 1, userInfo: [NSLocalizedDescriptionKey: "PNG encode failed for \(url.lastPathComponent)"]) }
-        CGImageDestinationAddImage(dest, image, nil)
-        guard CGImageDestinationFinalize(dest) else {
-            throw NSError(domain: "AssetForge", code: 2, userInfo: [NSLocalizedDescriptionKey: "PNG write failed for \(url.path)"])
+        try PNG.encode(width: size, height: size, rgba: bytes).write(to: url)
+    }
+
+    /// Loads a square PNG (for restyling textures that were already painted).
+    static func read(_ url: URL) throws -> Canvas {
+        let image = try PNG.decode(Data(contentsOf: url))
+        let canvas = Canvas(image.width)
+        for i in 0..<(image.width * min(image.width, image.height)) {
+            let b = image.rgba
+            canvas.px[i] = RGBA(Double(b[i * 4]) / 255, Double(b[i * 4 + 1]) / 255, Double(b[i * 4 + 2]) / 255, Double(b[i * 4 + 3]) / 255)
         }
+        return canvas
     }
 }
 

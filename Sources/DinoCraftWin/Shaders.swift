@@ -273,6 +273,144 @@ enum Shaders {
     }
     """
 
+    /// Textured or plain camera-relative quads: dropped items, the held item, particles, rain and snow.
+    /// Layer < 0 is a plain colour, 0… a block texture, 10000… an item texture.
+    static let effectVertex = """
+    #version 330 core
+    layout(location = 0) in vec3 aPos;
+    layout(location = 1) in vec2 aUV;
+    layout(location = 2) in float aLayer;
+    layout(location = 3) in vec4 aColor;
+    layout(location = 4) in float aGlow;
+    uniform mat4 uViewProj;
+    out vec2 vUV;
+    out float vLayer;
+    out vec4 vColor;
+    out float vGlow;
+    out vec3 vViewPos;
+    void main() {
+        gl_Position = uViewProj * vec4(aPos, 1.0);
+        vUV = aUV;
+        vLayer = aLayer;
+        vColor = aColor;
+        vGlow = aGlow;
+        vViewPos = aPos;
+    }
+    """
+
+    static let effectFragment = """
+    #version 330 core
+    in vec2 vUV;
+    in float vLayer;
+    in vec4 vColor;
+    in float vGlow;
+    in vec3 vViewPos;
+    uniform sampler2DArray uBlocks;
+    uniform sampler2DArray uItems;
+    uniform vec4 uFogColorStart;
+    uniform float uFogEnd;
+    uniform float uDaylight;
+    out vec4 fragColor;
+    void main() {
+        vec4 c = vColor;
+        if (vLayer >= 9999.5) {
+            vec4 t = texture(uItems, vec3(vUV, vLayer - 10000.0));
+            if (t.a < 0.3) discard;
+            c *= vec4(t.rgb / max(t.a, 0.001), 1.0);
+        } else if (vLayer >= -0.5) {
+            vec4 t = texture(uBlocks, vec3(vUV, vLayer));
+            if (t.a < 0.3) discard;
+            c *= vec4(t.rgb / max(t.a, 0.001), 1.0);
+        }
+        vec3 lit = mix(c.rgb * mix(0.22, 1.0, uDaylight), c.rgb, vGlow);
+        float t = smoothstep(uFogColorStart.w, uFogEnd, length(vViewPos));
+        t = t * t;
+        vec3 rgb = mix(lit, uFogColorStart.rgb, t);
+        fragColor = vec4(rgb * c.a, c.a);
+    }
+    """
+
+    /// Shader packs: a fullscreen pass over the scene (ported from Resources/Shaders/50_Post.metal).
+    static let postVertex = """
+    #version 330 core
+    out vec2 vUV;
+    void main() {
+        vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
+        gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+        vUV = p;
+    }
+    """
+
+    static let postFragment = """
+    #version 330 core
+    in vec2 vUV;
+    uniform sampler2D uScene;
+    uniform vec4 uParams;   // x preset (1 vibrant, 2 cinematic, 3 retro, 4 dreamy), y time, zw size in pixels
+    uniform float uStrength;
+    out vec4 fragColor;
+    float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+    float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+    vec3 toGamma(vec3 c) { return pow(max(c, vec3(0.0)), vec3(1.0 / 2.2)); }
+    vec3 blur(vec2 uv, vec2 px, float radius) {
+        vec3 acc = texture(uScene, uv).rgb * 0.2;
+        for (int i = 0; i < 8; i++) {
+            float a = float(i) * 0.785398 + 0.3;
+            acc += texture(uScene, uv + vec2(cos(a), sin(a)) * px * radius).rgb * 0.05;
+            acc += texture(uScene, uv + vec2(cos(a), sin(a)) * px * radius * 2.2).rgb * 0.05;
+        }
+        return acc;
+    }
+    void main() {
+        int preset = int(uParams.x + 0.5);
+        float time = uParams.y;
+        vec2 size = max(uParams.zw, vec2(1.0));
+        vec2 uv = vUV;
+        vec2 px = 1.0 / size;
+        vec3 base = texture(uScene, uv).rgb;
+        vec3 g = toGamma(base);
+        vec2 q = uv - 0.5;
+        float vignette = clamp(1.0 - dot(q, q) * 1.5, 0.0, 1.0);
+        if (preset == 1) {
+            float l = luma(g);
+            g = mix(vec3(l), g, 1.4);
+            g = (g - 0.5) * 1.1 + 0.5;
+            g *= vec3(1.03, 1.0, 0.97);
+            g *= mix(1.0, vignette, 0.45);
+        } else if (preset == 2) {
+            vec3 glow = toGamma(blur(uv, px, 7.0));
+            g += max(glow - 0.62, vec3(0.0)) * 1.6;
+            float l = luma(g);
+            g += mix(vec3(-0.02, 0.05, 0.09), vec3(0.10, 0.04, -0.05), smoothstep(0.15, 0.85, l)) * 0.7;
+            g = smoothstep(vec3(-0.06), vec3(1.06), g);
+            g *= mix(1.0, vignette, 0.85);
+            g += (hash(floor(uv * size) + fract(time) * 91.0) - 0.5) * 0.04;
+            float bar = 0.055;
+            if (uv.y < bar || uv.y > 1.0 - bar) g = vec3(0.0);
+        } else if (preset == 3) {
+            float cell = max(2.0, floor(size.y / 300.0));
+            vec2 puv = (floor(uv * size / cell) + 0.5) * cell / size;
+            vec3 r = texture(uScene, puv + vec2(px.x * cell * 0.5, 0.0)).rgb;
+            vec3 m = texture(uScene, puv).rgb;
+            vec3 b = texture(uScene, puv - vec2(px.x * cell * 0.5, 0.0)).rgb;
+            g = toGamma(vec3(r.r, m.g, b.b));
+            g = floor(g * 5.0 + 0.5) / 5.0;
+            float scan = 0.82 + 0.18 * (0.5 + 0.5 * sin(uv.y * size.y / cell * 3.14159));
+            g *= scan;
+            g *= mix(1.0, vignette, 0.75);
+        } else if (preset == 4) {
+            vec3 soft = toGamma(blur(uv, px, 5.0));
+            g = mix(g, max(g, soft), 0.6);
+            float l = luma(g);
+            g = mix(vec3(l), g, 0.82);
+            g = g * 0.88 + 0.09;
+            g *= vec3(1.05, 0.97, 1.07);
+            g *= mix(1.0, vignette, 0.35);
+        }
+        vec3 graded = pow(clamp(g, vec3(0.0), vec3(1.0)), vec3(2.2));
+        fragColor = vec4(mix(base, graded, clamp(uStrength, 0.0, 1.0)), 1.0);
+    }
+    """
+
     static let overlayVertex = """
     #version 330 core
     layout(location = 0) in vec2 aPos;

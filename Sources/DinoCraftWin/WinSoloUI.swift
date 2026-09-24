@@ -31,7 +31,12 @@ extension WinSolo {
 
         if s.player.headInWater { ui.rect(0, 0, W, H, SIMD4(0.02, 0.1, 0.3, 0.35)) }
         if s.portalProgress > 0 { ui.rect(0, 0, W, H, SIMD4(0.45, 0.1, 0.7, Float(min(1, s.portalProgress)) * 0.55)) }
-        if !hudHidden { buildHUD(&ui, width: W, height: H, scale: sc, camera: camera, now: now) }
+        var fullScreenMenu = false
+        switch screen {
+        case .settings, .advancements: fullScreenMenu = true
+        default: break
+        }
+        if !hudHidden && !fullScreenMenu { buildHUD(&ui, width: W, height: H, scale: sc, camera: camera, now: now) }
         if s.damageFlash > 0 { ui.rect(0, 0, W, H, SIMD4(0.6, 0, 0, Float(s.damageFlash) * 0.3)) }
 
         if s.isDead {
@@ -42,6 +47,17 @@ extension WinSolo {
                 if !mouseCaptured && !chatOpen && options.screenshotPath == nil { buildResumeHint(&ui, width: W, height: H, scale: sc) }
             case .pause:
                 buildPauseMenu(&ui, width: W, height: H, scale: sc)
+            case .settings:
+                ui.rect(0, 0, W, H, SIMD4(0, 0, 0, 0.6))
+                ui.centeredText("Settings", centerX: W / 2, y: 30 * sc, scale: max(1, (4 * sc).rounded()), color: amber)
+                let panel = SettingsPanel(store: store, renderer: renderer, audio: audio, window: window,
+                                          click: { [weak self] in self?.audio?.play("ui_click", volume: 0.5) })
+                let bottom = panel.build(&ui, input: menuInput(), width: W, top: 30 * sc + 40 * max(1, (4 * sc).rounded()) / 2 + 30 * sc, scale: sc)
+                if ui.button("Done", x: W / 2 - 200 * sc, y: max(bottom + 16 * sc, H - 70 * sc), w: 400 * sc, h: 46 * sc, scale: sc,
+                             input: menuInput(), primary: true) {
+                    audio?.play("ui_click", volume: 0.5)
+                    screen = .pause
+                }
             case .sleep(let started):
                 let elapsed = Float(now - started)
                 let darkness = min(1, elapsed / 1.2) * (1 - max(0, (elapsed - 2.4) / 0.8))
@@ -194,6 +210,10 @@ extension WinSolo {
             ui.text(entry.def.title, x: W - w - 4 * sc, y: ty + 4 * sc + 10 * small, scale: small, color: SIMD4(1, 1, 1, alpha))
             ty += 20 * small + 16 * sc
         }
+        if settings.showFPS && !showDebug {
+            let text = "\(fps) FPS"
+            ui.text(text, x: W - 12 * sc - UIBuilder.textWidth(text, scale: small), y: H - 12 * sc - 7 * small, scale: small, color: SIMD4(1, 1, 1, 0.8))
+        }
         if showDebug {
             let p = s.player.position
             var lines = [
@@ -264,6 +284,12 @@ extension WinSolo {
                      x: W / 2 - bw / 2, y: y, w: bw, h: bh, scale: sc, input: input) {
             audio?.play("ui_click", volume: 0.5)
             screen = .advancements
+            return
+        }
+        y += bh + gap
+        if ui.button("Settings", x: W / 2 - bw / 2, y: y, w: bw, h: bh, scale: sc, input: input) {
+            audio?.play("ui_click", volume: 0.5)
+            screen = .settings
             return
         }
         y += bh + gap

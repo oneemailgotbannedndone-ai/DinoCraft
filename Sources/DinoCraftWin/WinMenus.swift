@@ -1,6 +1,7 @@
 import Foundation
 import CSDL3
 import DinoCraftCore
+@testable import DinoCraftGame
 
 /// Mouse and keyboard input for one frame of a menu.
 struct MenuInput {
@@ -210,7 +211,14 @@ final class WinMenus {
         switch page {
         case .title:
             let big = max(1, (9 * s).rounded())
-            ui.centeredText("DinoCraft", centerX: cx, y: H * 0.16, scale: big, color: SIMD4(1, 0.72, 0.25, 1))
+            let pack = renderer.texturePack
+            let top = pack.titleTop, bottom = pack.titleBottom
+            func color(_ hex: UInt32) -> SIMD4<Float> {
+                SIMD4(Float((hex >> 16) & 0xFF) / 255, Float((hex >> 8) & 0xFF) / 255, Float(hex & 0xFF) / 255, 1)
+            }
+            // The title is the top colour over the bottom colour, one pixel lower, like a two-tone logo.
+            ui.centeredText(pack.title, centerX: cx + big * 0.5, y: H * 0.16 + big, scale: big, color: color(bottom))
+            ui.centeredText(pack.title, centerX: cx, y: H * 0.16, scale: big, color: color(top))
             ui.centeredText("for Windows", centerX: cx, y: H * 0.16 + 10 * big, scale: small, color: SIMD4(0.9, 0.85, 1, 0.8))
             if let message {
                 ui.centeredText(String(message.prefix(110)), centerX: cx, y: H * 0.16 + 10 * big + 16 * small, scale: small, color: SIMD4(1, 0.6, 0.5, 1))
@@ -414,33 +422,13 @@ final class WinMenus {
             header("Settings")
             edit(&playerName, id: "player", input: input, limit: 16)
             let rowW = min(W - 80 * s, 620 * s), rowX = cx - rowW / 2
-            var y = H * 0.24
+            var y = H * 0.2
             ui.text("Player name", x: rowX, y: y + bh / 2 - 3.5 * small, scale: small, color: SIMD4(1, 1, 1, 1))
             if ui.field(playerName, placeholder: "Explorer", x: rowX + rowW - 260 * s, y: y, w: 260 * s, h: bh, scale: s, focused: focus == "player", input: input, time: now) { focus = "player" }
             y += bh + gap
-            func stepper(_ title: String, _ value: String, minus: () -> Void, plus: () -> Void) {
-                ui.text(title, x: rowX, y: y + bh / 2 - 3.5 * small, scale: small, color: SIMD4(1, 1, 1, 1))
-                let bx = rowX + rowW - 260 * s
-                if ui.button("-", x: bx, y: y, w: 60 * s, h: bh, scale: s, input: input) { click(); minus() }
-                ui.centeredText(value, centerX: bx + 130 * s, y: y + bh / 2 - 3.5 * small, scale: small, color: SIMD4(1, 0.85, 0.55, 1))
-                if ui.button("+", x: bx + 200 * s, y: y, w: 60 * s, h: bh, scale: s, input: input) { click(); plus() }
-                y += bh + gap
-            }
-            let settings = store.settings
-            stepper("Render distance", "\(max(4, min(16, settings.renderDistance))) chunks",
-                    minus: { store.update { $0.renderDistance = max(4, min(16, $0.renderDistance) - 2) } },
-                    plus: { store.update { $0.renderDistance = min(16, max(4, $0.renderDistance) + 2) } })
-            stepper("Mouse sensitivity", "\(Int((settings.mouseSensitivity * 200).rounded()))%",
-                    minus: { store.update { $0.mouseSensitivity = max(0, $0.mouseSensitivity - 0.05) } },
-                    plus: { store.update { $0.mouseSensitivity = min(1, $0.mouseSensitivity + 0.05) } })
-            stepper("Music volume", "\(Int((settings.musicVolume * 100).rounded()))%",
-                    minus: { store.update { $0.musicVolume = max(0, $0.musicVolume - 0.1) } },
-                    plus: { store.update { $0.musicVolume = min(1, $0.musicVolume + 0.1) } })
-            stepper("Sound volume", "\(Int((settings.soundVolume * 100).rounded()))%",
-                    minus: { store.update { $0.soundVolume = max(0, $0.soundVolume - 0.1) } },
-                    plus: { store.update { $0.soundVolume = min(1, $0.soundVolume + 0.1) } })
-            audio?.apply(store.settings)
-            if ui.button("Done", x: cx - bw / 2, y: H * 0.8, w: bw, h: bh, scale: s, input: input, primary: true) || input.escape || input.enter {
+            let panel = SettingsPanel(store: store, renderer: renderer, audio: audio, window: window, click: { [weak self] in self?.click() })
+            _ = panel.build(&ui, input: input, width: W, top: y, scale: s)
+            if ui.button("Done", x: cx - bw / 2, y: H - bh - 24 * s, w: bw, h: bh, scale: s, input: input, primary: true) || input.escape || input.enter {
                 click()
                 let name = cleanName(playerName)
                 store.update { $0.username = name }
