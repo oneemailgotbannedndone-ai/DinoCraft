@@ -56,7 +56,7 @@ final class WinMenus {
         case quit
     }
 
-    private enum Page { case title, worlds, create, multiplayer, settings, connecting }
+    private enum Page { case launcher, cosmetics, title, worlds, create, multiplayer, settings, connecting }
 
     private let window: OpaquePointer
     private let renderer: WinRenderer
@@ -70,6 +70,16 @@ final class WinMenus {
     private var focus = ""
     private var newName = "New World"
     private var newSeed = ""
+    /// Checks the public releases page for a newer DinoCraft.
+    private let updater = GameUpdater(assetName: "DinoCraft-Windows.zip")
+    /// The launcher shows first, once per start.
+    private var launched = false
+    private var settingsReturn = Page.title
+    private var updateError: String?
+    /// Set when the update is unpacked and DinoCraft should close so the updater can finish.
+    private var quitForUpdate = false
+    /// The cosmetics preview (camera-relative model triangles), rebuilt every frame.
+    private var previewModels: [Float] = []
     /// 0 Survival, 1 Hardcore, 2 Creative (the same order as on the Mac).
     private var newMode = 0
     private var newDifficulty = 2
@@ -100,12 +110,18 @@ final class WinMenus {
     func run(message: String?) -> Choice {
         self.message = message
         page = .title
+        if !launched {
+            launched = true
+            page = .launcher
+            if store.settings.checkForUpdates && options.screenshotPath == nil { updater.check() }
+        }
         focus = ""
         address = store.settings.lastServerAddress
         playerName = defaultName
         refreshWorlds()
         if options.demoScreen == "worlds" { page = .worlds }
         if options.demoScreen == "create" { page = .create; focus = "name" }
+        if options.demoScreen == "cosmetics" { page = .cosmetics }
         _ = SDL_SetWindowRelativeMouseMode(window, false)
         _ = SDL_StartTextInput(window)
         defer { _ = SDL_StopTextInput(window) }
@@ -123,11 +139,12 @@ final class WinMenus {
             var w: Int32 = 0, h: Int32 = 0
             _ = SDL_GetWindowSizeInPixels(window, &w, &h)
             var ui = UIBuilder()
+            previewModels = []
             if let choice = build(&ui, input: input, width: Float(w), height: Float(h), now: now - startTime) {
                 if case .quit = choice {} else { audio?.stopMusic() }
                 return choice
             }
-            renderer.renderMenu(width: w, height: h, time: now - startTime, ui: ui.vertices)
+            renderer.renderMenu(width: w, height: h, time: now - startTime, ui: ui.vertices, models: previewModels)
             frames += 1
             if let path = options.screenshotPath, frames >= 40 {
                 let image = renderer.capture(width: w, height: h)
@@ -233,10 +250,18 @@ final class WinMenus {
             }
             y += bh + gap
             if ui.button("Settings", x: cx - bw / 2, y: y, w: bw, h: bh, scale: s, input: input) {
-                click(); message = nil; focus = ""; page = .settings
+                click(); message = nil; focus = ""; settingsReturn = .title; page = .settings
             }
             y += bh + gap
-            if ui.button("Quit", x: cx - bw / 2, y: y, w: bw, h: bh, scale: s, input: input) || input.escape { return .quit }
+            if ui.button("Back to Launcher", x: cx - bw / 2, y: y, w: bw, h: bh, scale: s, input: input) || input.escape {
+                click(); message = nil; page = .launcher
+            }
+
+        case .launcher:
+            if let choice = buildLauncher(&ui, input: input, width: W, height: H, scale: s, now: now) { return choice }
+
+        case .cosmetics:
+            buildCosmetics(&ui, input: input, width: W, height: H, scale: s, now: now)
 
         case .worlds:
             header("Your Worlds")
@@ -434,7 +459,7 @@ final class WinMenus {
                 store.update { $0.username = name }
                 playerName = name
                 focus = ""
-                page = .title
+                page = settingsReturn
             }
         }
         return nil
@@ -470,5 +495,224 @@ final class WinMenus {
             }
             self.joinLock.unlock()
         }.start()
+    }
+}
+
+// MARK: - Launcher and cosmetics
+
+extension WinMenus {
+    private var amber: SIMD4<Float> { SIMD4(1, 0.85, 0.55, 1) }
+    private var muted: SIMD4<Float> { SIMD4(0.8, 0.76, 0.9, 0.9) }
+
+    /// The pre-launcher: news about the newest build, the update button, cosmetics, settings and Play.
+    fileprivate func buildLauncher(_ ui: inout UIBuilder, input: MenuInput, width W: Float, height H: Float, scale s: Float, now: Double) -> Choice? {
+        let small = max(1, (2 * s).rounded())
+        let cx = W / 2
+        ui.rect(0, 0, W, H, SIMD4(0.02, 0.01, 0.05, 0.45))
+
+        // Title in the texture pack's colours
+        let big = max(1, (8 * s).rounded())
+        let pack = renderer.texturePack
+        func color(_ hex: UInt32) -> SIMD4<Float> {
+            SIMD4(Float((hex >> 16) & 0xFF) / 255, Float((hex >> 8) & 0xFF) / 255, Float(hex & 0xFF) / 255, 1)
+        }
+        let titleY = H * 0.07
+        ui.centeredText(pack.title, centerX: cx + big * 0.5, y: titleY + big, scale: big, color: color(pack.titleBottom))
+        ui.centeredText(pack.title, centerX: cx, y: titleY, scale: big, color: color(pack.titleTop))
+        ui.centeredText("LAUNCHER", centerX: cx, y: titleY + 10 * big, scale: small, color: muted)
+
+        // News panel
+        let panelX = max(20 * s, cx - 600 * s), panelY = H * 0.27
+        let panelW = min(640 * s, cx - panelX - 30 * s), panelH = H * 0.6
+        ui.rect(panelX, panelY, panelW, panelH, SIMD4(0.06, 0.04, 0.1, 0.88))
+        ui.rect(panelX, panelY, 5 * s, panelH, SIMD4(0.95, 0.6, 0.12, 1))
+        let maxChars = max(10, Int((panelW - 40 * s) / (6 * small)))
+        var ny = panelY + 18 * s
+        func line(_ text: String, _ c: SIMD4<Float>) {
+            guard ny < panelY + panelH - 20 * s else { return }
+            ui.text(text, x: panelX + 22 * s, y: ny, scale: small, color: c, shadow: false)
+            ny += 11 * small
+        }
+        let state = updater.state
+        if let release = updater.latestRelease {
+            ui.text("What's new", x: panelX + 22 * s, y: ny, scale: max(1, (3 * s).rounded()), color: amber)
+            ny += 16 * max(1, (3 * s).rounded()) / 2 + 12 * s
+            line("\(release.title)\(release.published.isEmpty ? "" : " - \(release.published)")", SIMD4(1, 1, 1, 1))
+            ny += 4 * s
+            for raw in release.notes.split(separator: "\n", omittingEmptySubsequences: false) {
+                let text = raw.trimmingCharacters(in: .whitespaces)
+                if text.isEmpty { ny += 5 * s; continue }
+                if text.hasPrefix("Co-Authored-By") || text.hasPrefix("Claude-Session") { continue }
+                for part in WinMenus.wrap(text.replacingOccurrences(of: "**", with: ""), width: maxChars) { line(part, muted) }
+            }
+        } else {
+            ui.text("Welcome, explorer!", x: panelX + 22 * s, y: ny, scale: max(1, (3 * s).rounded()), color: amber)
+            ny += 16 * max(1, (3 * s).rounded()) / 2 + 12 * s
+            let tips = [
+                "Press Play to pick a world or join a friend.",
+                "Cosmetics: choose a hat, outfit, cape or dino tail. Friends see it in multiplayer.",
+                "Settings: texture packs, shader packs, view distance and more.",
+                "The launcher checks for new versions each time it opens.",
+                "",
+                "In game: E inventory, T chat, / commands, F1 info, F2 screenshot.",
+            ]
+            for tip in tips { if tip.isEmpty { ny += 6 * s } else { for part in WinMenus.wrap(tip, width: maxChars) { line(part, muted) } } }
+        }
+
+        // Buttons
+        let bx = panelX + panelW + 30 * s, bw = min(420 * s, W - bx - 20 * s), bh = 50 * s, gap = 12 * s
+        var y = panelY
+        if ui.button("Play", x: bx, y: y, w: bw, h: bh + 10 * s, scale: s, input: input, primary: true) || input.enter {
+            click(); message = nil; page = .title
+        }
+        y += bh + 10 * s + gap
+
+        // Update button: what it says and does follows the updater.
+        var label = "Check for Updates", enabled = true, primary = false
+        var status = BuildInfo.current.displayName
+        var action: (() -> Void)? = { [updater] in updater.check() }
+        switch state {
+        case .idle:
+            break
+        case .checking:
+            label = "Checking for Updates..."; enabled = false; action = nil
+        case .upToDate(let release):
+            label = "Up to Date"
+            status = release.map { BuildInfo.current.isDevelopment ? "Newest release is build \($0.build)" : "You have the newest build (\($0.build))" }
+                ?? "No releases published yet"
+        case .available(let release, let canInstall):
+            if canInstall {
+                label = "Update to Build \(release.build)"; primary = true
+                action = { [updater] in updater.download() }
+                status = "A new version is ready to download"
+            } else {
+                label = "Build \(release.build) Available"; enabled = false; action = nil
+                status = BuildInfo.current.isDevelopment ? "This copy was built by hand, so it can't update itself"
+                    : "This release has no Windows download yet"
+            }
+        case .downloading(let release, let fraction):
+            label = "Downloading... \(Int(fraction * 100))%"; enabled = false; action = nil
+            status = "Build \(release.build)"
+            ui.rect(bx, y + bh + 2 * s, bw, 4 * s, SIMD4(0, 0, 0, 0.5))
+            ui.rect(bx, y + bh + 2 * s, bw * Float(fraction), 4 * s, SIMD4(0.95, 0.6, 0.12, 1))
+        case .downloaded(let release, let file):
+            label = "Restart to Update"; primary = true
+            status = "Build \(release.build) downloaded"
+            action = { [weak self] in
+                if let error = WinUpdater.install(zip: file) {
+                    self?.updateError = error
+                } else {
+                    self?.updateError = nil
+                    self?.quitForUpdate = true
+                }
+            }
+        case .failed(let reason):
+            label = "Try Again"
+            status = reason
+        }
+        if ui.button(label, x: bx, y: y, w: bw, h: bh, scale: s, input: input, enabled: enabled, primary: primary), let action {
+            click()
+            action()
+        }
+        y += bh + 8 * s
+        let statusText = updateError ?? status
+        for part in WinMenus.wrap(statusText, width: max(10, Int(bw / (6 * small)))).prefix(2) {
+            ui.text(part, x: bx, y: y, scale: small, color: updateError != nil ? SIMD4(1, 0.6, 0.5, 1) : muted, shadow: false)
+            y += 10 * small
+        }
+        y += gap
+        if ui.button("Cosmetics", x: bx, y: y, w: bw, h: bh, scale: s, input: input) { click(); page = .cosmetics }
+        y += bh + gap
+        if ui.button("Settings", x: bx, y: y, w: bw, h: bh, scale: s, input: input) { click(); settingsReturn = .launcher; page = .settings }
+        y += bh + gap
+        if ui.button("Quit", x: bx, y: y, w: bw, h: bh, scale: s, input: input) || input.escape { return .quit }
+
+        ui.text("DinoCraft for Windows - \(BuildInfo.current.displayName)", x: 16 * s, y: H - 14 * s - 7 * small, scale: small, color: muted)
+        if quitForUpdate { return .quit }
+        return nil
+    }
+
+    /// Choose a hat, outfit colours and something to wear on your back, with a spinning preview.
+    fileprivate func buildCosmetics(_ ui: inout UIBuilder, input: MenuInput, width W: Float, height H: Float, scale s: Float, now: Double) {
+        let small = max(1, (2 * s).rounded())
+        ui.rect(0, 0, W, H, SIMD4(0.02, 0.01, 0.05, 0.35))
+        let head = max(1, (4 * s).rounded())
+        ui.centeredText("Cosmetics", centerX: W / 2, y: H * 0.06, scale: head, color: amber)
+        ui.centeredText("Friends see your look in multiplayer, on Mac and Windows.", centerX: W / 2, y: H * 0.06 + 10 * head,
+                        scale: small, color: muted)
+
+        var look = PlayerLook(encoded: store.settings.cosmetics) ?? PlayerLook.defaultLook(for: store.settings.username)
+        let before = look
+
+        // Spinning preview on the left half of the screen
+        let spin = Float(now * 0.8)
+        CreatureModels.appendPlayer(&previewModels, name: store.settings.username, look: look.encoded,
+                                    at: SIMD3(-1.45, -1.0, -4.0), yaw: spin, pitch: 0, walk: Float(now * 4),
+                                    moving: 0.35, sneaking: false, swing: 0, hurt: 0)
+
+        // Options on the right
+        let colW = min(560 * s, W * 0.5), x = W - colW - 40 * s
+        let rowH = 42 * s, rowGap = 10 * s
+        var y = H * 0.22
+        func row(_ title: String, _ value: String, minus: () -> Void, plus: () -> Void) {
+            ui.rect(x, y, colW, rowH, SIMD4(0.08, 0.06, 0.12, 0.88))
+            ui.text(title, x: x + 12 * s, y: y + rowH / 2 - 3.5 * small, scale: small, color: SIMD4(1, 1, 1, 1))
+            let bw = 40 * s, valueW = min(230 * s, colW * 0.5)
+            let bx = x + colW - bw * 2 - valueW - 8 * s
+            if ui.button("<", x: bx, y: y + 4 * s, w: bw, h: rowH - 8 * s, scale: s, input: input) { click(); minus() }
+            ui.centeredText(value, centerX: bx + bw + valueW / 2, y: y + rowH / 2 - 3.5 * small, scale: small, color: amber)
+            if ui.button(">", x: bx + bw + valueW, y: y + 4 * s, w: bw, h: rowH - 8 * s, scale: s, input: input) { click(); plus() }
+            y += rowH + rowGap
+        }
+        func cycle(_ i: inout Int, _ count: Int, _ step: Int) { i = (i + step + count) % count }
+        let hats = PlayerLook.Hat.allCases, backs = PlayerLook.Back.allCases
+        var hat = hats.firstIndex(of: look.hat) ?? 0, back = backs.firstIndex(of: look.back) ?? 0
+        row("Hat", look.hat.displayName, minus: { cycle(&hat, hats.count, -1) }, plus: { cycle(&hat, hats.count, 1) })
+        row("Shirt", PlayerLook.shirtNames[look.shirt], minus: { cycle(&look.shirt, PlayerLook.shirtColors.count, -1) },
+            plus: { cycle(&look.shirt, PlayerLook.shirtColors.count, 1) })
+        row("Trousers", PlayerLook.pantsNames[look.pants], minus: { cycle(&look.pants, PlayerLook.pantsColors.count, -1) },
+            plus: { cycle(&look.pants, PlayerLook.pantsColors.count, 1) })
+        row("Skin", PlayerLook.skinNames[look.skin], minus: { cycle(&look.skin, PlayerLook.skinTones.count, -1) },
+            plus: { cycle(&look.skin, PlayerLook.skinTones.count, 1) })
+        row("On your back", look.back.displayName, minus: { cycle(&back, backs.count, -1) }, plus: { cycle(&back, backs.count, 1) })
+        row("Accent colour", PlayerLook.accentNames[look.accent], minus: { cycle(&look.accent, PlayerLook.accentColors.count, -1) },
+            plus: { cycle(&look.accent, PlayerLook.accentColors.count, 1) })
+        look.hat = hats[hat]
+        look.back = backs[back]
+
+        y += 8 * s
+        let half = (colW - 12 * s) / 2
+        if ui.button("Surprise Me", x: x, y: y, w: half, h: 46 * s, scale: s, input: input) {
+            click()
+            look.hat = hats.randomElement()!
+            look.back = backs.randomElement()!
+            look.shirt = Int.random(in: 0..<PlayerLook.shirtColors.count)
+            look.pants = Int.random(in: 0..<PlayerLook.pantsColors.count)
+            look.skin = Int.random(in: 0..<PlayerLook.skinTones.count)
+            look.accent = Int.random(in: 0..<PlayerLook.accentColors.count)
+        }
+        if ui.button("Reset", x: x + half + 12 * s, y: y, w: half, h: 46 * s, scale: s, input: input) {
+            click()
+            look = PlayerLook.defaultLook(for: store.settings.username)
+        }
+        if look != before { store.update { $0.cosmetics = look.encoded } }
+        if ui.button("Done", x: W / 2 - 200 * s, y: H - 46 * s - 24 * s, w: 400 * s, h: 46 * s, scale: s, input: input, primary: true) || input.escape {
+            click()
+            page = .launcher
+        }
+    }
+
+    /// Splits text at spaces into lines of at most `width` characters.
+    static func wrap(_ text: String, width: Int) -> [String] {
+        var lines: [String] = [], line = ""
+        for word in text.split(separator: " ") {
+            if !line.isEmpty && line.count + word.count + 1 > width {
+                lines.append(line)
+                line = ""
+            }
+            line += (line.isEmpty ? "" : " ") + String(word.prefix(width))
+        }
+        if !line.isEmpty { lines.append(line) }
+        return lines
     }
 }

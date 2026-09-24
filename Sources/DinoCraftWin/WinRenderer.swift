@@ -403,7 +403,7 @@ final class WinRenderer {
     }
 
     /// Menu background: a slowly turning evening sky with drifting clouds, plus the menu UI.
-    func renderMenu(width: Int32, height: Int32, time: Double, ui: [Float]) {
+    func renderMenu(width: Int32, height: Int32, time: Double, ui: [Float], models: [Float] = []) {
         gl.viewport(0, 0, width, height)
         gl.enable(GLC.FRAMEBUFFER_SRGB)
         gl.depthMask(1)
@@ -414,7 +414,17 @@ final class WinRenderer {
         camera.yaw = time * 0.02
         camera.pitch = 0.18
         let aspect = Float(width) / Float(max(1, height))
-        drawSky(camera: camera, aspect: aspect, sky: SkyState.at(worldTime: 520 + time * 0.5), time: Float(time.truncatingRemainder(dividingBy: 3600)))
+        let sky = SkyState.at(worldTime: 520 + time * 0.5)
+        drawSky(camera: camera, aspect: aspect, sky: sky, time: Float(time.truncatingRemainder(dividingBy: 3600)))
+        if !models.isEmpty {
+            // Models in front of a fixed camera looking down -Z (for the cosmetics preview).
+            gl.enable(GLC.DEPTH_TEST)
+            gl.depthFunc(GLC.LESS)
+            gl.clear(GLC.DEPTH_BUFFER_BIT)
+            var lit = sky
+            lit.daylight = 1
+            drawModels(models, viewProj: WinCamera().viewProjection(aspect: aspect), sky: lit, fogEnd: 1000)
+        }
         drawOverlay(width: width, height: height, vertices: ui)
         gl.bindVertexArray(0)
     }

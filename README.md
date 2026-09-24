@@ -83,6 +83,23 @@ Development loop without packaging:
 swift build -c release --product DinoCraft && .build/release/DinoCraft
 ```
 
+## Launcher, updates and cosmetics
+
+DinoCraft opens on a **launcher** (Mac and Windows) with **Play**, **Update**, **Cosmetics**, **Settings** and **Quit**, plus a "What's new" panel with the notes of the newest build.
+
+- **Updates.** The launcher checks the public **DinoCraft-Releases** repository. When a newer build is there, **Update to Build N** downloads it and **Restart to Update** swaps it in and reopens the game. Worlds and settings are kept. Copies you built yourself are "development builds" and never replace themselves.
+- **Cosmetics.** Pick a hat (Explorer Hat, Cap, Crown, Top Hat, Dino Hood, Flower Crown or none), shirt, trousers and skin colours, and something for your back (Cape, Dino Tail or Backpack) with an accent colour. Friends see your look in multiplayer on both Mac and Windows. Older versions just see the default explorer.
+
+### Publishing updates (one-time setup)
+
+The game's code stays private; each build is published to a separate public repository that the launcher can read.
+
+1. On GitHub, create a **public** repository named `DinoCraft-Releases` under the same account (it can be empty).
+2. Create a token that can publish there: GitHub → Settings → Developer settings → **Fine-grained tokens** → Generate new token. Under *Repository access* choose *Only select repositories* → `DinoCraft-Releases`, and under *Permissions* set **Contents** to *Read and write*.
+3. In **this** repository: Settings → Secrets and variables → Actions → **New repository secret**, name `RELEASES_TOKEN`, paste the token.
+
+From then on every push to `main` builds Windows and Mac and publishes them as `build-N`. You can also publish from the Actions tab: run the **Windows** workflow with *Publish* ticked. Without the secret the workflow still builds and just skips publishing.
+
 ## Playing with a friend
 
 Everyone needs DinoCraft on a Mac.

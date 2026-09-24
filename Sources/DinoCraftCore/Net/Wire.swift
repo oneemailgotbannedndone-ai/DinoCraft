@@ -78,11 +78,14 @@ public enum Wire {
         public var held: String?
         public var health: Float
         public var dead: Bool
+        /// The player's cosmetics (`PlayerLook.encoded`); older versions leave it out.
+        public var look: String?
 
         public init(id: Int, x: Double, y: Double, z: Double, yaw: Float, pitch: Float, moving: Float, sneaking: Bool,
-                    swinging: Bool, held: String?, health: Float, dead: Bool) {
+                    swinging: Bool, held: String?, health: Float, dead: Bool, look: String? = nil) {
             self.id = id; self.x = x; self.y = y; self.z = z; self.yaw = yaw; self.pitch = pitch; self.moving = moving
             self.sneaking = sneaking; self.swinging = swinging; self.held = held; self.health = health; self.dead = dead
+            self.look = look
         }
     }
 

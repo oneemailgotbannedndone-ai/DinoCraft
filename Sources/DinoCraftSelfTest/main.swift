@@ -78,6 +78,20 @@ section("Pixel font") {
     check(PixelFont.rows(for: "\u{4E2D}") == PixelFont.rows(for: "?"), "unknown characters draw as ?")
 }
 
+section("Updates") {
+    let reply = """
+    {"tag_name": "build-42", "name": "DinoCraft build 42", "body": "New packs", "published_at": "2026-09-24T10:00:00Z",
+     "assets": [{"name": "DinoCraft-Windows.zip", "browser_download_url": "https://example.com/w.zip"},
+                {"name": "DinoCraft-Mac.zip", "browser_download_url": "https://example.com/m.zip"}]}
+    """
+    let release = GameUpdater.parse(Data(reply.utf8))
+    check(release?.build == 42, "release tag build-42 reads as build 42")
+    check(release?.assets["DinoCraft-Windows.zip"]?.absoluteString == "https://example.com/w.zip", "release downloads are found by name")
+    check(release?.published == "2026-09-24", "release date is kept")
+    check(GameUpdater.parse(Data("{}".utf8)) == nil, "a broken reply is ignored")
+    check(BuildInfo(build: 0, commit: nil, date: nil).isDevelopment, "builds made by hand count as development builds")
+}
+
 section("Noise") {
     let a = SimplexNoise(seed: 42), b = SimplexNoise(seed: 42), c = SimplexNoise(seed: 43)
     var same = true, differs = false, minV = 1.0, maxV = -1.0

@@ -100,6 +100,10 @@ public struct GameSettings: Codable, Equatable, Sendable {
     public var username = ""
     public var lastServerAddress = ""
     public var texturePack = "dino"
+    /// How your explorer looks to friends (see `PlayerLook` in DinoCraftGame); empty means the default look.
+    public var cosmetics = ""
+    /// The launcher checks the releases page for a newer DinoCraft.
+    public var checkForUpdates = true
     public var shaderPack = "off"
     public var shaderStrength: Double = 1.0
 
@@ -152,6 +156,8 @@ public struct GameSettings: Codable, Equatable, Sendable {
         username = v(.username, username)
         lastServerAddress = v(.lastServerAddress, lastServerAddress)
         texturePack = v(.texturePack, texturePack)
+        cosmetics = v(.cosmetics, cosmetics)
+        checkForUpdates = v(.checkForUpdates, checkForUpdates)
         shaderPack = v(.shaderPack, shaderPack)
         shaderStrength = v(.shaderStrength, shaderStrength)
         masterVolume = v(.masterVolume, masterVolume)

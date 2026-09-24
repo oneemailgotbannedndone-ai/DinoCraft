@@ -609,7 +609,7 @@ final class WinSolo: CommandHost {
         }
         for p in hostEntities.values where p.dying == 0 {
             guard let r = rel(p.position) else { continue }
-            CreatureModels.appendPlayer(&v, name: p.name, at: r, yaw: Float(p.yaw), pitch: p.pitch, walk: p.walk, moving: p.moving,
+            CreatureModels.appendPlayer(&v, name: p.name, look: p.look, at: r, yaw: Float(p.yaw), pitch: p.pitch, walk: p.walk, moving: p.moving,
                                         sneaking: p.sneaking, swing: p.swing, hurt: p.hurt)
         }
         return v
@@ -768,7 +768,8 @@ final class WinSolo: CommandHost {
         return Wire.PlayerState(id: 0, x: p.position.x, y: p.position.y, z: p.position.z, yaw: Float(p.yaw), pitch: Float(p.pitch),
                                 moving: Float(p.onGround ? min(1, p.horizontalSpeed / 4.3) : 0), sneaking: p.isSneaking,
                                 swinging: s.swingProgress > 0, held: s.inventory.selectedStack.flatMap { items[$0.item]?.name },
-                                health: Float(s.health), dead: s.isDead)
+                                health: Float(s.health), dead: s.isDead,
+                                look: settings.cosmetics.isEmpty ? nil : settings.cosmetics)
     }
 
     /// Keeps a smoothed model for every friend connected to this host.

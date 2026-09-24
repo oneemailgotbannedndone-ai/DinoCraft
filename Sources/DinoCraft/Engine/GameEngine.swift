@@ -41,6 +41,8 @@ final class GameEngine: NSObject, MTKViewDelegate {
     let presence: PresenceManager
     let storage = WorldStorage()
     let versionString: String
+    /// Checks the public releases page for a newer DinoCraft (the launcher shows the result).
+    let updater = GameUpdater(assetName: "DinoCraft-Mac.zip")
 
     private(set) var session: GameSession?
     private var menuWorld: World?
@@ -165,6 +167,11 @@ final class GameEngine: NSObject, MTKViewDelegate {
         started = true
         createMenuWorld()
         screens = [MainMenuScreen()]
+        if options.script == nil && options.autoWorld == nil && options.joinAddress == nil {
+            // The launcher comes first; Play reveals the main menu underneath.
+            screens.append(LauncherScreen())
+            if settings.checkForUpdates { updater.check() }
+        }
         if let name = options.username, Username.validate(name) == nil { settingsStore.update { $0.username = name } }
         if Username.validate(settings.username) != nil && options.script == nil && options.autoWorld == nil && options.joinAddress == nil {
             screens.append(UsernameScreen(current: "", firstRun: true))
@@ -792,6 +799,7 @@ final class GameEngine: NSObject, MTKViewDelegate {
 
     private func render(in view: MTKView) {
         if settings.texturePack != activeTexturePack { applyTexturePack(settings.texturePack) }
+        if let s = session, s.playerLook != settings.cosmetics { s.playerLook = settings.cosmetics }
         renderer.inflight.wait()
         guard let rpd = view.currentRenderPassDescriptor, let drawable = view.currentDrawable,
               let cmd = renderer.queue.makeCommandBuffer() else {

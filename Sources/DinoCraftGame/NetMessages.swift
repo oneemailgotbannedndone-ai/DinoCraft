@@ -83,6 +83,8 @@ struct PlayerStateMessage: Codable {
     var held: String?
     var health: Float
     var dead: Bool
+    /// The player's cosmetics (`PlayerLook.encoded`); older versions leave it out.
+    var look: String? = nil
 }
 
 struct ChatMessage: Codable {

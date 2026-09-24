@@ -21,6 +21,8 @@ final class RemoteEntity {
     var sneaking = false
     var health: Float = 20
     var variant = 0
+    /// A player's cosmetics (`PlayerLook.encoded`), or nil for the default look.
+    var look: String?
 
     init(id: Int, kind: String, name: String, position: DVec3, yaw: Double) {
         self.id = id
@@ -42,6 +44,7 @@ final class RemoteEntity {
         if s.health < health { hurt = 0.35 }
         health = s.health
         dying = s.dead ? 1 : 0
+        if let l = s.look { look = l }
     }
 
     func apply(_ m: Wire.MobState) {
@@ -243,11 +246,12 @@ final class WinNetwork {
         connection.send(.blockChange, Wire.BlockChange(pos: pos, id: id, harvest: harvest))
     }
 
-    func sendState(player: PlayerController, swinging: Bool, held: String?, health: Float, dead: Bool) {
+    func sendState(player: PlayerController, swinging: Bool, held: String?, health: Float, dead: Bool, look: String?) {
         connection.send(.playerState, Wire.PlayerState(id: welcome.playerID, x: player.position.x, y: player.position.y, z: player.position.z,
                                                        yaw: Float(player.yaw), pitch: Float(player.pitch),
                                                        moving: Float(player.onGround ? min(1, player.horizontalSpeed / 4.3) : 0),
-                                                       sneaking: player.isSneaking, swinging: swinging, held: held, health: health, dead: dead))
+                                                       sneaking: player.isSneaking, swinging: swinging, held: held, health: health, dead: dead,
+                                                       look: look))
     }
 
     func sendChat(_ text: String) {

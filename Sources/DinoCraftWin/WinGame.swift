@@ -558,7 +558,8 @@ final class WinGame {
         if stateTimer <= 0 {
             stateTimer = 0.05
             network.sendState(player: player, swinging: swingTimer > 0, held: inventory.selectedStack.flatMap { items[$0.item]?.name },
-                              health: Float(creative ? 20 : health), dead: dead)
+                              health: Float(creative ? 20 : health), dead: dead,
+                              look: settings.settings.cosmetics.isEmpty ? nil : settings.settings.cosmetics)
         }
     }
 
@@ -574,7 +575,7 @@ final class WinGame {
         }
         func player(_ e: RemoteEntity) {
             guard e.dying == 0, let r = rel(e.position) else { return }
-            CreatureModels.appendPlayer(&v, name: e.name, at: r, yaw: Float(e.yaw), pitch: e.pitch, walk: e.walk, moving: e.moving,
+            CreatureModels.appendPlayer(&v, name: e.name, look: e.look, at: r, yaw: Float(e.yaw), pitch: e.pitch, walk: e.walk, moving: e.moving,
                                         sneaking: e.sneaking, swing: e.swing, hurt: e.hurt)
         }
         func creature(_ e: RemoteEntity) {

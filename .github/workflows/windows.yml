@@ -1,9 +1,18 @@
 name: Windows
 
+# Builds DinoCraft for Windows and Mac. On pushes to main (or when "publish" is ticked) both
+# downloads go to the public DinoCraft-Releases repository, where the launcher's update button finds them.
+# Publishing needs a RELEASES_TOKEN secret: a GitHub token that can create releases in that repository.
+
 on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish this build to DinoCraft-Releases
+        type: boolean
+        default: false
 
 jobs:
   build:
@@ -21,6 +30,14 @@ jobs:
 
       - name: Swift version
         run: swift --version
+
+      - name: Stamp build number
+        shell: pwsh
+        run: |
+          $commit = "${{ github.sha }}".Substring(0, 7)
+          $date = Get-Date -Format yyyy-MM-dd
+          "{`"build`": ${{ github.run_number }}, `"commit`": `"$commit`", `"date`": `"$date`"}" | Out-File Resources/Data/build.json -Encoding ascii
+          Get-Content Resources/Data/build.json
 
       - name: Build core self-test
         run: swift build -c release --product DinoCraftSelfTest
@@ -133,3 +150,73 @@ jobs:
         with:
           name: DinoCraft-Windows
           path: DinoCraft-Windows
+
+      - name: Zip for the launcher's updater
+        shell: pwsh
+        run: Compress-Archive -Path DinoCraft-Windows/* -DestinationPath DinoCraft-Windows.zip
+
+      - name: Upload Windows zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-zip
+          path: DinoCraft-Windows.zip
+
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Stamp build number
+        run: |
+          echo "{\"build\": ${{ github.run_number }}, \"commit\": \"${GITHUB_SHA::7}\", \"date\": \"$(date +%F)\"}" > Resources/Data/build.json
+          cat Resources/Data/build.json
+
+      - name: Build DinoCraft.app
+        run: zsh Scripts/build_app.sh
+
+      - name: Zip for the launcher's updater
+        run: ditto -c -k --keepParent dist/DinoCraft.app DinoCraft-Mac.zip
+
+      - name: Upload Mac zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-zip
+          path: DinoCraft-Mac.zip
+
+  release:
+    needs: [build, mac]
+    if: always() && needs.build.result == 'success' && (github.event_name == 'push' || inputs.publish)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Windows zip
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-zip
+          path: out
+
+      - name: Download Mac zip
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: mac-zip
+          path: out
+
+      - name: Publish to DinoCraft-Releases
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning::The RELEASES_TOKEN secret isn't set, so this build wasn't published."
+            exit 0
+          fi
+          git log -1 --pretty=%B > notes.txt
+          ls -la out
+          gh release create "build-${{ github.run_number }}" out/*.zip \
+            --repo oneemailgotbannedndone-ai/DinoCraft-Releases \
+            --title "DinoCraft build ${{ github.run_number }}" \
+            --notes-file notes.txt
