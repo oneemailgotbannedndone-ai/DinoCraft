@@ -150,7 +150,12 @@ public final class GameUpdater: @unchecked Sendable {
         guard let build = Int(digits) else { return nil }
         var assets: [String: URL] = [:]
         for a in reply.assets { if let u = URL(string: a.browser_download_url) { assets[a.name] = u } }
-        return GameRelease(build: build, title: reply.name ?? "DinoCraft build \(build)", notes: reply.body ?? "",
+        // The release page starts with download instructions; the launcher only shows what's new.
+        var notes = reply.body ?? ""
+        if let range = notes.range(of: "## What's new") {
+            notes = String(notes[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return GameRelease(build: build, title: reply.name ?? "DinoCraft build \(build)", notes: notes,
                            published: String((reply.published_at ?? "").prefix(10)), assets: assets)
     }
 

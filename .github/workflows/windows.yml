@@ -214,7 +214,18 @@ jobs:
             echo "::warning::The RELEASES_TOKEN secret isn't set, so this build wasn't published."
             exit 0
           fi
-          if [ -s Resources/Data/whatsnew.txt ]; then cp Resources/Data/whatsnew.txt notes.txt; else git log -1 --pretty=%B > notes.txt; fi
+          {
+            echo "## Download"
+            echo ""
+            echo "- **Windows:** download **DinoCraft-Windows.zip**, right-click it and choose *Extract All*, then open **DinoCraft.exe**."
+            echo "- **Mac (Apple Silicon):** download **DinoCraft-Mac.zip**, double-click it, then right-click **DinoCraft.app** and choose *Open* the first time."
+            echo ""
+            echo "Already playing? The launcher's **Update** button installs this version for you."
+            echo ""
+            echo "## What's new"
+            echo ""
+            if [ -s Resources/Data/whatsnew.txt ]; then cat Resources/Data/whatsnew.txt; else git log -1 --pretty=%B; fi
+          } > notes.txt
           ls -la out
           gh release create "build-${{ github.run_number }}" out/*.zip \
             --repo oneemailgotbannedndone-ai/DinoCraft-Releases \

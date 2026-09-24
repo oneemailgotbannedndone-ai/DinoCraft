@@ -89,6 +89,8 @@ section("Updates") {
     check(release?.assets["DinoCraft-Windows.zip"]?.absoluteString == "https://example.com/w.zip", "release downloads are found by name")
     check(release?.published == "2026-09-24", "release date is kept")
     check(GameUpdater.parse(Data("{}".utf8)) == nil, "a broken reply is ignored")
+    let withDownloads = GameUpdater.parse(Data(###"{"tag_name": "build-9", "body": "## Download\n\n- zip\n\n## What's new\n\nSkins!", "assets": []}"###.utf8))
+    check(withDownloads?.notes == "Skins!", "the launcher shows only the what's-new part of the notes")
     check(BuildInfo(build: 0, commit: nil, date: nil).isDevelopment, "builds made by hand count as development builds")
 }
 
