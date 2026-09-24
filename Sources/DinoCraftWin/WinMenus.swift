@@ -896,15 +896,22 @@ extension WinMenus {
         if face { look.face = pixels } else { look.chest = pixels }
         skinDraft = look
 
-        let bw = 260 * s
-        if ui.button("Save & Done", x: W / 2 - bw - 8 * s, y: H - 46 * s - 22 * s, w: bw, h: 46 * s, scale: s, input: input, primary: true) || input.escape {
+        let bw = 250 * s, by = H - 46 * s - 22 * s
+        if ui.button("Save & Play", x: W / 2 - bw * 1.5 - 12 * s, y: by, w: bw, h: 46 * s, scale: s, input: input, primary: true) || input.enter {
+            click()
+            store.update { $0.cosmetics = look.encoded }
+            skinDraft = nil
+            skinMessage = nil
+            page = .title
+        }
+        if ui.button("Save & Back", x: W / 2 - bw / 2, y: by, w: bw, h: 46 * s, scale: s, input: input) || input.escape {
             click()
             store.update { $0.cosmetics = look.encoded }
             skinDraft = nil
             skinMessage = nil
             page = .launcher
         }
-        if ui.button("Cancel", x: W / 2 + 8 * s, y: H - 46 * s - 22 * s, w: bw, h: 46 * s, scale: s, input: input) {
+        if ui.button("Cancel", x: W / 2 + bw / 2 + 12 * s, y: by, w: bw, h: 46 * s, scale: s, input: input) {
             click()
             skinDraft = nil
             skinMessage = nil

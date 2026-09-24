@@ -412,11 +412,17 @@ final class SkinCreatorScreen: Screen {
         if isFace { look.face = pixels } else { look.chest = pixels }
         draft = look
 
-        if ui.button("skin.save", "Save & Done", Rect(panel.midX - 250, panel.maxY - 70, 240, 50), style: .primary) {
+        if ui.button("skin.play", "Save & Play", Rect(panel.midX - 370, panel.maxY - 70, 230, 50), style: .primary) {
+            e.settingsStore.update { $0.cosmetics = look.encoded }
+            e.popScreen()   // the skin creator
+            e.popScreen()   // the launcher, revealing the main menu (like Play)
+            return
+        }
+        if ui.button("skin.save", "Save & Back", Rect(panel.midX - 115, panel.maxY - 70, 230, 50), style: .secondary) {
             e.settingsStore.update { $0.cosmetics = look.encoded }
             e.popScreen()
         }
-        if ui.button("skin.cancel", "Cancel", Rect(panel.midX + 10, panel.maxY - 70, 240, 50), style: .secondary) { e.popScreen() }
+        if ui.button("skin.cancel", "Cancel", Rect(panel.midX + 140, panel.maxY - 70, 230, 50), style: .secondary) { e.popScreen() }
     }
 
     /// Fills the area of matching colour around `start`.
