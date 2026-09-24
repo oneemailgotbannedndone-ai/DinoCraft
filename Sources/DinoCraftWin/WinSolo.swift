@@ -59,6 +59,8 @@ final class WinSolo: CommandHost {
     var paletteSearch = ""
     var paletteSearchFocused = false
     var hudHidden = false
+    /// F5: first person, behind you, or facing you.
+    var cameraView = CameraView.firstPerson
     var showDebug = false
 
     // Chat and messages
@@ -369,6 +371,8 @@ final class WinSolo: CommandHost {
             openChat(prefix: "/")
         } else if bound(.toggleDebug) {
             showDebug.toggle()
+        } else if `is`(SDL_SCANCODE_F5) {
+            cameraView = cameraView.next
         } else if bound(.toggleHUD) {
             hudHidden.toggle()
         } else if bound(.advancements) {
@@ -526,12 +530,13 @@ final class WinSolo: CommandHost {
         var w: Int32 = 0, h: Int32 = 0
         _ = SDL_GetWindowSizeInPixels(window, &w, &h)
         var camera = WinCamera()
-        camera.position = s.player.eyePosition
-        camera.yaw = s.player.yaw
-        camera.pitch = s.player.pitch
+        let placement = s.cameraPlacement(cameraView)
+        camera.position = placement.eye
+        camera.yaw = placement.yaw
+        camera.pitch = placement.pitch
         camera.fovY = max(50, min(110, settings.fov)) * .pi / 180
         if s.player.isSprinting { camera.fovY *= 1.08 }
-        if settings.viewBobbing && !s.player.flying {
+        if settings.viewBobbing && !s.player.flying && cameraView == .firstPerson {
             // Gentle head bob while walking, like on the Mac.
             let phase = s.bobPhase * .pi, amount = s.bobAmount
             camera.position.y += abs(cos(phase)) * 0.045 * amount
@@ -607,6 +612,14 @@ final class WinSolo: CommandHost {
             CreatureModels.appendBox(&v, m, SIMD3(-0.025, -0.025, -0.3), SIMD3(0.025, 0.025, 0.3), CreatureModels.c(0x8A6A44), glow: false, tint: none)
             CreatureModels.appendBox(&v, m, SIMD3(-0.05, -0.05, 0.22), SIMD3(0.05, 0.05, 0.3), CreatureModels.c(0xE8E2D6), glow: false, tint: none)
         }
+        if cameraView != .firstPerson && !s.isDead, let r = rel(s.player.position) {
+            // You, wearing your cosmetics and skin.
+            let p = s.player
+            CreatureModels.appendPlayer(&v, name: settings.username, look: settings.cosmetics.isEmpty ? nil : settings.cosmetics, at: r,
+                                        yaw: Float(p.yaw), pitch: Float(p.pitch), walk: Float(s.bobPhase * .pi),
+                                        moving: Float(p.onGround ? min(1, p.horizontalSpeed / 4.3) : 0), sneaking: p.isSneaking,
+                                        swing: Float(s.swingProgress), hurt: Float(s.damageFlash > 0.7 ? 0.3 : 0))
+        }
         for p in hostEntities.values where p.dying == 0 {
             guard let r = rel(p.position) else { continue }
             CreatureModels.appendPlayer(&v, name: p.name, look: p.look, at: r, yaw: Float(p.yaw), pitch: p.pitch, walk: p.walk, moving: p.moving,
@@ -673,6 +686,10 @@ final class WinSolo: CommandHost {
             screen = .settings
         case "advancements":
             openScreen(.advancements)
+        case "thirdperson":
+            cameraView = .behind
+        case "front":
+            cameraView = .front
         default:
             break
         }

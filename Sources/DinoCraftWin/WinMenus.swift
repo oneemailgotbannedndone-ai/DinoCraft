@@ -59,7 +59,7 @@ final class WinMenus {
         case quit
     }
 
-    private enum Page { case launcher, cosmetics, title, worlds, create, multiplayer, settings, connecting }
+    private enum Page { case launcher, cosmetics, skin, title, worlds, create, multiplayer, settings, connecting }
 
     private let window: OpaquePointer
     private let renderer: WinRenderer
@@ -83,6 +83,15 @@ final class WinMenus {
     private var quitForUpdate = false
     /// The cosmetics preview (camera-relative model triangles), rebuilt every frame.
     private var previewModels: [Float] = []
+    // Skin creator
+    private var skinDraft: PlayerLook?
+    private var skinTab = 0
+    private var skinColor: UInt8 = 1
+    private var skinMirror = true
+    private var skinFill = false
+    private var skinFacePreset = 0
+    private var skinChestPreset = 0
+    private var skinMessage: String?
     /// 0 Survival, 1 Hardcore, 2 Creative (the same order as on the Mac).
     private var newMode = 0
     private var newDifficulty = 2
@@ -125,6 +134,13 @@ final class WinMenus {
         if options.demoScreen == "worlds" { page = .worlds }
         if options.demoScreen == "create" { page = .create; focus = "name" }
         if options.demoScreen == "cosmetics" { page = .cosmetics }
+        if options.demoScreen == "skin" {
+            page = .skin
+            var demo = PlayerLook(encoded: store.settings.cosmetics) ?? PlayerLook()
+            demo.face = PlayerLook.presetPixels(PlayerLook.facePresets[0].pixels, count: 64)
+            demo.chest = PlayerLook.presetPixels(PlayerLook.chestPresets[3].pixels, count: 80)
+            skinDraft = demo
+        }
         _ = SDL_SetWindowRelativeMouseMode(window, false)
         _ = SDL_StartTextInput(window)
         defer { _ = SDL_StopTextInput(window) }
@@ -269,6 +285,9 @@ final class WinMenus {
 
         case .cosmetics:
             buildCosmetics(&ui, input: input, width: W, height: H, scale: s, now: now)
+
+        case .skin:
+            buildSkinCreator(&ui, input: input, width: W, height: H, scale: s, now: now)
 
         case .worlds:
             header("Your Worlds")
@@ -630,11 +649,23 @@ extension WinMenus {
         y += gap
         if ui.button("Cosmetics", x: bx, y: y, w: bw, h: bh, scale: s, input: input) { click(); page = .cosmetics }
         y += bh + gap
+        if ui.button("Skin Creator", x: bx, y: y, w: bw, h: bh, scale: s, input: input) { click(); skinDraft = nil; page = .skin }
+        y += bh + gap
         if ui.button("Settings", x: bx, y: y, w: bw, h: bh, scale: s, input: input) { click(); settingsReturn = .launcher; page = .settings }
         y += bh + gap
         if ui.button("Quit", x: bx, y: y, w: bw, h: bh, scale: s, input: input) || input.escape { return .quit }
 
         ui.text("DinoCraft for Windows - \(BuildInfo.current.displayName)", x: 16 * s, y: H - 14 * s - 7 * small, scale: small, color: muted)
+        let folderW = 230 * s
+        if ui.button("Open Game Folder", x: W - folderW - 16 * s, y: H - 44 * s, w: folderW, h: 32 * s, scale: s, input: input) {
+            click()
+            openGameFolder()
+        }
+        // Your stats, under the news panel
+        let played = worlds.reduce(0) { $0 + $1.playTimeSeconds }
+        let hours = Int(played / 3600), minutes = Int(played / 60) % 60
+        ui.text("\(worlds.count) world\(worlds.count == 1 ? "" : "s") - \(hours)h \(minutes)m played - \(store.settings.username.isEmpty ? "no name yet" : store.settings.username)",
+                x: panelX, y: panelY + panelH + 10 * s, scale: small, color: muted)
         if quitForUpdate { return .quit }
         return nil
     }
@@ -721,5 +752,179 @@ extension WinMenus {
         }
         if !line.isEmpty { lines.append(line) }
         return lines
+    }
+}
+
+// MARK: - Skin creator
+
+extension WinMenus {
+    /// Opens DinoCraft's data folder (worlds, screenshots, texture packs) in Explorer.
+    fileprivate func openGameFolder() {
+        #if os(Windows)
+        let explorer = Process()
+        explorer.executableURL = URL(fileURLWithPath: "C:\\Windows\\explorer.exe")
+        explorer.arguments = [GamePaths.root.withUnsafeFileSystemRepresentation { $0.map { String(cString: $0) } } ?? GamePaths.root.path]
+        try? explorer.run()
+        #else
+        Log.info("Game folder: \(GamePaths.root.path)", category: "App")
+        #endif
+    }
+
+    /// Paint your own face and shirt, pixel by pixel, with a live preview. Friends see it in multiplayer.
+    fileprivate func buildSkinCreator(_ ui: inout UIBuilder, input: MenuInput, width W: Float, height H: Float, scale s: Float, now: Double) {
+        let small = max(1, (2 * s).rounded())
+        let amber = SIMD4<Float>(1, 0.85, 0.55, 1), muted = SIMD4<Float>(0.8, 0.76, 0.9, 0.9)
+        ui.rect(0, 0, W, H, SIMD4(0.02, 0.01, 0.05, 0.45))
+        let head = max(1, (4 * s).rounded())
+        ui.centeredText("Skin Creator", centerX: W / 2, y: H * 0.04, scale: head, color: amber)
+        ui.centeredText("Left-click paints, right-click rubs out. Friends see your skin in multiplayer.", centerX: W / 2,
+                        y: H * 0.04 + 10 * head, scale: small, color: muted)
+
+        var look = skinDraft ?? PlayerLook(encoded: store.settings.cosmetics) ?? PlayerLook.defaultLook(for: store.settings.username)
+        if look.face.count != 64 { look.face = Array(repeating: 0, count: 64) }
+        if look.chest.count != 80 { look.chest = Array(repeating: 0, count: 80) }
+
+        // Preview, turning gently so the front stays in view
+        CreatureModels.appendPlayer(&previewModels, name: store.settings.username, look: look.encoded,
+                                    at: SIMD3(-1.9, -1.05, -4.0), yaw: .pi + Float(sin(now * 0.7)) * 0.6, pitch: 0,
+                                    walk: 0, moving: 0, sneaking: false, swing: 0, hurt: 0)
+
+        // Face / shirt tabs
+        let face = skinTab == 0
+        let cols = face ? PlayerLook.faceWidth : PlayerLook.chestWidth, rows = face ? PlayerLook.faceHeight : PlayerLook.chestHeight
+        let cell = min(34 * s, (H * 0.56) / Float(rows))
+        let canvasW = cell * Float(cols), canvasH = cell * Float(rows)
+        let canvasX = W * 0.36, canvasY = H * 0.24
+        let tabW = (canvasW - 8 * s) / 2
+        if ui.button("Face", x: canvasX, y: canvasY - 48 * s, w: tabW, h: 38 * s, scale: s, input: input, primary: face) { click(); skinTab = 0 }
+        if ui.button("Shirt", x: canvasX + tabW + 8 * s, y: canvasY - 48 * s, w: tabW, h: 38 * s, scale: s, input: input, primary: !face) { click(); skinTab = 1 }
+
+        // Canvas: unpainted cells show the model's own colour.
+        let base = PlayerAvatar.color(face ? PlayerLook.skinTones[look.skin] : PlayerLook.shirtColors[look.shirt])
+        func srgb(_ c: SIMD4<Float>) -> SIMD4<Float> { SIMD4(pow(c.x, 1 / 2.2), pow(c.y, 1 / 2.2), pow(c.z, 1 / 2.2), 1) }
+        func paintColor(_ i: UInt8) -> SIMD4<Float> { srgb(PlayerAvatar.color(PlayerLook.paintColors[Int(i)])) }
+        ui.rect(canvasX - 4 * s, canvasY - 4 * s, canvasW + 8 * s, canvasH + 8 * s, SIMD4(0.05, 0.03, 0.08, 1))
+        var pixels = face ? look.face : look.chest
+        for r in 0..<rows {
+            for c in 0..<cols {
+                let v = pixels[r * cols + c]
+                let x = canvasX + Float(c) * cell, y = canvasY + Float(r) * cell
+                ui.rect(x, y, cell, cell, v == 0 ? srgb(base) * SIMD4(0.8, 0.8, 0.8, 1) : paintColor(v))
+                ui.rect(x, y, cell, 1, SIMD4(0, 0, 0, 0.18))
+                ui.rect(x, y, 1, cell, SIMD4(0, 0, 0, 0.18))
+            }
+        }
+        if skinMirror { ui.rect(canvasX + canvasW / 2 - 1 * s, canvasY, 2 * s, canvasH, SIMD4(1, 0.85, 0.55, 0.35)) }
+        let inCanvas = input.mouse.x >= canvasX && input.mouse.x < canvasX + canvasW && input.mouse.y >= canvasY && input.mouse.y < canvasY + canvasH
+        if inCanvas && (input.leftDown || input.rightDown || input.clicked) {
+            let c = Int((input.mouse.x - canvasX) / cell), r = Int((input.mouse.y - canvasY) / cell)
+            let value: UInt8 = input.rightDown ? 0 : skinColor
+            if skinFill && input.clicked {
+                WinMenus.floodFill(&pixels, cols: cols, rows: rows, from: r * cols + c, to: value)
+                if skinMirror { WinMenus.floodFill(&pixels, cols: cols, rows: rows, from: r * cols + (cols - 1 - c), to: value) }
+            } else if !skinFill {
+                pixels[r * cols + c] = value
+                if skinMirror { pixels[r * cols + (cols - 1 - c)] = value }
+            }
+        }
+
+        // Palette
+        let swatch = 40 * s, px = canvasX + canvasW + 40 * s
+        var py = canvasY
+        ui.text("Colours", x: px, y: py - 16 * s, scale: small, color: muted)
+        for i in 0..<16 {
+            let x = px + Float(i % 4) * (swatch + 6 * s), y = py + Float(i / 4) * (swatch + 6 * s)
+            if UInt8(i) == skinColor { ui.rect(x - 3 * s, y - 3 * s, swatch + 6 * s, swatch + 6 * s, SIMD4(1, 0.85, 0.55, 1)) }
+            if i == 0 {
+                ui.rect(x, y, swatch, swatch, srgb(base))
+                ui.centeredText("x", centerX: x + swatch / 2, y: y + swatch / 2 - 3.5 * small, scale: small, color: SIMD4(0.2, 0.1, 0.1, 1))
+            } else {
+                ui.rect(x, y, swatch, swatch, paintColor(UInt8(i)))
+            }
+            if input.clicked && input.mouse.x >= x && input.mouse.x < x + swatch && input.mouse.y >= y && input.mouse.y < y + swatch {
+                click()
+                skinColor = UInt8(i)
+            }
+        }
+        py += 4 * (swatch + 6 * s) + 14 * s
+
+        // Tools
+        let tw = 150 * s, th = 38 * s
+        func tool(_ label: String, _ col: Int, primary: Bool = false) -> Bool {
+            ui.button(label, x: px + Float(col) * (tw + 8 * s), y: py, w: tw, h: th, scale: s, input: input, primary: primary)
+        }
+        if tool(skinFill ? "Fill" : "Brush", 0, primary: skinFill) { click(); skinFill.toggle() }
+        if tool(skinMirror ? "Mirror On" : "Mirror Off", 1, primary: skinMirror) { click(); skinMirror.toggle() }
+        py += th + 8 * s
+        let presets = face ? PlayerLook.facePresets : PlayerLook.chestPresets
+        let presetIndex = face ? skinFacePreset : skinChestPreset
+        if tool("Idea: \(presets[presetIndex].name)", 0) {
+            click()
+            pixels = PlayerLook.presetPixels(presets[presetIndex].pixels, count: cols * rows)
+            if face { skinFacePreset = (skinFacePreset + 1) % presets.count } else { skinChestPreset = (skinChestPreset + 1) % presets.count }
+        }
+        if tool("Clear", 1) { click(); pixels = Array(repeating: 0, count: cols * rows) }
+        py += th + 8 * s
+        if tool("Copy Code", 0) {
+            click()
+            skinMessage = SDL_SetClipboardText(look.shareCode) ? "Skin code copied - paste it to a friend!" : "Couldn't copy the code."
+        }
+        if tool("Paste Code", 1) {
+            click()
+            if let raw = SDL_GetClipboardText() {
+                let text = String(cString: raw)
+                SDL_free(raw)
+                if let pasted = PlayerLook(shareCode: text) {
+                    look = pasted
+                    if look.face.count != 64 { look.face = Array(repeating: 0, count: 64) }
+                    if look.chest.count != 80 { look.chest = Array(repeating: 0, count: 80) }
+                    pixels = face ? look.face : look.chest
+                    skinMessage = "Skin pasted!"
+                } else {
+                    skinMessage = "The clipboard doesn't hold a DinoCraft skin code."
+                }
+            }
+        }
+        py += th + 10 * s
+        if let skinMessage {
+            for line in WinMenus.wrap(skinMessage, width: max(10, Int((2 * tw + 8 * s) / (6 * small)))).prefix(2) {
+                ui.text(line, x: px, y: py, scale: small, color: muted)
+                py += 10 * small
+            }
+        }
+
+        if face { look.face = pixels } else { look.chest = pixels }
+        skinDraft = look
+
+        let bw = 260 * s
+        if ui.button("Save & Done", x: W / 2 - bw - 8 * s, y: H - 46 * s - 22 * s, w: bw, h: 46 * s, scale: s, input: input, primary: true) || input.escape {
+            click()
+            store.update { $0.cosmetics = look.encoded }
+            skinDraft = nil
+            skinMessage = nil
+            page = .launcher
+        }
+        if ui.button("Cancel", x: W / 2 + 8 * s, y: H - 46 * s - 22 * s, w: bw, h: 46 * s, scale: s, input: input) {
+            click()
+            skinDraft = nil
+            skinMessage = nil
+            page = .launcher
+        }
+    }
+
+    /// Fills the area of matching colour around `start`.
+    static func floodFill(_ pixels: inout [UInt8], cols: Int, rows: Int, from start: Int, to value: UInt8) {
+        let target = pixels[start]
+        guard target != value else { return }
+        var stack = [start]
+        while let i = stack.popLast() {
+            guard pixels[i] == target else { continue }
+            pixels[i] = value
+            let r = i / cols, c = i % cols
+            if c > 0 { stack.append(i - 1) }
+            if c < cols - 1 { stack.append(i + 1) }
+            if r > 0 { stack.append(i - cols) }
+            if r < rows - 1 { stack.append(i + cols) }
+        }
     }
 }

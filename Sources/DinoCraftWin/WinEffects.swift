@@ -162,7 +162,7 @@ extension WinSolo {
         }
 
         // The held item (or nothing), swinging and bobbing like on the Mac.
-        if !s.spectator, !hudHidden, let stack = s.inventory.selectedStack, let info = items[stack.item] {
+        if !s.spectator, !hudHidden, cameraView == .firstPerson, let stack = s.inventory.selectedStack, let info = items[stack.item] {
             let t = Float(s.swingProgress)
             let swingA = sin(t * .pi), swingB = sin(sqrt(t) * .pi)
             let equip = Float(s.equipOffset)

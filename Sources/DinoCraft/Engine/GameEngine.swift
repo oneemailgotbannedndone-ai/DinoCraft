@@ -43,6 +43,10 @@ final class GameEngine: NSObject, MTKViewDelegate {
     let versionString: String
     /// Checks the public releases page for a newer DinoCraft (the launcher shows the result).
     let updater = GameUpdater(assetName: "DinoCraft-Mac.zip")
+    /// F5: first person, behind you, or facing you.
+    private(set) var cameraView = CameraView.firstPerson
+    /// You, drawn as a player model in third person.
+    private let selfModel = RemotePlayer(id: -1, name: "", position: .zero)
 
     private(set) var session: GameSession?
     private var menuWorld: World?
@@ -613,6 +617,7 @@ final class GameEngine: NSObject, MTKViewDelegate {
 
         if input.keyPressed(settings.binding(for: .toggleDebug).code) { showDebug.toggle() }
         if input.keyPressed(settings.binding(for: .toggleHUD).code) { hudHidden.toggle() }
+        if session != nil && screens.isEmpty && input.keyPressed(96) { cameraView = cameraView.next }   // F5
         if input.keyPressed(settings.binding(for: .screenshot).code) {
             pendingScreenshot = Screenshot.nextURL()
             showToast("Screenshot saved")
@@ -722,6 +727,13 @@ final class GameEngine: NSObject, MTKViewDelegate {
         camera.yaw = p.yaw
         camera.pitch = p.pitch
         camera.roll = roll
+        if cameraView != .firstPerson {
+            let placement = s.cameraPlacement(cameraView)
+            camera.position = placement.eye
+            camera.yaw = placement.yaw
+            camera.pitch = placement.pitch
+            camera.roll = 0
+        }
         var target = settings.fov
         if p.isSprinting { target *= p.flying ? 1.18 : 1.12 }
         fovCurrent += (target - fovCurrent) * (1 - exp(-10 * dt))
@@ -839,12 +851,31 @@ final class GameEngine: NSObject, MTKViewDelegate {
                 if let s = session {
                     modelRenderer.encodeItems(enc, session: s, camera: camera, frame: &uniforms, time: time)
                     modelRenderer.encodeMobs(enc, session: s, camera: camera, frame: &uniforms, time: time, library: mobModels)
-                    playerModels.encode(enc, players: remotePlayers, world: world, camera: camera, frame: &uniforms, renderer: modelRenderer, items: items)
+                    var shown = remotePlayers
+                    if cameraView != .firstPerson && !s.isDead {
+                        // You, wearing your cosmetics and skin.
+                        let p = s.player
+                        selfModel.name = settings.username
+                        selfModel.look = settings.cosmetics.isEmpty ? nil : settings.cosmetics
+                        selfModel.position = p.position
+                        selfModel.targetPosition = p.position
+                        selfModel.yaw = p.yaw
+                        selfModel.pitch = p.pitch
+                        selfModel.moving = p.onGround ? min(1, p.horizontalSpeed / 4.3) : 0
+                        selfModel.walkPhase = s.bobPhase * .pi
+                        selfModel.sneaking = p.isSneaking
+                        selfModel.swing = s.swingProgress
+                        selfModel.held = s.inventory.selectedStack.flatMap { items[$0.item]?.name }
+                        shown.append(selfModel)
+                    }
+                    playerModels.encode(enc, players: shown, world: world, camera: camera, frame: &uniforms, renderer: modelRenderer, items: items)
                     particleRenderer.encode(enc, particles: particles, session: s, world: world, camera: camera, frame: &uniforms, time: time)
                     if !s.isDead && !hudHidden {
                         if screens.isEmpty { overlayRenderer.encode(enc, session: s, camera: camera, uniforms: &uniforms) }
-                        modelRenderer.encodeHand(enc, session: s, camera: camera, frame: &uniforms, aspect: size.x / max(1, size.y),
-                                                 drawableSize: size, bobbing: settings.viewBobbing)
+                        if cameraView == .firstPerson {
+                            modelRenderer.encodeHand(enc, session: s, camera: camera, frame: &uniforms, aspect: size.x / max(1, size.y),
+                                                     drawableSize: size, bobbing: settings.viewBobbing)
+                        }
                     }
                 }
             } else {

@@ -98,6 +98,25 @@ struct PlayerLook: Equatable {
         return text
     }
 
+    /// Ready-made faces for the skin creator (hex pixels as for `face`).
+    static let facePresets: [(name: String, pixels: String)] = [
+        ("Smile", "0000000000000000000000000210012000000000010000100011110000000000"),
+        ("Sunglasses", "0000000000000000111111111110011100000000000000000011110000000000"),
+        ("Dino", "6666666666666666666666666166661666666666111111112121212166666666"),
+        ("Beard", "000000000000000000000000011001100000000000cccc00cccccccc0cccccc0"),
+        ("Surprised", "0000000000000000021001200210012000000000000110000001100000000000"),
+    ]
+    /// Ready-made shirt fronts (hex pixels as for `chest`).
+    static let chestPresets: [(name: String, pixels: String)] = [
+        ("Stripes", "22222222000000002222222200000000222222220000000022222222000000002222222200000000"),
+        ("Heart", "00000000000000000330033033333333333333330333333000333300000330000000000000000000"),
+        ("Star", "00000000000550000005500055555555055555500055550005500550550000550000000000000000"),
+        ("Dino", "00000000000066600000666600006600600666006666660006666000006600000060600000000000"),
+        ("Tuxedo", "21100112221001222210012222133122221001222213312222100122221001222210012222100122"),
+    ]
+
+    static func presetPixels(_ hex: String, count: Int) -> [UInt8] { pixels(hex, count: count) }
+
     /// A code friends can paste into their skin creator.
     var shareCode: String { "DINOSKIN:" + encoded }
 
@@ -275,5 +294,30 @@ enum PlayerAvatar {
         case 6: return MathUtil.rotationX(-(0.08 + min(1, moving) * 0.55 + abs(sin(walk)) * 0.08 * moving + (sneaking ? 0.4 : 0)))
         default: return MathUtil.rotationY(sin(walk * 0.5) * 0.35 * max(0.3, moving)) * MathUtil.rotationX(-0.15)
         }
+    }
+}
+
+/// The camera modes F5 cycles through.
+enum CameraView: Int {
+    case firstPerson, behind, front
+
+    var next: CameraView { CameraView(rawValue: (rawValue + 1) % 3) ?? .firstPerson }
+}
+
+extension GameSession {
+    /// Where the camera sits for a camera view: at the eyes, or pulled back (or forward) so you can see
+    /// your own explorer, stopping short of walls. Also returns the direction the camera looks.
+    func cameraPlacement(_ view: CameraView, distance: Double = 4) -> (eye: DVec3, yaw: Double, pitch: Double) {
+        let eye = player.eyePosition
+        guard view != .firstPerson else { return (eye, player.yaw, player.pitch) }
+        let look = player.lookDirection
+        let away = view == .behind ? -look : look
+        var reach = distance
+        if let hit = VoxelPhysics.raycast(world, origin: eye, direction: away, maxDistance: distance) {
+            reach = max(0.4, hit.distance - 0.3)
+        }
+        let yaw = view == .behind ? player.yaw : player.yaw + .pi
+        let pitch = view == .behind ? player.pitch : -player.pitch
+        return (eye + away * reach, yaw, pitch)
     }
 }

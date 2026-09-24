@@ -96,7 +96,7 @@ extension WinSolo {
         }
 
         // Crosshair, mining progress and bow draw
-        if !screenIsOpen {
+        if !screenIsOpen && cameraView != .front {
             let color: SIMD4<Float> = s.targetMob != nil ? SIMD4(1, 0.55, 0.45, 0.95) : SIMD4(0.9, 0.9, 0.9, 0.85)
             ui.rect(W / 2 - 1.5 * sc, H / 2 - 11 * sc, 3 * sc, 22 * sc, color)
             ui.rect(W / 2 - 11 * sc, H / 2 - 1.5 * sc, 22 * sc, 3 * sc, color)

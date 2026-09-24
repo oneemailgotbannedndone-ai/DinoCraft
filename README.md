@@ -85,9 +85,10 @@ swift build -c release --product DinoCraft && .build/release/DinoCraft
 
 ## Launcher, updates and cosmetics
 
-DinoCraft opens on a **launcher** (Mac and Windows) with **Play**, **Update**, **Cosmetics**, **Settings** and **Quit**, plus a "What's new" panel with the notes of the newest build.
+DinoCraft opens on a **launcher** (Mac and Windows) with **Play**, **Update**, **Cosmetics**, **Skin Creator**, **Settings** and **Quit**, a "What's new" panel with the notes of the newest build, your stats (worlds and time played) and **Open Game Folder**.
 
 - **Updates.** The launcher checks the public **DinoCraft-Releases** repository. When a newer build is there, **Update to Build N** downloads it and **Restart to Update** swaps it in and reopens the game. Worlds and settings are kept. Copies you built yourself are "development builds" and never replace themselves.
+- **Skin Creator.** Paint your own face (8×8) and shirt front (8×10) with 16 colours: brush or fill, mirror painting, and ideas to start from (smile, sunglasses, dino, beard; stripes, heart, star, dino, tuxedo). **Copy Code** puts a `DINOSKIN:…` code on the clipboard for a friend to **Paste Code**. Friends see your skin in multiplayer, and **F5** in game lets you see yourself.
 - **Cosmetics.** Pick a hat (Explorer Hat, Cap, Crown, Top Hat, Dino Hood, Flower Crown or none), shirt, trousers and skin colours, and something for your back (Cape, Dino Tail or Backpack) with an accent colour. Friends see your look in multiplayer on both Mac and Windows. Older versions just see the default explorer.
 
 ### Publishing updates (one-time setup)
@@ -272,6 +273,7 @@ Other flags:
 | Hotbar | 1–9 or scroll |
 | Chat / player list (multiplayer) | T / Tab |
 | Advancements | L |
+| Camera: first person / behind / facing you | F5 |
 | Pause | Esc |
 | Debug overlay | F1 |
 | Screenshot | F2 |

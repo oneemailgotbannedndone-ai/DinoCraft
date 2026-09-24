@@ -131,12 +131,22 @@ final class LauncherScreen: Screen {
         by += 30
         if ui.button("launcher.cosmetics", "Cosmetics", Rect(bx, by, bw, bh), style: .secondary) { e.pushScreen(CosmeticsScreen()) }
         by += bh + gap
+        if ui.button("launcher.skin", "Skin Creator", Rect(bx, by, bw, bh), style: .secondary) { e.pushScreen(SkinCreatorScreen()) }
+        by += bh + gap
         if ui.button("launcher.settings", "Settings", Rect(bx, by, bw, bh), style: .secondary) { e.pushScreen(SettingsScreen()) }
         by += bh + gap
         if ui.button("launcher.quit", "Quit", Rect(bx, by, bw, bh), style: .secondary) { e.quitGame() }
 
         d.text("DinoCraft \(e.versionString) · \(BuildInfo.current.displayName)", x: 22, y: H - 34, size: 13, color: Theme.textMuted,
                shadow: Color(linear: 0, 0, 0, 0.6))
+        let worlds = e.storage.listWorlds()
+        let played = worlds.reduce(0) { $0 + $1.playTimeSeconds }
+        let who = e.settings.username.isEmpty ? "no name yet" : e.settings.username
+        d.text("\(worlds.count) world\(worlds.count == 1 ? "" : "s") · \(Int(played / 3600))h \(Int(played / 60) % 60)m played · \(who)",
+               x: panel.x + 4, y: panel.maxY + 12, size: 13.5, color: Theme.textMuted, shadow: Color(linear: 0, 0, 0, 0.6))
+        if ui.button("launcher.folder", "Open Game Folder", Rect(W - 222, H - 50, 200, 36), style: .ghost, fontSize: 14) {
+            NSWorkspace.shared.open(GamePaths.root)
+        }
         d.opacity = 1
     }
 }
@@ -279,5 +289,149 @@ enum MacUpdater {
         }
         Log.info("Update ready: \(newApp.path) → \(app.path)", category: "Update")
         return nil
+    }
+}
+
+// MARK: - Skin creator
+
+/// Paint your own face and shirt, pixel by pixel. Friends see it in multiplayer, and skins can be
+/// shared as codes (DINOSKIN:…) through the clipboard.
+final class SkinCreatorScreen: Screen {
+    private var draft: PlayerLook?
+    private var tab = 0
+    private var colorIndex: UInt8 = 1
+    private var mirror = true
+    private var fillMode = false
+    private var facePreset = 0
+    private var chestPreset = 0
+    private var message: String?
+
+    override var scene: GameActivityState.Scene { .mainMenu }
+
+    override func draw(_ ui: UIContext, _ e: GameEngine) {
+        MenuBackdrop.draw(ui)
+        let d = ui.draw
+        let W = ui.size.x, H = ui.size.y
+        let panel = Rect(max(20, W / 2 - 600), max(20, H / 2 - 360), min(1200, W - 40), min(720, H - 40))
+        ui.panel(panel, title: "Skin Creator")
+        d.text("Left-click paints, right-click rubs out. Friends see your skin in multiplayer.", x: panel.midX, y: panel.y + 66,
+               size: 14, color: Theme.textMuted, align: .center)
+
+        var look = draft ?? PlayerLook(encoded: e.settings.cosmetics) ?? PlayerLook.defaultLook(for: e.settings.username)
+        if look.face.count != 64 { look.face = Array(repeating: 0, count: 64) }
+        if look.chest.count != 80 { look.chest = Array(repeating: 0, count: 80) }
+
+        // Preview
+        let preview = Rect(panel.x + 30, panel.y + 110, 260, panel.h - 210)
+        d.fill(preview, Color(linear: 0, 0, 0, 0.25), radius: 18)
+        CosmeticsScreen.drawFront(d, look, in: preview)
+
+        // Tabs and canvas
+        let isFace = tab == 0
+        let cols = isFace ? PlayerLook.faceWidth : PlayerLook.chestWidth, rows = isFace ? PlayerLook.faceHeight : PlayerLook.chestHeight
+        let cell = min(40, (panel.h - 250) / Float(rows))
+        let canvas = Rect(preview.maxX + 40, panel.y + 160, cell * Float(cols), cell * Float(rows))
+        let tabW = (canvas.w - 10) / 2
+        if ui.button("skin.tab.face", "Face", Rect(canvas.x, canvas.y - 52, tabW, 40), style: isFace ? .primary : .secondary, fontSize: 16) { tab = 0 }
+        if ui.button("skin.tab.shirt", "Shirt", Rect(canvas.x + tabW + 10, canvas.y - 52, tabW, 40), style: isFace ? .secondary : .primary,
+                     fontSize: 16) { tab = 1 }
+        let baseHex = isFace ? PlayerLook.skinTones[look.skin] : PlayerLook.shirtColors[look.shirt]
+        d.fill(Rect(canvas.x - 4, canvas.y - 4, canvas.w + 8, canvas.h + 8), Color(hex: 0x0B0716), radius: 6)
+        var pixels = isFace ? look.face : look.chest
+        for r in 0..<rows {
+            for c in 0..<cols {
+                let v = pixels[r * cols + c]
+                let cellRect = Rect(canvas.x + Float(c) * cell, canvas.y + Float(r) * cell, cell - 1, cell - 1)
+                d.fill(cellRect, v == 0 ? Color(hex: baseHex, alpha: 0.8) : Color(hex: PlayerLook.paintColors[Int(v)]))
+            }
+        }
+        if mirror { d.fill(Rect(canvas.midX - 1, canvas.y, 2, canvas.h), Theme.amber.alpha(0.4)) }
+        let rightDown = ui.input.buttonsDown.contains(1)
+        if canvas.contains(ui.mouse) && (ui.mouseDown || rightDown) {
+            let c = min(cols - 1, Int((ui.mouse.x - canvas.x) / cell)), r = min(rows - 1, Int((ui.mouse.y - canvas.y) / cell))
+            let value: UInt8 = rightDown ? 0 : colorIndex
+            if fillMode {
+                if ui.mousePressed || ui.input.buttonsPressed.contains(1) {
+                    SkinCreatorScreen.floodFill(&pixels, cols: cols, rows: rows, from: r * cols + c, to: value)
+                    if mirror { SkinCreatorScreen.floodFill(&pixels, cols: cols, rows: rows, from: r * cols + (cols - 1 - c), to: value) }
+                }
+            } else {
+                pixels[r * cols + c] = value
+                if mirror { pixels[r * cols + (cols - 1 - c)] = value }
+            }
+        }
+
+        // Palette
+        let px = canvas.maxX + 40, swatch: Float = 44
+        var py = canvas.y
+        d.text("Colours", x: px, y: py - 26, size: 15, color: Theme.textMuted)
+        for i in 0..<16 {
+            let r = Rect(px + Float(i % 4) * (swatch + 8), py + Float(i / 4) * (swatch + 8), swatch, swatch)
+            if UInt8(i) == colorIndex { d.fill(Rect(r.x - 3, r.y - 3, r.w + 6, r.h + 6), Theme.amber, radius: 8) }
+            d.fill(r, i == 0 ? Color(hex: baseHex) : Color(hex: PlayerLook.paintColors[i]), radius: 6)
+            if i == 0 { d.text("×", x: r.midX, y: r.y + 12, size: 18, color: Theme.textDark, align: .center) }
+            if ui.hoverSilent("skin.swatch\(i)", r) && ui.mousePressed { colorIndex = UInt8(i) }
+        }
+        py += 4 * (swatch + 8) + 14
+
+        // Tools
+        let tw: Float = 170, th: Float = 42
+        func tool(_ id: String, _ label: String, _ col: Int, primary: Bool = false) -> Bool {
+            ui.button(id, label, Rect(px + Float(col) * (tw + 10), py, tw, th), style: primary ? .primary : .secondary, fontSize: 15)
+        }
+        if tool("skin.fill", fillMode ? "Fill" : "Brush", 0, primary: fillMode) { fillMode.toggle() }
+        if tool("skin.mirror", mirror ? "Mirror On" : "Mirror Off", 1, primary: mirror) { mirror.toggle() }
+        py += th + 10
+        let presets = isFace ? PlayerLook.facePresets : PlayerLook.chestPresets
+        let presetIndex = isFace ? facePreset : chestPreset
+        if tool("skin.preset", "Idea: \(presets[presetIndex].name)", 0) {
+            pixels = PlayerLook.presetPixels(presets[presetIndex].pixels, count: cols * rows)
+            if isFace { facePreset = (facePreset + 1) % presets.count } else { chestPreset = (chestPreset + 1) % presets.count }
+        }
+        if tool("skin.clear", "Clear", 1) { pixels = Array(repeating: 0, count: cols * rows) }
+        py += th + 10
+        if tool("skin.copy", "Copy Code", 0) {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(look.shareCode, forType: .string)
+            message = "Skin code copied — paste it to a friend!"
+        }
+        if tool("skin.paste", "Paste Code", 1) {
+            if let text = NSPasteboard.general.string(forType: .string), let pasted = PlayerLook(shareCode: text) {
+                look = pasted
+                if look.face.count != 64 { look.face = Array(repeating: 0, count: 64) }
+                if look.chest.count != 80 { look.chest = Array(repeating: 0, count: 80) }
+                pixels = isFace ? look.face : look.chest
+                message = "Skin pasted!"
+            } else {
+                message = "The clipboard doesn't hold a DinoCraft skin code."
+            }
+        }
+        py += th + 14
+        if let message { d.text(message, x: px, y: py, size: 14, color: Theme.textMuted, maxWidth: panel.maxX - px - 20) }
+
+        if isFace { look.face = pixels } else { look.chest = pixels }
+        draft = look
+
+        if ui.button("skin.save", "Save & Done", Rect(panel.midX - 250, panel.maxY - 70, 240, 50), style: .primary) {
+            e.settingsStore.update { $0.cosmetics = look.encoded }
+            e.popScreen()
+        }
+        if ui.button("skin.cancel", "Cancel", Rect(panel.midX + 10, panel.maxY - 70, 240, 50), style: .secondary) { e.popScreen() }
+    }
+
+    /// Fills the area of matching colour around `start`.
+    static func floodFill(_ pixels: inout [UInt8], cols: Int, rows: Int, from start: Int, to value: UInt8) {
+        let target = pixels[start]
+        guard target != value else { return }
+        var stack = [start]
+        while let i = stack.popLast() {
+            guard pixels[i] == target else { continue }
+            pixels[i] = value
+            let r = i / cols, c = i % cols
+            if c > 0 { stack.append(i - 1) }
+            if c < cols - 1 { stack.append(i + 1) }
+            if r > 0 { stack.append(i - cols) }
+            if r < rows - 1 { stack.append(i + cols) }
+        }
     }
 }
