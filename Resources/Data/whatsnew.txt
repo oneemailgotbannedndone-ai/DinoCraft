@@ -1,24 +1,22 @@
-DinoCraft - the launcher update
+DinoCraft - the Toonland update
 
-Launcher
-- DinoCraft now opens on a launcher: Play, Update, Cosmetics, Skin Creator, Settings and Quit.
-- The Update button finds new versions by itself, downloads them and restarts into them.
-- Your stats: worlds and time played. Open Game Folder shows your worlds and screenshots.
+Toonland
+- A whole new black-and-white cartoon dimension where everything smiles.
+- Build a Checker Gateway (coal + bone meal make Checker Blocks) and light it with the Ember Lighter.
+- Follow the checkered roads to the stages, and listen to the Toonland song "Sunny Side Up", with words on screen.
 
-Skin Creator
-- Draw your own face and shirt, pixel by pixel, with 16 colours, fill, mirror and ideas to start from.
-- Save & Play goes straight into the game. Friends see your skin in multiplayer.
-- Copy Code and Paste Code share skins with friends.
+King Grumblesaurus
+- Toonland's boss: ink splatters, ground-shaking stomps and a boss health bar.
+- Cheer him up to beat the game, win the Smile Trophy and hear his own theme, "Grumble Stomp".
 
-Cosmetics
-- Hats: Explorer Hat, Cap, Crown, Top Hat, Dino Hood, Flower Crown.
-- Shirt, trousers and skin colours, plus a Cape, Dino Tail or Backpack.
-- Press F5 in game to see yourself from behind or from the front.
+DinoCraft Launcher
+- A separate launcher program: news, updates, cosmetics, the skin creator and "How to Beat the Game". Play starts the game.
 
-Windows now plays like the Mac
-- Survival, Hardcore and Creative with creatures, crafting, furnaces, chests, farming, bows, armor, beds, villagers, portals, weather and advancements.
-- Texture packs, shader packs, particles, rain and snow, and a Settings screen.
+Guide and loading screens
+- Press G for your next goal, step by step, from the first log to the final boss.
+- New loading screens with tips and a look for every dimension.
 
-Looks
-- The Mac now uses the Windows pixel font.
-- Texture packs keep natural colours: TunefulCraft, Pastel Picnic, Retro Pixels and Autumn Woods.
+More
+- Sprinting is faster. VSync is off by default, with a Max FPS setting.
+- Three new texture packs: Comic Ink, Frostbite and Neon Nights.
+- Herds sometimes stampede past, and the music repeats less.

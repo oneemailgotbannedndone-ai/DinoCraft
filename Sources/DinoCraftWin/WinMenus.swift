@@ -57,6 +57,8 @@ final class WinMenus {
         case play(WorldMetadata, isNew: Bool, hostName: String?)
         case join(WinNetwork)
         case quit
+        /// DinoCraft Launcher: start DinoCraft.exe and close the launcher.
+        case launchGame
     }
 
     private enum Page { case launcher, cosmetics, skin, title, worlds, create, multiplayer, settings, connecting }
@@ -85,6 +87,8 @@ final class WinMenus {
     private var previewModels: [Float] = []
     // Skin creator
     private var skinDraft: PlayerLook?
+    /// The launcher's news panel shows the guide to beating DinoCraft instead.
+    private var showingGuide = false
     private var skinTab = 0
     private var skinColor: UInt8 = 1
     private var skinMirror = true
@@ -124,7 +128,7 @@ final class WinMenus {
         page = .title
         if !launched {
             launched = true
-            page = .launcher
+            page = options.skipLauncher ? .title : .launcher
             if store.settings.checkForUpdates && options.screenshotPath == nil { updater.check() }
         }
         focus = ""
@@ -288,6 +292,7 @@ final class WinMenus {
 
         case .skin:
             buildSkinCreator(&ui, input: input, width: W, height: H, scale: s, now: now)
+            if options.launcherOnly && page == .title { return .launchGame }
 
         case .worlds:
             header("Your Worlds")
@@ -545,7 +550,7 @@ extension WinMenus {
         let titleY = H * 0.07
         ui.centeredText(pack.title, centerX: cx + big * 0.5, y: titleY + big, scale: big, color: color(pack.titleBottom))
         ui.centeredText(pack.title, centerX: cx, y: titleY, scale: big, color: color(pack.titleTop))
-        ui.centeredText("LAUNCHER", centerX: cx, y: titleY + 10 * big, scale: small, color: muted)
+        ui.centeredText(options.launcherOnly ? "DINOCRAFT LAUNCHER" : "LAUNCHER", centerX: cx, y: titleY + 10 * big, scale: small, color: muted)
 
         // News panel
         let panelX = max(20 * s, cx - 600 * s), panelY = H * 0.27
@@ -560,7 +565,16 @@ extension WinMenus {
             ny += 11 * small
         }
         let state = updater.state
-        if let release = updater.latestRelease, release.build > BuildInfo.current.build {
+        if showingGuide {
+            ui.text("How to beat DinoCraft", x: panelX + 22 * s, y: ny, scale: max(1, (3 * s).rounded()), color: amber)
+            ny += 16 * max(1, (3 * s).rounded()) / 2 + 12 * s
+            for (i, step) in GameGuide.steps.enumerated() {
+                line("\(i + 1). \(step.title)", SIMD4(1, 1, 1, 1))
+                for part in WinMenus.wrap(step.hint, width: maxChars - 3) { line("   " + part, muted) }
+                ny += 3 * s
+            }
+            line("In game, press G to show or hide your next goal.", SIMD4(0.55, 0.95, 0.5, 1))
+        } else if let release = updater.latestRelease, release.build > BuildInfo.current.build {
             ui.text("New in the update", x: panelX + 22 * s, y: ny, scale: max(1, (3 * s).rounded()), color: amber)
             ny += 16 * max(1, (3 * s).rounded()) / 2 + 12 * s
             line("\(release.title)\(release.published.isEmpty ? "" : " - \(release.published)")", SIMD4(1, 1, 1, 1))
@@ -597,7 +611,9 @@ extension WinMenus {
         let bx = panelX + panelW + 30 * s, bw = min(420 * s, W - bx - 20 * s), bh = 50 * s, gap = 12 * s
         var y = panelY
         if ui.button("Play", x: bx, y: y, w: bw, h: bh + 10 * s, scale: s, input: input, primary: true) || input.enter {
-            click(); message = nil; page = .title
+            click(); message = nil
+            if options.launcherOnly { return .launchGame }
+            page = .title
         }
         y += bh + 10 * s + gap
 
@@ -660,6 +676,10 @@ extension WinMenus {
         if ui.button("Skin Creator", x: bx, y: y, w: bw, h: bh, scale: s, input: input) { click(); skinDraft = nil; page = .skin }
         y += bh + gap
         if ui.button("Settings", x: bx, y: y, w: bw, h: bh, scale: s, input: input) { click(); settingsReturn = .launcher; page = .settings }
+        y += bh + gap
+        if ui.button(showingGuide ? "What's New" : "How to Beat the Game", x: bx, y: y, w: bw, h: bh, scale: s, input: input) {
+            click(); showingGuide.toggle()
+        }
         y += bh + gap
         if ui.button("Quit", x: bx, y: y, w: bw, h: bh, scale: s, input: input) || input.escape { return .quit }
 

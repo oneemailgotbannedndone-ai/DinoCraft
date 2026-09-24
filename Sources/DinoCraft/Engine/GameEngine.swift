@@ -172,7 +172,7 @@ final class GameEngine: NSObject, MTKViewDelegate {
         started = true
         createMenuWorld()
         screens = [MainMenuScreen()]
-        if options.script == nil && options.autoWorld == nil && options.joinAddress == nil {
+        if options.script == nil && options.autoWorld == nil && options.joinAddress == nil && !options.skipLauncher {
             // The launcher comes first; Play reveals the main menu underneath.
             screens.append(LauncherScreen())
             if settings.checkForUpdates { updater.check() }
@@ -322,6 +322,28 @@ final class GameEngine: NSObject, MTKViewDelegate {
     }
 
     func quitGame() { NSApp.terminate(nil) }
+
+    /// DinoCraft Launcher's Play: opens DinoCraft.app (next to the launcher) and closes the launcher.
+    func launchGameApp() {
+        let here = Bundle.main.bundleURL
+        let game = here.deletingLastPathComponent().appendingPathComponent("DinoCraft.app")
+        guard FileManager.default.fileExists(atPath: game.path) else {
+            showToast("Couldn't find DinoCraft.app. Keep DinoCraft Launcher in the same folder as DinoCraft.")
+            return
+        }
+        let config = NSWorkspace.OpenConfiguration()
+        config.arguments = ["--skip-launcher"]
+        config.createsNewApplicationInstance = true
+        NSWorkspace.shared.openApplication(at: game, configuration: config) { _, error in
+            DispatchQueue.main.async {
+                if let error {
+                    self.showToast("Couldn't start DinoCraft: \(error.localizedDescription)")
+                } else {
+                    NSApp.terminate(nil)
+                }
+            }
+        }
+    }
 
     // MARK: Advancements
 

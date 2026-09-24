@@ -32,6 +32,8 @@ enum WinUpdater {
             return "The update download was damaged. Try again."
         }
         let pid = ProcessInfo.processInfo.processIdentifier
+        // Reopen whichever program was running: DinoCraft or DinoCraft Launcher.
+        let reopen = Bundle.main.executableURL?.lastPathComponent ?? "DinoCraft.exe"
         let script = """
         @echo off
         title Updating DinoCraft
@@ -43,7 +45,7 @@ enum WinUpdater {
           goto wait
         )
         robocopy "\(native(source))" "\(native(installDir))" /E /R:5 /W:1 /NFL /NDL /NJH /NJS /NP >nul
-        start "" "\(native(installDir))\\DinoCraft.exe"
+        start "" "\(native(installDir))\\\(reopen)"
         del "%~f0"
 
         """

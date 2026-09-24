@@ -69,6 +69,7 @@ jobs:
           $out = "DinoCraft-Windows"
           New-Item -ItemType Directory -Force "$out/Resources/Textures" | Out-Null
           Copy-Item .build/release/DinoCraftWin.exe "$out/DinoCraft.exe"
+          Copy-Item .build/release/DinoCraftWin.exe "$out/DinoCraft Launcher.exe"
           Copy-Item "$env:SDL3_DIR/lib/x64/SDL3.dll" $out
           $roots = @("$env:LOCALAPPDATA\Programs\Swift", "C:\Program Files\Swift", "C:\Library") | Where-Object { Test-Path $_ }
           $runtime = Get-ChildItem -Path $roots -Recurse -Filter swiftCore.dll -ErrorAction SilentlyContinue |
@@ -179,7 +180,11 @@ jobs:
         run: zsh Scripts/build_app.sh
 
       - name: Zip for the launcher's updater
-        run: ditto -c -k --keepParent dist/DinoCraft.app DinoCraft-Mac.zip
+        run: |
+          mkdir -p mac-zip
+          ditto dist/DinoCraft.app mac-zip/DinoCraft.app
+          ditto "dist/DinoCraft Launcher.app" "mac-zip/DinoCraft Launcher.app"
+          ditto -c -k mac-zip DinoCraft-Mac.zip
 
       - name: Upload Mac zip
         uses: actions/upload-artifact@v4
@@ -217,8 +222,8 @@ jobs:
           {
             echo "## Download"
             echo ""
-            echo "- **Windows:** download **DinoCraft-Windows.zip** below, right-click it and choose *Extract All*, then open **DinoCraft.exe** (if Windows warns you, click *More info* → *Run anyway*)."
-            echo "- **Mac (Apple Silicon):** download **DinoCraft-Mac.zip** below, double-click it, drag **DinoCraft.app** to Applications and open it (the first time: System Settings → Privacy & Security → *Open Anyway*)."
+            echo "- **Windows:** download **DinoCraft-Windows.zip** below, right-click it and choose *Extract All*, then open **DinoCraft Launcher.exe** (if Windows warns you, click *More info* → *Run anyway*)."
+            echo "- **Mac (Apple Silicon):** download **DinoCraft-Mac.zip** below, double-click it, drag **DinoCraft.app** and **DinoCraft Launcher.app** to Applications and open the launcher (the first time: System Settings → Privacy & Security → *Open Anyway*)."
             echo ""
             echo "Already playing? The launcher's **Update** button installs this version for you."
             echo ""

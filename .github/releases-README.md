@@ -16,11 +16,11 @@ These links always give you the newest version. Older versions are on the [relea
 **Windows**
 1. Open your **Downloads** folder and right-click **DinoCraft-Windows.zip**.
 2. Choose **Extract All…** and click **Extract**.
-3. In the new folder, double-click **DinoCraft.exe**. If Windows shows "Windows protected your PC", click **More info** → **Run anyway**.
+3. In the new folder, double-click **DinoCraft Launcher.exe** (or **DinoCraft.exe** to go straight to the game). If Windows shows "Windows protected your PC", click **More info** → **Run anyway**.
 
 **Mac**
-1. Double-click **DinoCraft-Mac.zip** in **Downloads**; it unzips to **DinoCraft.app**.
-2. Drag **DinoCraft.app** into **Applications**.
+1. Double-click **DinoCraft-Mac.zip** in **Downloads**; it unzips to **DinoCraft.app** and **DinoCraft Launcher.app**.
+2. Drag **both** into **Applications** (keep them together: the launcher starts the game next to it).
 3. Open it. The first time, macOS may say it can't check the app: open **System Settings** → **Privacy & Security**, scroll down and click **Open Anyway** (on older macOS, right-click the app and choose **Open**).
 
 ## Updating

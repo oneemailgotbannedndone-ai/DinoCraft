@@ -9,6 +9,8 @@ import DinoCraftCore
 /// cosmetics, settings and Play (which goes on to the main menu underneath).
 final class LauncherScreen: Screen {
     private var installError: String?
+    /// Shows the guide to beating DinoCraft instead of the news.
+    private var showingGuide = false
 
     override var scene: GameActivityState.Scene { .mainMenu }
     override func back(_ engine: GameEngine) {}
@@ -23,7 +25,7 @@ final class LauncherScreen: Screen {
         let titleY = max(30, H * 0.06)
         d.outlinedText(Brand.title, x: W / 2, y: titleY, size: Brand.title.count > 9 ? 70 : 80, fill: Color(hex: Brand.top),
                        fillBottom: Color(hex: Brand.bottom), outline: Color(hex: 0x2A1740), outlineWidth: 6, tracking: 0.005)
-        d.text("LAUNCHER", x: W / 2, y: titleY + 96, size: 14, color: Theme.text.alpha(0.85), face: .display, align: .center,
+        d.text(e.options.launcherOnly ? "DINOCRAFT LAUNCHER" : "LAUNCHER", x: W / 2, y: titleY + 96, size: 14, color: Theme.text.alpha(0.85), face: .display, align: .center,
                tracking: 0.2, shadow: Color(linear: 0, 0, 0, 0.7))
 
         // News
@@ -52,7 +54,16 @@ final class LauncherScreen: Screen {
             }
             if !current.isEmpty { line(current, size, color) }
         }
-        if let release = e.updater.latestRelease, release.build > BuildInfo.current.build {
+        if showingGuide {
+            line("How to beat DinoCraft", 26, Theme.amber, face: .display)
+            y += 4
+            for (i, step) in GameGuide.steps.enumerated() {
+                line("\(i + 1). \(step.title)", 16, Theme.text, face: .display)
+                wrapped(step.hint, 14, Theme.textMuted)
+                y += 4
+            }
+            wrapped("In game, press G to show or hide your next goal.", 14, Theme.jungle)
+        } else if let release = e.updater.latestRelease, release.build > BuildInfo.current.build {
             line("New in the update", 26, Theme.amber, face: .display)
             y += 4
             line(release.title + (release.published.isEmpty ? "" : "  ·  \(release.published)"), 16, Theme.text)
@@ -86,7 +97,7 @@ final class LauncherScreen: Screen {
         let bx = panel.maxX + 40, bw = min(400, W - bx - 30), bh: Float = 56, gap: Float = 14
         var by = top
         if ui.button("launcher.play", "Play", Rect(bx, by, bw, bh + 8), style: .primary) {
-            e.popScreen()
+            if e.options.launcherOnly { e.launchGameApp() } else { e.popScreen() }
             return
         }
         by += bh + 8 + gap
@@ -141,6 +152,10 @@ final class LauncherScreen: Screen {
         if ui.button("launcher.skin", "Skin Creator", Rect(bx, by, bw, bh), style: .secondary) { e.pushScreen(SkinCreatorScreen()) }
         by += bh + gap
         if ui.button("launcher.settings", "Settings", Rect(bx, by, bw, bh), style: .secondary) { e.pushScreen(SettingsScreen()) }
+        by += bh + gap
+        if ui.button("launcher.guide", showingGuide ? "What's New" : "How to Beat the Game", Rect(bx, by, bw, bh), style: .secondary) {
+            showingGuide.toggle()
+        }
         by += bh + gap
         if ui.button("launcher.quit", "Quit", Rect(bx, by, bw, bh), style: .secondary) { e.quitGame() }
 
@@ -252,7 +267,9 @@ final class CosmeticsScreen: Screen {
 enum MacUpdater {
     /// Returns an error message, or nil when DinoCraft should now quit to finish the update.
     static func install(zip: URL) -> String? {
-        let app = Bundle.main.bundleURL
+        let running = Bundle.main.bundleURL
+        // DinoCraft Launcher updates the game next to it (and itself).
+        let app = running.lastPathComponent.contains("Launcher") ? running.deletingLastPathComponent().appendingPathComponent("DinoCraft.app") : running
         guard app.pathExtension == "app" else { return "Updates install into DinoCraft.app; this copy isn't running from an app." }
         let fm = FileManager.default
         let unpacked = zip.deletingLastPathComponent().appendingPathComponent("files", isDirectory: true)
@@ -275,13 +292,21 @@ enum MacUpdater {
         }
         func quote(_ s: String) -> String { "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" }
         let pid = ProcessInfo.processInfo.processIdentifier
+        let newLauncher = unpacked.appendingPathComponent("DinoCraft Launcher.app")
+        let launcher = app.deletingLastPathComponent().appendingPathComponent("DinoCraft Launcher.app")
+        let launcherSteps = fm.fileExists(atPath: newLauncher.path) ? """
+        rm -rf \(quote(launcher.path))
+        /usr/bin/ditto \(quote(newLauncher.path)) \(quote(launcher.path))
+        /usr/bin/xattr -dr com.apple.quarantine \(quote(launcher.path)) 2>/dev/null
+        """ : ""
         let script = """
         #!/bin/sh
         while kill -0 \(pid) 2>/dev/null; do sleep 0.5; done
         rm -rf \(quote(app.path))
         /usr/bin/ditto \(quote(newApp.path)) \(quote(app.path))
         /usr/bin/xattr -dr com.apple.quarantine \(quote(app.path)) 2>/dev/null
-        /usr/bin/open \(quote(app.path))
+        \(launcherSteps)
+        /usr/bin/open \(quote(running.path))
 
         """
         let scriptURL = zip.deletingLastPathComponent().appendingPathComponent("update.sh")

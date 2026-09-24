@@ -35,9 +35,14 @@ struct Options {
     var console = false
     /// Automated check: hide the console like a double-click launch does.
     var hideConsole = false
+    /// This is DinoCraft Launcher (DinoCraft Launcher.exe, or --launcher): Play starts DinoCraft.exe.
+    var launcherOnly = false
+    /// Started by DinoCraft Launcher: go straight to the title screen.
+    var skipLauncher = false
 
     static func parse(_ args: [String]) -> Options {
         var o = Options()
+        o.launcherOnly = URL(fileURLWithPath: args.first ?? "").lastPathComponent.lowercased().contains("launcher")
         var i = 1
         func next() -> String? { i += 1; return i < args.count ? args[i] : nil }
         while i < args.count {
@@ -53,6 +58,8 @@ struct Options {
             case "--host": o.hostName = next()
             case "--console": o.console = true
             case "--hide-console": o.hideConsole = true
+            case "--launcher": o.launcherOnly = true
+            case "--skip-launcher": o.skipLauncher = true
             default: break
             }
             i += 1
@@ -83,6 +90,22 @@ func fail(_ message: String, window: OpaquePointer? = nil) -> Never {
 }
 
 /// Player names follow the host's rules: letters, numbers and underscores, up to 16 characters.
+/// DinoCraft Launcher's Play: starts DinoCraft.exe from the same folder, straight to the title screen.
+func launchGame() {
+    let here = URL(fileURLWithPath: CommandLine.arguments.first ?? "").deletingLastPathComponent()
+    let game = here.appendingPathComponent("DinoCraft.exe")
+    let process = Process()
+    process.executableURL = game
+    process.arguments = ["--skip-launcher"]
+    process.currentDirectoryURL = here
+    do {
+        try process.run()
+        Log.info("Launcher started \(game.path)", category: "App")
+    } catch {
+        Log.error("Couldn't start DinoCraft: \(error)", category: "App")
+    }
+}
+
 func cleanName(_ raw: String) -> String {
     let name = String(raw.filter { $0.isLetter || $0.isNumber || $0 == "_" }.prefix(16))
     return name.isEmpty ? "Explorer" : name
@@ -113,7 +136,7 @@ _ = SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24)
 _ = SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1)
 _ = SDL_GL_SetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, 1)
 
-guard let window = SDL_CreateWindow("DinoCraft", 1280, 720,
+guard let window = SDL_CreateWindow(options.launcherOnly ? "DinoCraft Launcher" : "DinoCraft", options.launcherOnly ? 1180 : 1280, options.launcherOnly ? 700 : 720,
                                     SDL_WINDOW_OPENGL_FLAG | SDL_WINDOW_RESIZABLE_FLAG | SDL_WINDOW_HIGH_PIXEL_DENSITY_FLAG) else {
     fail("Could not create the game window: \(String(cString: SDL_GetError()))")
 }
@@ -192,6 +215,9 @@ do {
                 result = (play(meta, isNew: isNew, hostName: hostName), nil)
             case .join(let network):
                 result = join(network)
+            case .launchGame:
+                launchGame()
+                break menuLoop
             }
             if result.quit || options.screenshotPath != nil { break }
             message = result.message

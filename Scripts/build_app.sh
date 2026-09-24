@@ -76,6 +76,18 @@ PLIST
 echo "▸ Signing (ad-hoc)"
 codesign --force --sign - --timestamp=none "$APP"
 
+# DinoCraft Launcher: the same program in launcher mode (news, updates, skins, the guide),
+# sharing DinoCraft.app's resources. Its Play button opens DinoCraft.app.
+LAUNCHER="dist/DinoCraft Launcher.app"
+echo "▸ Assembling $LAUNCHER"
+rm -rf "$LAUNCHER"
+mkdir -p "$LAUNCHER/Contents/MacOS" "$LAUNCHER/Contents/Resources"
+cp "$BIN" "$LAUNCHER/Contents/MacOS/DinoCraft Launcher"
+[ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$LAUNCHER/Contents/Resources/"
+sed -e 's|<string>DinoCraft</string>|<string>DinoCraft Launcher</string>|g' \
+    -e 's|com.dinocraft.game|com.dinocraft.launcher|' "$APP/Contents/Info.plist" > "$LAUNCHER/Contents/Info.plist"
+codesign --force --sign - --timestamp=none "$LAUNCHER"
+
 echo "▸ Verifying"
 codesign --verify --strict "$APP"
 ARCHS="$(lipo -archs "$APP/Contents/MacOS/DinoCraft")"
@@ -95,6 +107,8 @@ if [[ "$INSTALL" == 1 ]]; then
   pkill -x DinoCraft 2>/dev/null && sleep 1 || true
   rm -rf "$DEST"
   ditto "$APP" "$DEST"
+  rm -rf "/Applications/DinoCraft Launcher.app"
+  ditto "$LAUNCHER" "/Applications/DinoCraft Launcher.app"
   /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$DEST" >/dev/null 2>&1 || true
   touch "$DEST"
   echo "✓ Installed $VERSION ($BUILD_NUMBER) to $DEST"

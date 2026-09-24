@@ -145,6 +145,10 @@ struct LaunchOptions {
     var joinAddress: String?        // join a multiplayer host on launch
     var username: String?
     var bonusChest = false
+    /// Started from DinoCraft Launcher: go straight to the main menu.
+    var skipLauncher = false
+    /// This copy is DinoCraft Launcher: Play opens the game app.
+    var launcherOnly = Bundle.main.bundleURL.lastPathComponent.contains("Launcher")
 
     static func parse(_ args: [String]) -> LaunchOptions {
         var o = LaunchOptions()
@@ -164,6 +168,8 @@ struct LaunchOptions {
             case "--join": o.joinAddress = next()
             case "--username": o.username = next()
             case "--bonus-chest": o.bonusChest = true
+            case "--skip-launcher": o.skipLauncher = true
+            case "--launcher": o.launcherOnly = true
             default: break
             }
             i += 1
