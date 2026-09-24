@@ -4,6 +4,7 @@ public enum Biome: UInt8, CaseIterable, Sendable {
     case ocean, beach, plains, forest, fernJungle, desert, redwoodTaiga, snowyTundra, mountains, snowyPeaks, swamp, river
     case underworld, skylands
     case savanna, redMesa, blossomGrove, silverForest, fungalMarsh, volcanicWastes, glacier, flowerMeadow
+    case toonland
 
     public var displayName: String {
         switch self {
@@ -29,6 +30,7 @@ public enum Biome: UInt8, CaseIterable, Sendable {
         case .flowerMeadow: return "Flower Meadow"
         case .underworld: return "Volcanic Underworld"
         case .skylands: return "Amber Skylands"
+        case .toonland: return "Toonland"
         }
     }
 }
@@ -357,7 +359,7 @@ public final class TerrainGenerator: @unchecked Sendable {
             return (info.detail > 0.1 ? Blocks.mud : Blocks.mossBlock, Blocks.dirt, 3, Blocks.clay)
         case .savanna, .blossomGrove, .silverForest, .flowerMeadow:
             return (Blocks.grass, Blocks.dirt, 3 + jitter, nil)
-        case .plains, .forest, .fernJungle, .underworld, .skylands:
+        case .plains, .forest, .fernJungle, .underworld, .skylands, .toonland:
             return (Blocks.grass, Blocks.dirt, 3 + jitter, nil)
         }
     }

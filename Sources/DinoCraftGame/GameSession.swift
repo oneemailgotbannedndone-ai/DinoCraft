@@ -273,7 +273,7 @@ final class GameSession {
     }
 
     private func carveSafeSpot(_ x: Int, _ y: Int, _ z: Int) {
-        let floorBlock: BlockID = dimension == .underworld ? Blocks.basalt : (dimension == .skylands ? Blocks.cloud : Blocks.stone)
+        let floorBlock: BlockID = dimension == .underworld ? Blocks.basalt : (dimension == .skylands ? Blocks.cloud : (dimension == .toonland ? Blocks.toonStone : Blocks.stone))
         for dz in -1...1 {
             for dx in -1...1 {
                 for dy in 0...2 where world.block(x + dx, y + dy, z + dz) != Blocks.bedrock {
@@ -666,7 +666,7 @@ final class GameSession {
             }
             exhaustion += 0.005
         }
-        if id == Blocks.boneBlock || id == Blocks.amberBlock { collapsePortals(near: pos) }
+        if WorldDimension.gateways.contains(where: { $0.frame == id }) { collapsePortals(near: pos) }
         let above = pos.offset(.up)
         if blocks[world.block(above)]?.needsSupport == true { breakBlock(at: above, harvest: harvest) }
     }
@@ -776,7 +776,7 @@ final class GameSession {
             guard pressed, let hit = target else { return false }
             swing()
             if tryActivatePortal(at: hit.adjacent) { return true }
-            onToast?("Strike the Ember Lighter inside a Bone Block or Amber Block frame")
+            onToast?("Strike the Ember Lighter inside a Bone Block, Amber Block or Checker Block frame")
             return true
         }
 
@@ -891,17 +891,17 @@ final class GameSession {
 
     // MARK: Gateways
 
-    private func isPortal(_ id: BlockID) -> Bool { id == Blocks.underworldPortal || id == Blocks.skylandsPortal }
+    private func isPortal(_ id: BlockID) -> Bool { WorldDimension.forPortal(id) != nil }
 
     private func airish(_ p: BlockPos) -> Bool {
         let id = world.block(p)
         return id == Blocks.air || blocks[id]?.replaceable == true
     }
 
-    /// Lights a rectangular gateway frame (interior 2–6 wide, 3–7 tall) of bone or amber blocks.
+    /// Lights a rectangular gateway frame (interior 2–6 wide, 3–7 tall) of bone, amber or checker blocks.
     private func tryActivatePortal(at cell: BlockPos) -> Bool {
         guard airish(cell) else { return false }
-        for (portal, frame) in [(Blocks.underworldPortal, Blocks.boneBlock), (Blocks.skylandsPortal, Blocks.amberBlock)] {
+        for (portal, frame) in WorldDimension.gateways {
             for alongX in [true, false] {
                 let neg: BlockFace = alongX ? .west : .north
                 let posDir: BlockFace = alongX ? .east : .south
@@ -945,9 +945,14 @@ final class GameSession {
                 }
                 guard valid else { continue }
                 for w in 0..<width { for h in 0..<height { place(cellAt(w, h), portal) } }
-                onSound?("discover", 0.9, portal == Blocks.underworldPortal ? 0.7 : 1.2)
-                onToast?(portal == Blocks.underworldPortal ? "The Underworld Gateway awakens!" : "The Skylands Gateway shimmers open!")
-                Log.info("Activated \(portal == Blocks.underworldPortal ? "underworld" : "skylands") gateway \(width)x\(height) at \(start)", category: "Game")
+                let target = WorldDimension.forPortal(portal) ?? .skylands
+                onSound?("discover", 0.9, target == .underworld ? 0.7 : (target == .toonland ? 1.5 : 1.2))
+                switch target {
+                case .underworld: onToast?("The Underworld Gateway awakens!")
+                case .toonland: onToast?("The Toonland Gateway spins into a happy swirl!")
+                default: onToast?("The Skylands Gateway shimmers open!")
+                }
+                Log.info("Activated \(target.rawValue) gateway \(width)x\(height) at \(start)", category: "Game")
                 return true
             }
         }
@@ -1019,7 +1024,7 @@ final class GameSession {
         }
         let x = Int(floor(destination.x)), z = Int(floor(destination.z))
         let estimate = arrival.map { Int($0.y) } ?? generator.estimatedSurface(x: x, z: z)
-        spawnHint = estimate > 0 ? estimate : (target == .underworld ? 64 : 100)
+        spawnHint = estimate > 0 ? estimate : (target == .underworld ? 64 : (target == .toonland ? 70 : 100))
         player.teleport(to: DVec3(Double(x) + 0.5, Double(spawnHint), Double(z) + 0.5))
         needsSpawnResolve = true
         pendingReturnPortal = arrival == nil ? portal : nil
@@ -1032,13 +1037,14 @@ final class GameSession {
         advancements.record("dimension", target.rawValue)
         network?.dimensionChanged(target, position: destination)
         onSound?("discover", 0.8, target == .underworld ? 0.6 : 1.3)
+        if target == .toonland { onToast?("Welcome to Toonland! Follow a checkered road to King Grumblesaurus's stage.") }
     }
 
     private func ensureReturnPortal(_ portal: BlockID) {
         let px = Int(floor(player.position.x)), py = Int(floor(player.position.y)), pz = Int(floor(player.position.z))
         for dy in -8...8 { for dz in -12...12 { for dx in -12...12 where world.block(px + dx, py + dy, pz + dz) == portal { return } } }
         guard let frame = WorldDimension.forPortal(portal)?.frameBlock else { return }
-        let floorBlock: BlockID = dimension == .underworld ? Blocks.obsidian : (dimension == .skylands ? Blocks.cloud : Blocks.stone)
+        let floorBlock: BlockID = dimension == .underworld ? Blocks.obsidian : (dimension == .skylands ? Blocks.cloud : (dimension == .toonland ? Blocks.toonStone : Blocks.stone))
         let ox = px + 2, z = pz - 1, y = py
         for x in (ox - 2)...(ox + 3) {
             for zz in (z - 1)...(z + 1) {

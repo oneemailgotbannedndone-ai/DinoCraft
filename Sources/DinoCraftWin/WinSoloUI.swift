@@ -30,7 +30,10 @@ extension WinSolo {
         }
 
         if s.player.headInWater { ui.rect(0, 0, W, H, SIMD4(0.02, 0.1, 0.3, 0.35)) }
-        if s.portalProgress > 0 { ui.rect(0, 0, W, H, SIMD4(0.45, 0.1, 0.7, Float(min(1, s.portalProgress)) * 0.55)) }
+        if s.portalProgress > 0 {
+            let tint: SIMD3<Float> = s.portalKind == Blocks.toonlandPortal ? SIMD3(0.95, 0.95, 0.95) : SIMD3(0.45, 0.1, 0.7)
+            ui.rect(0, 0, W, H, SIMD4(tint, Float(min(1, s.portalProgress)) * 0.55))
+        }
         var fullScreenMenu = false
         switch screen {
         case .settings, .advancements: fullScreenMenu = true

@@ -51,6 +51,8 @@
     { "id": "harvest_time", "category": "Farming", "title": "Harvest Time", "description": "Harvest fully grown wheat or carrots", "icon": "wheat", "type": "break", "target": "wheat_stage3|carrots_stage3" },
     { "id": "bake_bread", "category": "Farming", "title": "Bake Bread", "description": "Craft a loaf of bread", "icon": "bread", "type": "craft", "target": "bread" },
     { "id": "take_aim", "category": "Adventure", "title": "Take Aim", "description": "Shoot an arrow from a bow", "icon": "bow", "type": "shoot" },
-    { "id": "sharpshooter", "category": "Adventure", "title": "Sharpshooter", "description": "Hit a creature with an arrow from 15 blocks away", "icon": "arrow", "type": "snipe" }
+    { "id": "sharpshooter", "category": "Adventure", "title": "Sharpshooter", "description": "Hit a creature with an arrow from 15 blocks away", "icon": "arrow", "type": "snipe" },
+    { "id": "toonland", "category": "Story", "title": "Looney Toonland", "description": "Travel through a Checker Gateway", "icon": "checker_block", "type": "dimension", "target": "toonland" },
+    { "id": "grumblesaurus", "category": "Adventure", "title": "Turn That Frown Upside Down", "description": "Cheer up King Grumblesaurus", "icon": "smile_trophy", "type": "kill", "target": "grumblesaurus" }
   ]
 }

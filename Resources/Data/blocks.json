@@ -241,6 +241,14 @@
     {"id": 238, "name": "carrots_stage0", "displayName": "Carrots", "shape": "cross", "layer": "cutout", "solid": false, "hardness": 0, "sound": "grass", "waving": true, "needsSupport": true, "hasItem": false, "drops": [{"item": "carrot"}]},
     {"id": 239, "name": "carrots_stage1", "displayName": "Carrots", "shape": "cross", "layer": "cutout", "solid": false, "hardness": 0, "sound": "grass", "waving": true, "needsSupport": true, "hasItem": false, "drops": [{"item": "carrot"}]},
     {"id": 240, "name": "carrots_stage2", "displayName": "Carrots", "shape": "cross", "layer": "cutout", "solid": false, "hardness": 0, "sound": "grass", "waving": true, "needsSupport": true, "hasItem": false, "drops": [{"item": "carrot"}]},
-    {"id": 241, "name": "carrots_stage3", "displayName": "Carrots", "shape": "cross", "layer": "cutout", "solid": false, "hardness": 0, "sound": "grass", "waving": true, "needsSupport": true, "hasItem": false, "drops": [{"item": "carrot", "min": 2, "max": 4}]}
+    {"id": 241, "name": "carrots_stage3", "displayName": "Carrots", "shape": "cross", "layer": "cutout", "solid": false, "hardness": 0, "sound": "grass", "waving": true, "needsSupport": true, "hasItem": false, "drops": [{"item": "carrot", "min": 2, "max": 4}]},
+    {"id": 242, "name": "toon_grass", "displayName": "Toon Grass", "textures": {"top": "toon_grass_top", "side": "toon_grass_side", "bottom": "toon_soil"}, "hardness": 0.6, "tool": "shovel", "sound": "grass", "drops": [{"item": "toon_soil"}]},
+    {"id": 243, "name": "toon_soil", "displayName": "Toon Soil", "hardness": 0.5, "tool": "shovel", "sound": "dirt"},
+    {"id": 244, "name": "toon_stone", "displayName": "Toon Stone", "hardness": 1.5, "tool": "pickaxe", "toolLevel": 1, "sound": "stone"},
+    {"id": 245, "name": "smile_flower", "displayName": "Smile Flower", "shape": "cross", "layer": "cutout", "solid": false, "emission": 4, "hardness": 0, "sound": "grass", "waving": true, "needsSupport": true},
+    {"id": 246, "name": "toon_log", "displayName": "Toon Log", "textures": {"top": "toon_log_top", "bottom": "toon_log_top", "side": "toon_log_side"}, "hardness": 2.0, "tool": "axe", "sound": "wood"},
+    {"id": 247, "name": "toon_leaves", "displayName": "Puffball Leaves", "layer": "cutout", "opaque": false, "lightFilter": 1, "hardness": 0.2, "sound": "leaves", "waving": true, "drops": [{"item": "stick", "chance": 0.08}]},
+    {"id": 248, "name": "checker_block", "displayName": "Checker Block", "hardness": 1.5, "tool": "pickaxe", "sound": "stone"},
+    {"id": 249, "name": "toonland_portal", "displayName": "Toonland Gateway", "layer": "translucent", "solid": false, "opaque": false, "emission": 11, "lightFilter": 0, "hardness": -1, "hasItem": false, "sound": "glass", "drops": []}
   ]
 }

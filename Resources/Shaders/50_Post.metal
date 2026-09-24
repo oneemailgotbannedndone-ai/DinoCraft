@@ -2,7 +2,7 @@
 
 struct PostUniforms {
     float4 params;   // x preset (0 off, 1 vibrant, 2 cinematic, 3 retro, 4 dreamy), y time, zw size in pixels
-    float4 extra;    // x strength
+    float4 extra;    // x strength, y mono (Toonland's black-and-white film)
 };
 
 struct PostOut {
@@ -92,5 +92,14 @@ fragment float4 post_fragment(PostOut in [[stage_in]],
     }
 
     float3 graded = pow(clamp(g, float3(0.0), float3(1.0)), float3(2.2));
-    return float4(mix(base, graded, strength), 1.0);
+    float3 outc = preset > 0 ? mix(base, graded, strength) : base;
+    float mono = clamp(u.extra.y, 0.0, 1.0);
+    if (mono > 0.0) {
+        float l = pp_luma(pp_gamma(outc));
+        l = smoothstep(0.03, 0.97, l);
+        l += (pp_hash(floor(uv * size / 2.0) + fract(time * 12.0) * 57.0) - 0.5) * 0.05;
+        l *= mix(1.0, vignette, 0.55);
+        outc = mix(outc, float3(pow(clamp(l, 0.0, 1.0), 2.2)), mono);
+    }
+    return float4(outc, 1.0);
 }

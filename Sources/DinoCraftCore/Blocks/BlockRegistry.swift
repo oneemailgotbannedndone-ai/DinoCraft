@@ -142,8 +142,20 @@ public enum Blocks {
     /// Dyed clay, indexed white, black, red, orange, yellow, green, cyan, blue, purple, pink.
     public static let dyedClay: [BlockID] = Array(136...145)
 
+    // Toonland, the black-and-white cartoon dimension
+    public static let toonGrass: BlockID = 242
+    public static let toonSoil: BlockID = 243
+    public static let toonStone: BlockID = 244
+    public static let smileFlower: BlockID = 245
+    public static let toonLog: BlockID = 246
+    public static let toonLeaves: BlockID = 247
+    public static let checkerBlock: BlockID = 248
+    public static let toonlandPortal: BlockID = 249
+
     static let wellKnown: [(String, BlockID)] = [
         ("pink_leaves", pinkLeaves), ("silver_log", silverLog), ("silver_leaves", silverLeaves), ("mushroom_cap", mushroomCap), ("mushroom_stem", mushroomStem), ("bed", bed), ("farmland", farmland), ("wheat_stage0", wheat[0]), ("wheat_stage3", wheat[3]), ("carrots_stage0", carrots[0]), ("carrots_stage3", carrots[3]),
+        ("toon_grass", toonGrass), ("toon_soil", toonSoil), ("toon_stone", toonStone), ("smile_flower", smileFlower), ("toon_log", toonLog),
+        ("toon_leaves", toonLeaves), ("checker_block", checkerBlock), ("toonland_portal", toonlandPortal),
         ("terracotta", terracotta), ("dyed_clay_white", dyedClay[0]), ("dyed_clay_pink", dyedClay[9]),
         ("air", air), ("stone", stone), ("grass", grass), ("dirt", dirt), ("cobblestone", cobblestone),
         ("planks", planks), ("sand", sand), ("gravel", gravel), ("log", log), ("leaves", leaves),

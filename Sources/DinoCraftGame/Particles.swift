@@ -158,6 +158,16 @@ final class ParticleSystem {
                 p.layer = -2
                 emit(p)
             }
+        } else if s.dimension == .toonland {
+            // Happy bubbles drifting up through the air.
+            for _ in 0..<2 {
+                var p = Particle(eye + DVec3(Double.random(in: -12...12), Double.random(in: -5...5), Double.random(in: -12...12)),
+                                 DVec3(Double.random(in: -0.15...0.15), Double.random(in: 0.25...0.6), Double.random(in: -0.15...0.15)),
+                                 life: 4, size: 0.07, color: SIMD4(1, 1, 1, 0.75))
+                p.emissive = true
+                p.shrink = true
+                emit(p)
+            }
         } else if s.dimension == .skylands {
             for _ in 0..<2 {
                 var p = Particle(eye + DVec3(Double.random(in: -12...12), Double.random(in: -6...6), Double.random(in: -12...12)),
@@ -201,8 +211,9 @@ final class ParticleSystem {
                 ember.shrink = true
                 ember.collide = true
                 emit(ember)
-            } else if id == Blocks.underworldPortal || id == Blocks.skylandsPortal, Int.random(in: 0..<3) == 0 {
-                let tint: SIMD4<Float> = id == Blocks.underworldPortal ? SIMD4(1, 0.35, 0.45, 1) : SIMD4(1, 0.8, 0.35, 1)
+            } else if WorldDimension.forPortal(id) != nil, Int.random(in: 0..<3) == 0 {
+                let tint: SIMD4<Float> = id == Blocks.underworldPortal ? SIMD4(1, 0.35, 0.45, 1)
+                    : (id == Blocks.toonlandPortal ? SIMD4(1, 1, 1, 1) : SIMD4(1, 0.8, 0.35, 1))
                 var spark = Particle(base + DVec3(Double.random(in: 0...1), Double.random(in: 0...1), Double.random(in: 0...1)),
                                      DVec3(Double.random(in: -0.4...0.4), Double.random(in: -0.2...0.6), Double.random(in: -0.4...0.4)),
                                      life: 1.2, size: 0.05, color: tint)
@@ -230,7 +241,7 @@ final class ParticleSystem {
                     if id == Blocks.lava {
                         wanted = world.blockIfLoaded(x, y + 1, z) == Blocks.air
                     } else {
-                        wanted = id == Blocks.torch || Blocks.wallTorch.contains(id) || id == Blocks.underworldPortal || id == Blocks.skylandsPortal
+                        wanted = id == Blocks.torch || Blocks.wallTorch.contains(id) || WorldDimension.forPortal(id) != nil
                             || id == Blocks.glowMushroom || id == Blocks.emberCrystal || id == Blocks.amberLantern
                     }
                     guard wanted else { continue }

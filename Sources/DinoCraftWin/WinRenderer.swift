@@ -80,6 +80,12 @@ struct SkyState {
             s.horizon = lin(1.0, 0.86, 0.6)
             s.skyLight = SIMD3(1, 0.95, 0.85)
             return s
+        case .toonland:
+            var s = SkyState.at(worldTime: 300)
+            s.zenith = lin(0.78, 0.8, 0.84)
+            s.horizon = lin(0.97, 0.97, 0.97)
+            s.skyLight = SIMD3(1, 1, 1)
+            return s
         default:
             var s = SkyState.at(worldTime: worldTime)
             guard weather > 0 else { return s }
@@ -137,6 +143,10 @@ final class WinRenderer {
     private var sceneTarget: (framebuffer: UInt32, color: UInt32, depth: UInt32, width: Int32, height: Int32)?
     /// Shader pack: 0 off, 1 vibrant, 2 cinematic, 3 retro, 4 dreamy (the Mac's `ShaderPack` order).
     var shaderPack = 0
+    /// 1 while in Toonland: the scene is shown as an old black-and-white cartoon.
+    var mono: Float = 0
+    /// Set when the driver can't render offscreen, so post-processing stays off.
+    private var postUnavailable = false
     var shaderStrength: Float = 1
     private let effectVertexArray: UInt32
     private let effectBuffer: UInt32
@@ -434,7 +444,7 @@ final class WinRenderer {
         let aspect = Float(width) / Float(max(1, height))
         let viewProj = camera.viewProjection(aspect: aspect)
         let t = Float(time.truncatingRemainder(dividingBy: 3600))
-        let post = shaderPack > 0 && bindSceneTarget(width: width, height: height)
+        let post = (shaderPack > 0 || mono > 0) && !postUnavailable && bindSceneTarget(width: width, height: height)
 
         gl.viewport(0, 0, width, height)
         gl.enable(GLC.FRAMEBUFFER_SRGB)
@@ -600,6 +610,7 @@ final class WinRenderer {
             gl.deleteRenderbuffers(1, &depth)
             gl.deleteTexture(color)
             shaderPack = 0
+            postUnavailable = true
             return false
         }
         sceneTarget = (framebuffer, color, depth, width, height)
@@ -619,6 +630,7 @@ final class WinRenderer {
         gl.uniform1i(gl.uniform(postProgram, "uScene"), 0)
         gl.uniform4f(gl.uniform(postProgram, "uParams"), Float(shaderPack), time, Float(width), Float(height))
         gl.uniform1f(gl.uniform(postProgram, "uStrength"), shaderStrength)
+        gl.uniform1f(gl.uniform(postProgram, "uMono"), mono)
         gl.bindVertexArray(emptyVertexArray)
         gl.drawArrays(GLC.TRIANGLES, 0, 3)
     }

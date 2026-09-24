@@ -20,7 +20,7 @@ import WinSDK
 //   --frames <n>              frames to draw after loading before the screenshot (default 30)
 //   --demo-entities           automated check: place sample creatures in view
 //   --demo-screen <name>      automated check: inventory, crafting, furnace, creative, pause, advancements,
-//                             menu, worlds or create
+//                             menu, worlds, create, toonland or toonland-boss
 
 struct Options {
     var seed = ""

@@ -86,6 +86,8 @@ enum PresenceFormatter {
                 details = "Exploring the Underworld"
             } else if s.dimension == .skylands {
                 details = "Exploring the Amber Skylands"
+            } else if s.dimension == .toonland {
+                details = "Having fun in Toonland"
             } else if s.underground {
                 details = "Exploring underground"
             } else {

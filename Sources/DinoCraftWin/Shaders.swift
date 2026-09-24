@@ -347,6 +347,7 @@ enum Shaders {
     uniform sampler2D uScene;
     uniform vec4 uParams;   // x preset (1 vibrant, 2 cinematic, 3 retro, 4 dreamy), y time, zw size in pixels
     uniform float uStrength;
+    uniform float uMono;    // Toonland: 1 = old black-and-white cartoon film
     out vec4 fragColor;
     float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
     float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
@@ -407,7 +408,15 @@ enum Shaders {
             g *= mix(1.0, vignette, 0.35);
         }
         vec3 graded = pow(clamp(g, vec3(0.0), vec3(1.0)), vec3(2.2));
-        fragColor = vec4(mix(base, graded, clamp(uStrength, 0.0, 1.0)), 1.0);
+        vec3 outc = preset > 0 ? mix(base, graded, clamp(uStrength, 0.0, 1.0)) : base;
+        if (uMono > 0.0) {
+            float l = luma(toGamma(outc));
+            l = smoothstep(0.03, 0.97, l);
+            l += (hash(floor(uv * size / 2.0) + fract(time * 12.0) * 57.0) - 0.5) * 0.05;
+            l *= mix(1.0, vignette, 0.55);
+            outc = mix(outc, vec3(pow(clamp(l, 0.0, 1.0), 2.2)), clamp(uMono, 0.0, 1.0));
+        }
+        fragColor = vec4(outc, 1.0);
     }
     """
 

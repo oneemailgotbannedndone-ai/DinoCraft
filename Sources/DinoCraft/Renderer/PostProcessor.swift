@@ -6,7 +6,7 @@ import DinoCraftCore
 
 struct PostUniforms {
     var params: SIMD4<Float>   // preset, time, width, height
-    var extra: SIMD4<Float>    // strength
+    var extra: SIMD4<Float>    // strength, mono
 }
 
 /// Shader packs: the scene renders into an offscreen target, then a fullscreen
@@ -47,11 +47,11 @@ final class PostProcessor {
         return target
     }
 
-    func encode(_ enc: MTLRenderCommandEncoder, source: MTLTexture, pack: ShaderPack, strength: Float, time: Float, size: SIMD2<Float>) {
+    func encode(_ enc: MTLRenderCommandEncoder, source: MTLTexture, pack: ShaderPack, strength: Float, mono: Float = 0, time: Float, size: SIMD2<Float>) {
         enc.setRenderPipelineState(pipeline)
         enc.setDepthStencilState(renderer.depthDisabled)
         enc.setCullMode(.none)
-        var u = PostUniforms(params: SIMD4(pack.index, time, size.x, size.y), extra: SIMD4(strength, 0, 0, 0))
+        var u = PostUniforms(params: SIMD4(pack.index, time, size.x, size.y), extra: SIMD4(strength, mono, 0, 0))
         enc.setFragmentTexture(source, index: 0)
         enc.setFragmentSamplerState(renderer.linearSampler, index: 0)
         enc.setFragmentBytes(&u, length: MemoryLayout<PostUniforms>.stride, index: 0)

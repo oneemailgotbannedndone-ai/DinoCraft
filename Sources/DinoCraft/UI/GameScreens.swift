@@ -406,7 +406,8 @@ enum HUD {
 
         if s.portalProgress > 0 {
             let a = Float(min(1, s.portalProgress))
-            let tint = s.portalKind == Blocks.skylandsPortal ? Color(hex: 0xF2B04A) : Color(hex: 0x8A1A4A)
+            let tint = s.portalKind == Blocks.skylandsPortal ? Color(hex: 0xF2B04A)
+                : (s.portalKind == Blocks.toonlandPortal ? Color(hex: 0xF4F4F4) : Color(hex: 0x8A1A4A))
             d.fill(Rect(0, 0, W, H), tint.alpha(a * 0.5), bottom: tint.alpha(a * 0.8))
         }
         if let mob = s.targetMob {

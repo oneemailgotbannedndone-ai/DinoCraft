@@ -183,6 +183,7 @@
     {"id": "hay_bale_from_wheat", "type": "shaped", "pattern": ["WWW", "WWW", "WWW"], "key": {"W": "wheat"}, "result": "hay_bale"},
     {"id": "bone_meal", "type": "shapeless", "ingredients": ["dino_bone"], "result": "bone_meal", "count": 3},
     {"id": "bow", "type": "shaped", "pattern": [" SH", "S H", " SH"], "key": {"S": "stick", "H": "dino_hide"}, "result": "bow"},
-    {"id": "arrow", "type": "shaped", "pattern": ["F", "S", "E"], "key": {"F": "flint", "S": "stick", "E": "feather"}, "result": "arrow", "count": 4}
+    {"id": "arrow", "type": "shaped", "pattern": ["F", "S", "E"], "key": {"F": "flint", "S": "stick", "E": "feather"}, "result": "arrow", "count": 4},
+    {"id": "checker_block", "type": "shaped", "pattern": ["CB", "BC"], "key": {"C": "coal", "B": "bone_meal"}, "result": "checker_block", "count": 4}
   ]
 }

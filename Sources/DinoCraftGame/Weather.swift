@@ -59,7 +59,7 @@ final class WeatherSystem {
 
     static func precipitation(for biome: Biome) -> Precipitation {
         switch biome {
-        case .desert, .redMesa, .volcanicWastes, .savanna, .underworld, .skylands: return .none
+        case .desert, .redMesa, .volcanicWastes, .savanna, .underworld, .skylands, .toonland: return .none
         case .snowyTundra, .snowyPeaks, .glacier: return .snow
         default: return .rain
         }

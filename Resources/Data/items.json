@@ -115,6 +115,8 @@
     { "name": "bread", "displayName": "Bread", "food": { "hunger": 5, "saturation": 6.0 } },
     { "name": "bone_meal", "displayName": "Bone Meal" },
     { "name": "bow", "displayName": "Bow", "maxStack": 1 },
-    { "name": "arrow", "displayName": "Arrow" }
+    { "name": "arrow", "displayName": "Arrow" },
+    { "name": "spawn_egg_grumblesaurus", "displayName": "King Grumblesaurus Spawn Egg" },
+    { "name": "smile_trophy", "displayName": "Smile Trophy", "maxStack": 1 }
   ]
 }

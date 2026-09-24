@@ -544,6 +544,7 @@ final class WinSolo: CommandHost {
         }
         let ui = buildUI(width: Float(w), height: Float(h), camera: camera)
         let sky = SkyState.at(worldTime: s.worldTime, dimension: s.dimension, weather: s.weather.intensity)
+        renderer.mono = s.dimension == .toonland && !s.isLoading ? 1 : 0
         renderer.render(world: s.world, camera: camera, sky: sky, time: clock, now: Date.timeIntervalSinceReferenceDate,
                         width: w, height: h, ui: ui, models: models(camera: camera), effects: worldEffects(camera: camera))
 
@@ -631,7 +632,14 @@ final class WinSolo: CommandHost {
     /// Automated check: a few creatures and a chat line in view, and optionally the inventory screen.
     private func placeDemo() {
         guard let s = session else { return }
+        if (options.demoScreen ?? "").hasPrefix("toonland") && s.dimension != .toonland {
+            // Automated check: travel to Toonland first, then take the picture there.
+            s.changeDimension(to: .toonland, portal: nil, arrival: DVec3(24.5, 70, 0.5))
+            framesSinceReady = 0
+            return
+        }
         demoPlaced = true
+        if s.dimension == .toonland { s.player.yaw = .pi / 2 }   // look toward the stage
         guard options.demoEntities else { return }
         let look = s.player.lookDirection
         let forward = simd_normalize(DVec3(look.x, 0, look.z))

@@ -759,6 +759,11 @@ final class MobManager {
         case .skylands:
             guard allowFriendly, ground == Blocks.skyGrass else { return nil }
             return roll < 0.5 ? .longneck : .dodo
+        case .toonland:
+            // A happy place: only friendly critters wander the hills.
+            guard allowFriendly, ground == Blocks.toonGrass else { return nil }
+            let herd: [(Double, MobKind)] = [(0.25, .pookpook), (0.45, .dodo), (0.6, .sheep), (0.75, .pig), (0.88, .chicken), (1.01, .trikey)]
+            return herd.first(where: { roll < $0.0 })?.1 ?? .dodo
         case .overworld:
             let dark = light.sky < 0.35 && light.block < 0.3
             let nightSurface = (s.isNight || s.weather.kind == .thunder) && light.sky > 0.5 && light.block < 0.4

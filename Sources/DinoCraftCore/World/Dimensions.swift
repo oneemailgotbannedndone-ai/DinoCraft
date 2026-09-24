@@ -1,13 +1,14 @@
 import Foundation
 
 public enum WorldDimension: String, Codable, CaseIterable, Sendable {
-    case overworld, underworld, skylands
+    case overworld, underworld, skylands, toonland
 
     public var displayName: String {
         switch self {
         case .overworld: return "Overworld"
         case .underworld: return "The Underworld"
         case .skylands: return "Amber Skylands"
+        case .toonland: return "Toonland"
         }
     }
 
@@ -26,6 +27,7 @@ public enum WorldDimension: String, Codable, CaseIterable, Sendable {
         case .overworld: return nil
         case .underworld: return Blocks.boneBlock
         case .skylands: return Blocks.amberBlock
+        case .toonland: return Blocks.checkerBlock
         }
     }
 
@@ -34,17 +36,23 @@ public enum WorldDimension: String, Codable, CaseIterable, Sendable {
         case .overworld: return nil
         case .underworld: return Blocks.underworldPortal
         case .skylands: return Blocks.skylandsPortal
+        case .toonland: return Blocks.toonlandPortal
         }
     }
 
     /// Where a gateway of `portal` type leads when used from this dimension.
     public func destination(through portal: BlockID) -> WorldDimension {
         guard self == .overworld else { return .overworld }
-        return portal == Blocks.underworldPortal ? .underworld : .skylands
+        return WorldDimension.forPortal(portal) ?? .skylands
     }
 
     public static func forPortal(_ id: BlockID) -> WorldDimension? {
         allCases.first { $0.portalBlock == id }
+    }
+
+    /// Every gateway block, and the frame block each one is built from.
+    public static var gateways: [(portal: BlockID, frame: BlockID)] {
+        allCases.compactMap { d in d.portalBlock.flatMap { p in d.frameBlock.map { (p, $0) } } }
     }
 
     public func makeGenerator(seed: UInt64) -> WorldGenerator {
@@ -52,6 +60,7 @@ public enum WorldDimension: String, Codable, CaseIterable, Sendable {
         case .overworld: return TerrainGenerator(seed: seed)
         case .underworld: return UnderworldGenerator(seed: Hashing.hash(seed, 0, 0, 0, salt: 0xDEAD))
         case .skylands: return SkylandsGenerator(seed: Hashing.hash(seed, 0, 0, 0, salt: 0xA3BE))
+        case .toonland: return ToonlandGenerator(seed: Hashing.hash(seed, 0, 0, 0, salt: 0x7005))
         }
     }
 }

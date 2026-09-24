@@ -884,7 +884,8 @@ final class GameEngine: NSObject, MTKViewDelegate {
         }
 
         let shader = ShaderPack(rawValue: settings.shaderPack) ?? .off
-        if shader != .off, settings.shaderStrength > 0.01, let depth = rpd.depthAttachment.texture,
+        let mono: Float = session?.dimension == .toonland && session?.isLoading == false ? 1 : 0
+        if (shader != .off && settings.shaderStrength > 0.01) || mono > 0, let depth = rpd.depthAttachment.texture,
            let target = postProcessor.sceneTarget(width: Int(size.x), height: Int(size.y)) {
             // Shader pack: scene → offscreen target → graded into the drawable, interface on top.
             let scenePass = MTLRenderPassDescriptor()
@@ -903,7 +904,7 @@ final class GameEngine: NSObject, MTKViewDelegate {
             }
             if let enc = cmd.makeRenderCommandEncoder(descriptor: rpd) {
                 enc.label = "Post + Interface"
-                postProcessor.encode(enc, source: target, pack: shader, strength: Float(settings.shaderStrength), time: Float(time), size: size)
+                postProcessor.encode(enc, source: target, pack: shader, strength: Float(settings.shaderStrength), mono: mono, time: Float(time), size: size)
                 uiRenderer.encode(enc, drawableSize: size)
                 enc.endEncoding()
             }

@@ -71,7 +71,7 @@ enum Commands {
         Spec("biome", "/biome", "Show which biome you're in", readOnly: true),
         Spec("coords", "/coords", "Show your position and facing", aliases: ["pos"], readOnly: true),
         Spec("list", "/list", "Show who's playing", readOnly: true),
-        Spec("dimension", "/dimension <overworld|underworld|skylands>", "Travel to a dimension", args: [.choices(["overworld", "underworld", "skylands"])]),
+        Spec("dimension", "/dimension <overworld|underworld|skylands|toonland>", "Travel to a dimension", args: [.choices(["overworld", "underworld", "skylands", "toonland"])]),
         Spec("seed", "/seed", "Show the world seed", readOnly: true),
         Spec("say", "/say <message>", "Announce a message", args: [.text]),
     ]
@@ -396,7 +396,7 @@ enum Commands {
             reply("\(names.count) playing: \(names.joined(separator: ", "))")
 
         case "dimension":
-            guard let arg = choice(0, ["overworld", "underworld", "skylands"]),
+            guard let arg = choice(0, ["overworld", "underworld", "skylands", "toonland"]),
                   let dim = WorldDimension.allCases.first(where: { $0.rawValue.lowercased() == arg || $0.displayName.lowercased().contains(arg) }) else {
                 return reply("Usage: \(command.usage)")
             }
@@ -585,7 +585,7 @@ enum Commands {
         return out
     }
 
-    static var overworldBiomes: [Biome] { Biome.allCases.filter { $0 != .underworld && $0 != .skylands } }
+    static var overworldBiomes: [Biome] { Biome.allCases.filter { ![.underworld, .skylands, .toonland].contains($0) } }
     static var biomeNames: [String] { overworldBiomes.map(commandName) }
 
     private static func resolveBiome(_ raw: String, note: (String) -> Void) -> Biome? {
