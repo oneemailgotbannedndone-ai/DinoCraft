@@ -689,6 +689,11 @@ extension WinMenus {
             click()
             openGameFolder()
         }
+        if let donate = GameLinks.donate,
+           ui.button(GameLinks.donateLabel, x: W - folderW * 2 - 28 * s, y: H - 44 * s, w: folderW, h: 32 * s, scale: s, input: input, primary: true) {
+            click()
+            _ = SDL_OpenURL(donate.absoluteString)
+        }
         // Your stats, under the news panel
         let played = worlds.reduce(0) { $0 + $1.playTimeSeconds }
         let hours = Int(played / 3600), minutes = Int(played / 60) % 60

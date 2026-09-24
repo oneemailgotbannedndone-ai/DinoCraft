@@ -169,6 +169,10 @@ final class LauncherScreen: Screen {
         if ui.button("launcher.folder", "Open Game Folder", Rect(W - 222, H - 50, 200, 36), style: .ghost, fontSize: 14) {
             NSWorkspace.shared.open(GamePaths.root)
         }
+        if let donate = GameLinks.donate,
+           ui.button("launcher.donate", GameLinks.donateLabel, Rect(W - 444, H - 50, 210, 36), style: .primary, fontSize: 14) {
+            NSWorkspace.shared.open(donate)
+        }
         d.opacity = 1
     }
 }
