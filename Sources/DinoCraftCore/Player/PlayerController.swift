@@ -39,7 +39,7 @@ public enum PlayerEvent: Sendable {
 public final class PlayerController {
     public struct Tuning {
         public var walkSpeed = 4.3
-        public var sprintSpeed = 5.8
+        public var sprintSpeed = 7.4
         public var sneakSpeed = 1.35
         public var swimSpeed = 2.4
         public var flySpeed = 10.9

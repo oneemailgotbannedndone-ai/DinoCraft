@@ -45,6 +45,7 @@ final class GameEngine: NSObject, MTKViewDelegate {
     let updater = GameUpdater(assetName: "DinoCraft-Mac.zip")
     /// F5: first person, behind you, or facing you.
     private(set) var cameraView = CameraView.firstPerson
+    private var lastTrack: String?
     /// You, drawn as a player model in third person.
     private let selfModel = RemotePlayer(id: -1, name: "", position: .zero)
 
@@ -161,7 +162,7 @@ final class GameEngine: NSObject, MTKViewDelegate {
             layer.displaySyncEnabled = settings.vsync
         }
         let screenMax = window.screen?.maximumFramesPerSecond ?? 120
-        view.preferredFramesPerSecond = settings.vsync ? screenMax : (settings.maxFPS == 0 ? 240 : settings.maxFPS)
+        view.preferredFramesPerSecond = settings.vsync ? screenMax : (settings.maxFPS == 0 ? 1000 : settings.maxFPS)
     }
 
     // MARK: Lifecycle
@@ -781,10 +782,14 @@ final class GameEngine: NSObject, MTKViewDelegate {
         }
         musicTimer -= dt
         if !audio.isMusicPlaying && musicTimer <= 0 {
-            let pool = (s.isUnderground || s.dimension == .underworld) ? ["deep_strata"]
-                : (s.dimension == .skylands ? ["fernlight", "menu_theme"] : (sky.isNight ? ["amber_dusk", "deep_strata"] : ["fernlight", "titan_valley", "amber_dusk"]))
-            audio.playMusic(pool.randomElement()!, loop: false, fade: 4)
-            musicTimer = Double.random(in: 120...260)
+            let pool = (s.isUnderground || s.dimension == .underworld) ? ["deep_strata", "amber_dusk"]
+                : (s.dimension == .skylands ? ["fernlight", "menu_theme", "titan_valley"]
+                   : (sky.isNight ? ["amber_dusk", "deep_strata", "menu_theme"] : ["fernlight", "titan_valley", "amber_dusk", "menu_theme"]))
+            // Never the same song twice in a row
+            let track = pool.filter { $0 != lastTrack }.randomElement() ?? pool[0]
+            lastTrack = track
+            audio.playMusic(track, loop: false, fade: 4)
+            musicTimer = Double.random(in: 60...150)
         }
     }
 

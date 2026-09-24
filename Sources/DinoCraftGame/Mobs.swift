@@ -269,6 +269,7 @@ final class MobManager {
     private var guardTimer = 5.0
     private var stageTimer = 1.0
     fileprivate var peacefulHintShown = false
+    private var eventTimer = Double.random(in: 240...480)
     private var scratch: [DBox] = []
 
     func clear() {
@@ -309,6 +310,11 @@ final class MobManager {
         if stageTimer <= 0 {
             stageTimer = 2
             spawnStageGuests(s)
+        }
+        eventTimer -= dt
+        if eventTimer <= 0 {
+            eventTimer = Double.random(in: 300...600)
+            startStampede(s)
         }
         let player = s.player
         let targets = s.hostileTargets()
@@ -880,6 +886,31 @@ extension MobKind {
     static func forEgg(named name: String) -> MobKind? {
         guard name.hasPrefix("spawn_egg_") else { return nil }
         return allCases.first { $0.eggItemName == name }
+    }
+}
+
+// MARK: - World events
+
+extension MobManager {
+    /// Now and then a herd thunders past in daylight, so the overworld doesn't feel the same every day.
+    fileprivate func startStampede(_ s: GameSession) {
+        guard s.dimension == .overworld, !s.isRemote, !s.isNight, !s.isUnderground, s.meta.rule("doMobSpawning") else { return }
+        let p = s.player.position
+        let herds: [(MobKind, String)] = [(.parasaur, "Parasaurolophus"), (.trikey, "Trikeys"), (.stego, "Stegosaurus"), (.dodo, "Dodos")]
+        let (kind, name) = herds.randomElement()!
+        let a = Double.random(in: 0..<(2 * .pi))
+        let center = DVec3(p.x + cos(a) * 22, p.y, p.z + sin(a) * 22)
+        var placed = 0
+        for i in 0..<Int.random(in: 4...7) {
+            let x = Int(floor(center.x)) + (i % 3) * 2 - 2, z = Int(floor(center.z)) + (i / 3) * 2 - 2
+            guard s.world.isLoaded(x, z), let y = s.world.findStandingY(x, z, near: Int(p.y)), abs(y - Int(p.y)) < 12 else { continue }
+            let m = spawn(kind, at: DVec3(Double(x) + 0.5, Double(y), Double(z) + 0.5))
+            m.fleeTimer = 14
+            placed += 1
+        }
+        guard placed > 0 else { return }
+        s.onToast?("A herd of \(name) is stampeding past!")
+        s.onSound?("amb_dino_low", 0.9, 0.8)
     }
 }
 

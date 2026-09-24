@@ -68,6 +68,17 @@ struct SettingsPanel {
             _ = SDL_SetWindowFullscreen(window, store.settings.fullscreen)
         }
         toggle(0, "Show FPS", settings.showFPS) { store.update { $0.showFPS.toggle() } }
+        toggle(0, "VSync", settings.vsync) {
+            store.update { $0.vsync.toggle() }
+            _ = SDL_GL_SetSwapInterval(store.settings.vsync ? 1 : 0)
+        }
+        if !settings.vsync {
+            let caps = [0, 60, 90, 120, 144, 165, 240, 360]
+            let cap = caps.firstIndex(of: settings.maxFPS) ?? 0
+            row(0, "Max FPS", settings.maxFPS == 0 ? "Unlimited" : "\(settings.maxFPS)",
+                minus: { store.update { $0.maxFPS = caps[(cap + caps.count - 1) % caps.count] } },
+                plus: { store.update { $0.maxFPS = caps[(cap + 1) % caps.count] } })
+        }
         let looks = SettingsPanel.shaderPacks
         let look = looks.firstIndex { $0.id == settings.shaderPack } ?? 0
         row(0, "Shader pack", looks[look].name,

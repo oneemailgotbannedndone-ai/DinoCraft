@@ -121,9 +121,8 @@ guard let context = SDL_GL_CreateContext(window) else {
     fail("DinoCraft needs OpenGL 3.3, which your graphics driver doesn't provide. Updating your graphics driver usually fixes this.\n\n\(String(cString: SDL_GetError()))", window: window)
 }
 _ = SDL_GL_MakeCurrent(window, context)
-_ = SDL_GL_SetSwapInterval(options.screenshotPath == nil ? 1 : 0)
-
 let settingsStore = SettingsStore()
+_ = SDL_GL_SetSwapInterval(options.screenshotPath == nil && settingsStore.settings.vsync ? 1 : 0)
 
 do {
     let gl = try GL()

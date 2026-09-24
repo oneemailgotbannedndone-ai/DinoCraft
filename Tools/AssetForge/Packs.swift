@@ -38,6 +38,12 @@ enum TexturePackForge {
                   title: "DinoCraft", titleTop: "F8F0A0", titleBottom: "58B858", restyle: retro),
         PackStyle(id: "autumn", name: "Autumn Woods", description: "Golden grass and red and orange leaves.",
                   title: "DinoCraft", titleTop: "FFD36A", titleBottom: "D2531E", restyle: autumn),
+        PackStyle(id: "comic", name: "Comic Ink", description: "Flat comic-book colours with bold ink outlines.",
+                  title: "DinoCraft", titleTop: "FFF36A", titleBottom: "FF4A3A", restyle: comic),
+        PackStyle(id: "frostbite", name: "Frostbite", description: "An icy winter look: cool blues and frosted edges.",
+                  title: "DinoCraft", titleTop: "EAFBFF", titleBottom: "5AB8F0", restyle: frostbite),
+        PackStyle(id: "neon", name: "Neon Nights", description: "Dark blocks with glowing neon edges.",
+                  title: "DinoCraft", titleTop: "7AF8FF", titleBottom: "FF3AD8", restyle: neon),
     ]
 
     /// Writes every pack into `root` (Resources/TexturePacks). Returns the texture count per pack.
@@ -129,6 +135,58 @@ enum TexturePackForge {
             } else {
                 let warm = rgb(h, s, v)
                 return warm.mix(RGBA(1, 0.72, 0.4), 0.08)
+            }
+            return rgb(h, s, v)
+        }
+    }
+
+    /// Colours flattened to a few bright steps, with dark ink wherever the colour changes sharply.
+    static func comic(_ src: Canvas, tile: Bool) -> Canvas {
+        let size = src.size
+        let flat = map(src) { p, _, _, _ in
+            var (h, s, v) = hsv(p)
+            s = min(1, (s * 3).rounded() / 3 * 1.2 + 0.05)
+            v = min(1, (v * 3).rounded() / 3 * 0.8 + 0.22)
+            return rgb(h, s, v)
+        }
+        let ink = RGBA(hex: 0x16121C)
+        return map(flat) { p, x, y, _ in
+            let right = flat.px[y * size + (x + 1) % size], down = flat.px[((y + 1) % size) * size + x]
+            let diff = abs(hsv(p).2 - hsv(right).2) + abs(hsv(p).2 - hsv(down).2)
+            if diff > 0.55 || (right.a < 0.5 || down.a < 0.5) && !tile { return ink }
+            if tile && (x == 0 || y == 0) { return ink }
+            return p
+        }
+    }
+
+    /// Cool, pale colours with frost creeping in from the edges.
+    static func frostbite(_ src: Canvas, tile: Bool) -> Canvas {
+        let ice = RGBA(hex: 0xDFF4FF)
+        return map(src) { p, x, y, size in
+            let (h, s, v) = hsv(p)
+            var c = rgb(h, s * 0.7, min(1, v * 0.9 + 0.1)).mix(RGBA(hex: 0x9FD2F0), 0.22)
+            if tile {
+                let edge = min(min(x, size - 1 - x), min(y, size - 1 - y))
+                if edge < 3 && hash01(11, x, y) < 0.6 - Double(edge) * 0.18 { c = c.mix(ice, 0.7) }
+            }
+            if hash01(5, x, y) < 0.03 { c = ice }
+            return c
+        }
+    }
+
+    /// Dark bodies with bright, saturated neon edges.
+    static func neon(_ src: Canvas, tile: Bool) -> Canvas {
+        let size = src.size
+        return map(src) { p, x, y, _ in
+            var (h, s, v) = hsv(p)
+            let right = src.px[y * size + (x + 1) % size], down = src.px[((y + 1) % size) * size + x]
+            let edge = abs(v - hsv(right).2) + abs(v - hsv(down).2) > 0.2 || (tile && (x == 0 || y == 0 || x == size - 1 || y == size - 1))
+            if edge {
+                s = min(1, max(0.75, s * 1.6))
+                v = 1
+            } else {
+                s = min(1, s * 1.2)
+                v *= 0.28
             }
             return rgb(h, s, v)
         }

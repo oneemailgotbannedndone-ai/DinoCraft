@@ -84,8 +84,10 @@ public struct GameSettings: Codable, Equatable, Sendable {
     public var windowWidth = 1600
     public var windowHeight = 900
     public var fullscreen = false
-    public var vsync = true
-    public var maxFPS = 120          // used when VSync is off (0 = unlimited)
+    public var vsync = false
+    public var maxFPS = 0            // used when VSync is off (0 = unlimited)
+    /// Set once VSync has been switched off by default (older settings files had it on).
+    public var vsyncOffByDefault = true
     public var renderDistance = 12   // chunks
     public var graphicsQuality: GraphicsQuality = .fancy
     public var fov: Double = 75
@@ -146,6 +148,13 @@ public struct GameSettings: Codable, Equatable, Sendable {
         fullscreen = v(.fullscreen, fullscreen)
         vsync = v(.vsync, vsync)
         maxFPS = v(.maxFPS, maxFPS)
+        vsyncOffByDefault = v(.vsyncOffByDefault, false)
+        if !vsyncOffByDefault {
+            // DinoCraft now runs with VSync off and no frame cap unless you turn it back on.
+            vsync = false
+            maxFPS = 0
+            vsyncOffByDefault = true
+        }
         renderDistance = v(.renderDistance, renderDistance)
         graphicsQuality = v(.graphicsQuality, graphicsQuality)
         fov = v(.fov, fov)

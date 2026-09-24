@@ -494,7 +494,7 @@ section("Biomes") {
 }
 
 section("Dimensions") {
-    for dim in [WorldDimension.underworld, .skylands] {
+    for dim in [WorldDimension.underworld, .skylands, .toonland] {
         let a = dim.makeGenerator(seed: 4242), b = dim.makeGenerator(seed: 4242)
         let p = ChunkPos(3, -2)
         let (ca, t) = time { a.generate(p) }
@@ -513,6 +513,10 @@ section("Dimensions") {
             check((counts[Blocks.lava] ?? 0) > 1_000, "underworld has a lava sea")
             check((counts[Blocks.air] ?? 0) > 50_000, "underworld has open caverns")
             check(ca.block(5, 127, 5) == Blocks.bedrock && ca.block(5, 0, 5) == Blocks.bedrock, "underworld has a bedrock ceiling and floor")
+        case .toonland:
+            check((counts[Blocks.toonGrass] ?? 0) > 1_000, "toonland hills are covered in toon grass")
+            check((counts[Blocks.checkerBlock] ?? 0) > 400, "toonland has a checkered stage and roads (\(counts[Blocks.checkerBlock] ?? 0))")
+            check(a.generate(ChunkPos(0, 0)).block(3, ToonlandGenerator.stageFloor, 3) == Blocks.checkerBlock, "a stage sits at the origin")
         default:
             check((counts[Blocks.skyGrass] ?? 0) > 50, "skylands islands are grassy (\(counts[Blocks.skyGrass] ?? 0))")
             check((counts[Blocks.cloud] ?? 0) > 500, "skylands has a cloud sea")
@@ -520,6 +524,8 @@ section("Dimensions") {
     }
     check(WorldDimension.overworld.destination(through: Blocks.underworldPortal) == .underworld, "bone gateways lead to the Underworld")
     check(WorldDimension.underworld.destination(through: Blocks.underworldPortal) == .overworld, "gateways lead home from other dimensions")
+    check(WorldDimension.overworld.destination(through: Blocks.toonlandPortal) == .toonland, "checker gateways lead to Toonland")
+    check(WorldDimension.gateways.count == 3, "three kinds of gateway")
     let storage = WorldStorage(root: tempRoot.appendingPathComponent("dims"))
     let meta = try storage.createWorld(name: "Hard", seedText: "1", gameMode: .creative, difficulty: .easy, hardcore: true)
     check(meta.isHardcore && meta.gameMode == .survival && meta.difficulty == .hard, "hardcore worlds are survival on hard")

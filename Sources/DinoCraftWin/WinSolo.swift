@@ -219,6 +219,11 @@ final class WinSolo: CommandHost {
             pollEvents()
             update(dt: dt)
             draw()
+            // With VSync off, an optional frame cap (0 = unlimited)
+            if !settings.vsync && settings.maxFPS > 0 && options.screenshotPath == nil {
+                let spare = 1 / Double(settings.maxFPS) - (Date.timeIntervalSinceReferenceDate - now)
+                if spare > 0.001 { SDL_Delay(UInt32(spare * 1000)) }
+            }
         }
         shutdown()
     }
@@ -491,6 +496,7 @@ final class WinSolo: CommandHost {
     }
 
     var sleepWoke = false
+    private var lastTrack: String?
 
     /// Ambience loops, occasional birds and dinosaur calls, and music, following the Mac rules.
     private func updateAmbience(dt: Double) {
@@ -528,10 +534,13 @@ final class WinSolo: CommandHost {
         }
         musicTimer -= dt
         if !audio.isMusicPlaying && musicTimer <= 0 {
-            let pool = underground || s.dimension == .underworld ? ["deep_strata"]
-                : (night ? ["amber_dusk", "deep_strata"] : ["fernlight", "titan_valley", "amber_dusk"])
-            audio.playMusic(pool.randomElement()!)
-            musicTimer = Double.random(in: 120...260)
+            let pool = underground || s.dimension == .underworld ? ["deep_strata", "amber_dusk"]
+                : (night ? ["amber_dusk", "deep_strata", "menu_theme"] : ["fernlight", "titan_valley", "amber_dusk", "menu_theme"])
+            // Never the same song twice in a row
+            let track = pool.filter { $0 != lastTrack }.randomElement() ?? pool[0]
+            lastTrack = track
+            audio.playMusic(track)
+            musicTimer = Double.random(in: 60...150)
         }
     }
 
