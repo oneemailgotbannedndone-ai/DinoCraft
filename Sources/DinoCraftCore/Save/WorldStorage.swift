@@ -31,6 +31,8 @@ public struct WorldMetadata: Codable, Sendable, Identifiable {
     public var weatherTimer: Double?
     /// Whether commands like /give and /time work in this world (missing = allowed).
     public var allowCommands: Bool?
+    /// Bosses beaten in this world (e.g. "grumblesaurus").
+    public var defeatedBosses: [String]? = nil
 
     /// Hardcore worlds never allow commands.
     public var commandsAllowed: Bool { !isHardcore && (allowCommands ?? true) }

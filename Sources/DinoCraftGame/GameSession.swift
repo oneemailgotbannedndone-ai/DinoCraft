@@ -1249,6 +1249,17 @@ final class GameSession {
         onSound?("pickup", 0.35, Float.random(in: 0.9...1.35))
     }
 
+    /// Particle bursts requested by the game (boss stomps, confetti), drained by the particle system.
+    var effectBursts: [(position: DVec3, kind: EffectBurst)] = []
+
+    func isBossDefeated(_ name: String) -> Bool { meta.defeatedBosses?.contains(name) == true }
+
+    func markBossDefeated(_ name: String) {
+        guard !isBossDefeated(name) else { return }
+        meta.defeatedBosses = (meta.defeatedBosses ?? []) + [name]
+        save()
+    }
+
     func followDimension(_ target: WorldDimension, position: DVec3) {
         changeDimension(to: target, portal: nil, arrival: position)
     }

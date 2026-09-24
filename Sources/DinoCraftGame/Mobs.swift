@@ -6,8 +6,12 @@ import DinoCraftCore
 
 enum MobKind: String, CaseIterable, Codable {
     case trikey, dodo, longneck, raptor, spitter, crawler, magmaRaptor, villager, stego, ankylo, rex, compy, ptero, parasaur, sailback, boneWalker, scorpion,
-         pig, cow, sheep, chicken, pookpook, carnotaurus, allosaurus, baryonyx, troodon, spinosaurus
+         pig, cow, sheep, chicken, pookpook, carnotaurus, allosaurus, baryonyx, troodon, spinosaurus,
+         grumblesaurus, grinasaurus
 }
+
+/// Kinds of particle burst the game can ask for.
+enum EffectBurst { case dust, confetti, ink }
 
 struct MobDrop {
     let item: String
@@ -148,6 +152,14 @@ struct MobSpecies {
                    walkSpeed: 1.8, runSpeed: 5.0, damage: 9, attackReach: 2.0, attackCooldown: 1.6, ranged: false, fireproof: false,
                    detectRange: 30, drops: [MobDrop(item: "raw_dino_meat", min: 5, max: 9, chance: 1), MobDrop(item: "dino_bone", min: 3, max: 5, chance: 1), MobDrop(item: "emerald", min: 1, max: 3, chance: 0.6)],
                    callPitch: 0.4, deepCall: true),
+        .grumblesaurus: MobSpecies(kind: .grumblesaurus, displayName: "King Grumblesaurus", hostile: true, maxHealth: 320, width: 2.2, height: 4.4,
+                   walkSpeed: 2.2, runSpeed: 5.0, damage: 7, attackReach: 2.4, attackCooldown: 1.6, ranged: false, fireproof: true,
+                   detectRange: 48, drops: [MobDrop(item: "smile_trophy", min: 1, max: 1, chance: 1), MobDrop(item: "diamond", min: 3, max: 6, chance: 1),
+                                            MobDrop(item: "emerald", min: 4, max: 8, chance: 1), MobDrop(item: "checker_block", min: 8, max: 16, chance: 1)],
+                   callPitch: 0.35, deepCall: true),
+        .grinasaurus: MobSpecies(kind: .grinasaurus, displayName: "Happy Grumblesaurus", hostile: false, maxHealth: 320, width: 2.2, height: 4.4,
+                   walkSpeed: 1.2, runSpeed: 2.0, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: true,
+                   detectRange: 0, drops: [], callPitch: 0.6, deepCall: true),
     ]
 
     static func of(_ kind: MobKind) -> MobSpecies { table[kind]! }
@@ -199,6 +211,11 @@ final class Mob {
     var variant = 0
     /// Villagers stay near their village plaza.
     var home: DVec3?
+    /// Boss attack timers.
+    var volleyTimer = 3.0
+    var stompTimer = 7.0
+    var airborne = false
+    var enraged = false
 
     init(species: MobSpecies, position: DVec3) {
         id = Mob.nextID
@@ -223,6 +240,8 @@ final class Projectile {
     var age = 0.0
     var removed = false
     let damage: Double
+    var cause = "Spat on by a Spitter"
+    var attacker = "Spitter"
 
     init(position: DVec3, velocity: DVec3, damage: Double) {
         self.position = position
@@ -248,6 +267,8 @@ final class MobManager {
     private var spawnTimer = 2.0
     private var villagerTimer = 3.0
     private var guardTimer = 5.0
+    private var stageTimer = 1.0
+    fileprivate var peacefulHintShown = false
     private var scratch: [DBox] = []
 
     func clear() {
@@ -284,6 +305,11 @@ final class MobManager {
             guardTimer = 15
             spawnDungeonGuards(s)
         }
+        stageTimer -= dt
+        if stageTimer <= 0 {
+            stageTimer = 2
+            spawnStageGuests(s)
+        }
         let player = s.player
         let targets = s.hostileTargets()
         for m in mobs where !m.removed {
@@ -309,6 +335,10 @@ final class MobManager {
                 m.deathTimer += dt
                 if m.deathTimer > 0.8 { finishDeath(m, s) }
                 physics(m, desired: .zero, speed: 0, dt: dt, session: s)
+                continue
+            }
+            if m.species.kind == .grumblesaurus {
+                updateBoss(m, target: chosen, dt: dt, session: s)
                 continue
             }
 
@@ -624,6 +654,7 @@ final class MobManager {
 
     private func finishDeath(_ m: Mob, _ s: GameSession) {
         m.removed = true
+        if m.species.kind == .grumblesaurus { bossCheeredUp(m, s) }
         let center = m.position + DVec3(0, m.species.height * 0.5, 0)
         for drop in m.species.drops {
             guard Double.random(in: 0..<1) < drop.chance, let item = s.items.id(named: drop.item) else { continue }
@@ -693,7 +724,7 @@ final class MobManager {
             if let hit = s.hostileTargets().first(where: { simd_distance(p.position, $0.pos + DVec3(0, 0.9, 0)) < 0.9 }) {
                 p.removed = true
                 let flat = DVec3(p.velocity.x, 0, p.velocity.z)
-                s.damageTarget(id: hit.id, amount: p.damage, cause: "Spat on by a Spitter", attacker: "Spitter",
+                s.damageTarget(id: hit.id, amount: p.damage, cause: p.cause, attacker: p.attacker,
                                knockback: simd_length(flat) > 0.01 ? simd_normalize(flat) * 0.5 : .zero)
                 s.onSound?("splash", 0.5, 1.5)
             }
@@ -849,5 +880,135 @@ extension MobKind {
     static func forEgg(named name: String) -> MobKind? {
         guard name.hasPrefix("spawn_egg_") else { return nil }
         return allCases.first { $0.eggItemName == name }
+    }
+}
+
+// MARK: - King Grumblesaurus
+
+extension MobManager {
+    /// The boss fighting near `p`, for the boss health bar.
+    func boss(near p: DVec3) -> Mob? {
+        mobs.first { $0.species.kind == .grumblesaurus && !$0.removed && simd_distance($0.position, p) < 64 }
+    }
+
+    /// Keeps King Grumblesaurus on the nearest Toonland stage until he's cheered up,
+    /// and a happy Grumblesaurus there afterwards.
+    fileprivate func spawnStageGuests(_ s: GameSession) {
+        guard s.dimension == .toonland, !s.isRemote else { return }
+        let p = s.player.position
+        let stage = ToonlandGenerator.nearestStage(x: Int(floor(p.x)), z: Int(floor(p.z)))
+        let center = DVec3(Double(stage.x) + 0.5, Double(ToonlandGenerator.stageFloor + 1), Double(stage.z) + 0.5)
+        guard simd_distance(SIMD2(p.x, p.z), SIMD2(center.x, center.z)) < 40,
+              s.world.slot(at: ChunkPos(Int32(stage.x >> 4), Int32(stage.z >> 4)))?.mesh != nil else { return }
+        if s.isBossDefeated("grumblesaurus") {
+            guard !mobs.contains(where: { $0.species.kind == .grinasaurus && simd_distance($0.position, center) < 40 }) else { return }
+            let m = spawn(.grinasaurus, at: center)
+            m.home = center
+        } else if !mobs.contains(where: { $0.species.kind == .grumblesaurus }) {
+            guard s.meta.difficulty != .peaceful else {
+                if !peacefulHintShown { s.onToast?("King Grumblesaurus only comes out on Easy difficulty or harder") }
+                peacefulHintShown = true
+                return
+            }
+            let m = spawn(.grumblesaurus, at: center)
+            m.home = center
+            s.onToast?("King Grumblesaurus stomps onto the stage! Cheer him up!")
+            s.onSound?("amb_dino_low", 1, 0.35)
+            s.effectBursts.append((center, .ink))
+        }
+    }
+
+    fileprivate func updateBoss(_ m: Mob, target: (id: Int, pos: DVec3)?, dt: Double, session s: GameSession) {
+        if !m.enraged && m.health < m.species.maxHealth * 0.5 {
+            m.enraged = true
+            s.onToast?("King Grumblesaurus is getting REALLY grumpy!")
+            s.onSound?("amb_dino_low", 1, 0.3)
+        }
+        let rage = m.enraged ? 1.35 : 1.0
+        var desired = DVec3.zero
+        var speed = 0.0
+        if let target, simd_distance(target.pos, m.position) < 56 {
+            let to = target.pos - m.position
+            let flat = DVec3(to.x, 0, to.z)
+            let dist = simd_length(flat)
+            let dir = dist > 0.01 ? flat / dist : DVec3(0, 0, 1)
+            if dist > 2 && !m.airborne { desired = dir; speed = 3.0 * rage }
+            m.yaw = MobManager.lerpAngle(m.yaw, atan2(-dir.x, -dir.z), 1 - exp(-6 * dt))
+
+            // Chomp
+            if dist < m.species.attackReach + m.species.width / 2 && abs(to.y) < 3 && m.attackTimer <= 0 {
+                m.attackTimer = m.species.attackCooldown / rage
+                m.lunge = 1
+                s.damageTarget(id: target.id, amount: m.species.damage, cause: "Chomped by King Grumblesaurus",
+                               attacker: "King Grumblesaurus", knockback: dir * 1.5)
+                s.onSound?("amb_dino_low", 0.8, 0.45)
+            }
+            // Ink splatter volley
+            m.volleyTimer -= dt * rage
+            if m.volleyTimer <= 0 && dist > 4 {
+                m.volleyTimer = 5
+                let origin = m.position + DVec3(0, m.species.height * 0.8, 0)
+                let shots = m.enraged ? 5 : 3
+                for i in 0..<shots {
+                    let spread = (Double(i) - Double(shots - 1) / 2) * 0.22
+                    let aim = target.pos + DVec3(0, 1, 0) - origin
+                    let d = simd_length(aim)
+                    let flatAim = DVec3(aim.x, 0, aim.z)
+                    let side = simd_length(flatAim) > 0.01 ? simd_normalize(DVec3(-flatAim.z, 0, flatAim.x)) : DVec3(1, 0, 0)
+                    let v = simd_normalize(aim) * 15 + side * spread * 15 + DVec3(0, d * 0.35, 0)
+                    let blob = Projectile(position: origin, velocity: v, damage: 4)
+                    blob.cause = "Splattered by King Grumblesaurus"
+                    blob.attacker = "King Grumblesaurus"
+                    projectiles.append(blob)
+                }
+                m.lunge = 1
+                s.onSound?("splash", 0.9, 0.6)
+            }
+            // Grumpy stomp: a big jump and a shockwave on landing
+            m.stompTimer -= dt * rage
+            if m.stompTimer <= 0 && m.onGround && !m.airborne {
+                m.stompTimer = 9
+                m.airborne = true
+                m.velocity.y = 12
+                m.velocity += dir * 3
+                s.onSound?("amb_dino_low", 0.9, 0.5)
+            }
+        } else if let home = m.home, simd_distance(SIMD2(home.x, home.z), SIMD2(m.position.x, m.position.z)) > 6 {
+            let to = DVec3(home.x - m.position.x, 0, home.z - m.position.z)
+            desired = simd_normalize(to)
+            speed = m.species.walkSpeed
+        }
+        let wasAirborne = m.airborne && m.velocity.y < 0
+        physics(m, desired: desired, speed: speed, dt: dt, session: s)
+        if wasAirborne && m.onGround {
+            m.airborne = false
+            s.effectBursts.append((m.position, .dust))
+            s.onSound?("break_stone", 1, 0.5)
+            for t in s.hostileTargets() {
+                let d = t.pos - m.position
+                let flat = DVec3(d.x, 0, d.z)
+                let dist = simd_length(flat)
+                guard dist < 7.5, abs(d.y) < 2.5 else { continue }
+                let away = dist > 0.01 ? flat / dist : DVec3(1, 0, 0)
+                s.damageTarget(id: t.id, amount: 6 * (1 - dist / 12), cause: "Stomped by King Grumblesaurus",
+                               attacker: "King Grumblesaurus", knockback: away * 2)
+            }
+        }
+        m.callTimer -= dt
+        if m.callTimer <= 0 {
+            m.callTimer = Double.random(in: 6...12)
+            s.onSound?("amb_dino_low", 0.7, m.species.callPitch)
+        }
+    }
+
+    /// Defeating the boss cheers him up: confetti, a happy Grumblesaurus and a trophy.
+    fileprivate func bossCheeredUp(_ m: Mob, _ s: GameSession) {
+        s.effectBursts.append((m.position + DVec3(0, 2, 0), .confetti))
+        s.markBossDefeated("grumblesaurus")
+        let happy = spawn(.grinasaurus, at: m.position)
+        happy.yaw = m.yaw
+        happy.home = m.home
+        s.onToast?("You cheered up King Grumblesaurus! Toonland is happy again!")
+        s.onSound?("discover", 1, 1.4)
     }
 }

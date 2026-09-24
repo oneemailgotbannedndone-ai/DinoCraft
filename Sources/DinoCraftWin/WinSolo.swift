@@ -640,6 +640,13 @@ final class WinSolo: CommandHost {
         }
         demoPlaced = true
         if s.dimension == .toonland { s.player.yaw = .pi / 2 }   // look toward the stage
+        if options.demoScreen == "toonland-boss" {
+            let boss = s.mobs.spawn(.grumblesaurus, at: DVec3(10.5, Double(ToonlandGenerator.stageFloor + 1), 0.5))
+            boss.yaw = -.pi / 2
+            boss.health = 130
+            boss.enraged = true
+            Log.info("Automated check: King Grumblesaurus placed on the stage", category: "Game")
+        }
         guard options.demoEntities else { return }
         let look = s.player.lookDirection
         let forward = simd_normalize(DVec3(look.x, 0, look.z))

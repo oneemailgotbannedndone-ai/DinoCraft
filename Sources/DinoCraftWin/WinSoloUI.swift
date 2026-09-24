@@ -104,6 +104,15 @@ extension WinSolo {
             ui.rect(W / 2 - 1.5 * sc, H / 2 - 11 * sc, 3 * sc, 22 * sc, color)
             ui.rect(W / 2 - 11 * sc, H / 2 - 1.5 * sc, 22 * sc, 3 * sc, color)
         }
+        if let boss = s.mobs.boss(near: s.player.position) {
+            // Boss health bar across the top of the screen
+            let frac = Float(max(0, boss.health) / boss.species.maxHealth)
+            let bw = 520 * sc, bh = 14 * sc, bx = W / 2 - bw / 2, by = 38 * sc
+            ui.centeredText(boss.species.displayName, centerX: W / 2, y: 14 * sc, scale: max(1, (2.5 * sc).rounded()), color: white)
+            ui.rect(bx - 3 * sc, by - 3 * sc, bw + 6 * sc, bh + 6 * sc, SIMD4(0, 0, 0, 0.7))
+            ui.rect(bx, by, bw, bh, SIMD4(0.25, 0.25, 0.25, 1))
+            ui.rect(bx, by, bw * frac, bh, boss.enraged ? SIMD4(0.95, 0.3, 0.3, 1) : SIMD4(0.95, 0.95, 0.95, 1))
+        }
         if s.breakProgress > 0 {
             ui.rect(W / 2 - 22 * sc, H / 2 + 18 * sc, 44 * sc, 5 * sc, SIMD4(0, 0, 0, 0.5))
             ui.rect(W / 2 - 22 * sc, H / 2 + 18 * sc, 44 * sc * Float(min(1, s.breakProgress)), 5 * sc, SIMD4(0.95, 0.6, 0.12, 1))

@@ -120,7 +120,44 @@ final class ParticleSystem {
             particles[i] = p
             i += 1
         }
+        for burst in s.effectBursts { emitBurst(burst.kind, at: burst.position) }
+        s.effectBursts.removeAll()
         ambient(dt: dt, session: s, blocks: blocks)
+    }
+
+    /// Big one-off effects: a stomp's dust ring, cheer-up confetti, a splash of ink.
+    func emitBurst(_ kind: EffectBurst, at center: DVec3) {
+        switch kind {
+        case .dust:
+            for k in 0..<60 {
+                let a = Double(k) / 60 * 2 * .pi
+                var p = Particle(center + DVec3(cos(a) * 1.5, 0.2, sin(a) * 1.5), DVec3(cos(a) * 7, Double.random(in: 0.5...2), sin(a) * 7),
+                                 life: 0.9, size: 0.18, color: SIMD4(0.85, 0.85, 0.85, 0.8))
+                p.drag = 2.5
+                p.shrink = true
+                emit(p)
+            }
+        case .confetti:
+            let colors: [SIMD4<Float>] = [SIMD4(1, 0.3, 0.3, 1), SIMD4(1, 0.85, 0.2, 1), SIMD4(0.3, 0.8, 1, 1), SIMD4(0.5, 1, 0.4, 1), SIMD4(1, 0.5, 0.9, 1), SIMD4(1, 1, 1, 1)]
+            for k in 0..<220 {
+                var p = Particle(center, DVec3(Double.random(in: -6...6), Double.random(in: 4...12), Double.random(in: -6...6)),
+                                 life: Float.random(in: 2...3.5), size: 0.09, color: colors[k % colors.count])
+                p.layer = -2
+                p.gravity = 7
+                p.drag = 1.2
+                p.emissive = true
+                emit(p)
+            }
+        case .ink:
+            for _ in 0..<80 {
+                var p = Particle(center + DVec3(Double.random(in: -1...1), Double.random(in: 0...3), Double.random(in: -1...1)),
+                                 DVec3(Double.random(in: -3...3), Double.random(in: 1...5), Double.random(in: -3...3)),
+                                 life: 1.4, size: 0.16, color: SIMD4(0.05, 0.05, 0.05, 1))
+                p.gravity = 9
+                p.collide = true
+                emit(p)
+            }
+        }
     }
 
     private func ambient(dt: Double, session s: GameSession, blocks: BlockRegistry) {

@@ -410,7 +410,16 @@ enum HUD {
                 : (s.portalKind == Blocks.toonlandPortal ? Color(hex: 0xF4F4F4) : Color(hex: 0x8A1A4A))
             d.fill(Rect(0, 0, W, H), tint.alpha(a * 0.5), bottom: tint.alpha(a * 0.8))
         }
-        if let mob = s.targetMob {
+        if let boss = s.mobs.boss(near: s.player.position) {
+            // Boss health bar across the top of the screen
+            let frac = Float(max(0, boss.health) / boss.species.maxHealth)
+            let bar = Rect(W / 2 - 260, 44, 520, 14)
+            d.text(boss.species.displayName, x: W / 2, y: 14, size: 20, color: Theme.text, face: .display, align: .center,
+                   shadow: Color(linear: 0, 0, 0, 0.85))
+            d.fill(bar.inset(-3), Color(linear: 0, 0, 0, 0.7), radius: 5)
+            d.fill(bar, Color(hex: 0x3A3A3A), radius: 4)
+            d.fill(Rect(bar.x, bar.y, bar.w * frac, bar.h), boss.enraged ? Theme.danger : Color(hex: 0xF2F2F2), radius: 4)
+        } else if let mob = s.targetMob {
             let frac = Float(max(0, mob.health) / mob.species.maxHealth)
             let bar = Rect(W / 2 - 110, 74, 220, 8)
             d.text(mob.species.displayName, x: W / 2, y: 48, size: 15, color: mob.species.hostile ? Color(hex: 0xFF8A80) : Theme.text,
