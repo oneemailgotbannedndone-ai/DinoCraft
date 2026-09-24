@@ -2,7 +2,8 @@ name: Windows
 
 # Builds DinoCraft for Windows and Mac. On pushes to main (or when "publish" is ticked) both
 # downloads go to the public DinoCraft-Releases repository, where the launcher's update button finds them.
-# Publishing needs a RELEASES_TOKEN secret: a GitHub token that can create releases in that repository.
+# Publishing there needs a RELEASES_TOKEN secret: a GitHub token that can create releases in that repository.
+# Without it, each build is published on this repository's own Releases page instead.
 
 on:
   push:
@@ -190,6 +191,8 @@ jobs:
     needs: [build, mac]
     if: always() && needs.build.result == 'success' && (github.event_name == 'push' || inputs.publish)
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -206,14 +209,11 @@ jobs:
           name: mac-zip
           path: out
 
-      - name: Publish to DinoCraft-Releases
+      - name: Publish the release
         env:
-          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          REPO_TOKEN: ${{ github.token }}
         run: |
-          if [ -z "$GH_TOKEN" ]; then
-            echo "::warning::The RELEASES_TOKEN secret isn't set, so this build wasn't published."
-            exit 0
-          fi
           {
             echo "## Download"
             echo ""
@@ -227,6 +227,17 @@ jobs:
             if [ -s Resources/Data/whatsnew.txt ]; then cat Resources/Data/whatsnew.txt; else git log -1 --pretty=%B; fi
           } > notes.txt
           ls -la out
+          if [ -z "$RELEASES_TOKEN" ]; then
+            # No RELEASES_TOKEN yet: publish on this repository's own Releases page instead.
+            echo "::notice::RELEASES_TOKEN isn't set, so this build goes on this repository's Releases page."
+            GH_TOKEN="$REPO_TOKEN" gh release create "build-${{ github.run_number }}" out/*.zip \
+              --repo "${{ github.repository }}" \
+              --target "${{ github.sha }}" \
+              --title "DinoCraft build ${{ github.run_number }}" \
+              --notes-file notes.txt
+            exit 0
+          fi
+          export GH_TOKEN="$RELEASES_TOKEN"
           gh release create "build-${{ github.run_number }}" out/*.zip \
             --repo oneemailgotbannedndone-ai/DinoCraft-Releases \
             --title "DinoCraft build ${{ github.run_number }}" \
