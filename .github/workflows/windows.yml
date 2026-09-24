@@ -214,7 +214,7 @@ jobs:
             echo "::warning::The RELEASES_TOKEN secret isn't set, so this build wasn't published."
             exit 0
           fi
-          git log -1 --pretty=%B > notes.txt
+          if [ -s Resources/Data/whatsnew.txt ]; then cp Resources/Data/whatsnew.txt notes.txt; else git log -1 --pretty=%B > notes.txt; fi
           ls -la out
           gh release create "build-${{ github.run_number }}" out/*.zip \
             --repo oneemailgotbannedndone-ai/DinoCraft-Releases \

@@ -25,6 +25,12 @@ public struct BuildInfo: Codable, Sendable {
     }()
 
     public var isDevelopment: Bool { build <= 0 }
+
+    /// What's new in this version (Resources/Data/whatsnew.txt), shown by the launcher.
+    public static let whatsNew: String = {
+        guard let url = try? ResourceLocator.url("Data/whatsnew.txt"), let text = try? String(contentsOf: url, encoding: .utf8) else { return "" }
+        return text
+    }()
     public var displayName: String { isDevelopment ? "Development build" : "Build \(build)" }
 }
 

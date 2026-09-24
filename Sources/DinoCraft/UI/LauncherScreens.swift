@@ -52,8 +52,8 @@ final class LauncherScreen: Screen {
             }
             if !current.isEmpty { line(current, size, color) }
         }
-        if let release = e.updater.latestRelease {
-            line("What's new", 26, Theme.amber, face: .display)
+        if let release = e.updater.latestRelease, release.build > BuildInfo.current.build {
+            line("New in the update", 26, Theme.amber, face: .display)
             y += 4
             line(release.title + (release.published.isEmpty ? "" : "  ·  \(release.published)"), 16, Theme.text)
             y += 6
@@ -62,6 +62,14 @@ final class LauncherScreen: Screen {
                 if text.hasPrefix("Co-Authored-By") || text.hasPrefix("Claude-Session") { continue }
                 if text.isEmpty { y += 8; continue }
                 wrapped(text, 15, Theme.textMuted)
+            }
+        } else if !BuildInfo.whatsNew.isEmpty {
+            line("What's new", 26, Theme.amber, face: .display)
+            y += 4
+            for (i, raw) in BuildInfo.whatsNew.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
+                let text = raw.trimmingCharacters(in: .whitespaces)
+                if text.isEmpty { y += 8; continue }
+                wrapped(text, 15, i == 0 || !text.hasPrefix("-") ? Theme.text : Theme.textMuted)
             }
         } else {
             line("Welcome, explorer!", 26, Theme.amber, face: .display)

@@ -560,8 +560,8 @@ extension WinMenus {
             ny += 11 * small
         }
         let state = updater.state
-        if let release = updater.latestRelease {
-            ui.text("What's new", x: panelX + 22 * s, y: ny, scale: max(1, (3 * s).rounded()), color: amber)
+        if let release = updater.latestRelease, release.build > BuildInfo.current.build {
+            ui.text("New in the update", x: panelX + 22 * s, y: ny, scale: max(1, (3 * s).rounded()), color: amber)
             ny += 16 * max(1, (3 * s).rounded()) / 2 + 12 * s
             line("\(release.title)\(release.published.isEmpty ? "" : " - \(release.published)")", SIMD4(1, 1, 1, 1))
             ny += 4 * s
@@ -570,6 +570,15 @@ extension WinMenus {
                 if text.isEmpty { ny += 5 * s; continue }
                 if text.hasPrefix("Co-Authored-By") || text.hasPrefix("Claude-Session") { continue }
                 for part in WinMenus.wrap(text.replacingOccurrences(of: "**", with: ""), width: maxChars) { line(part, muted) }
+            }
+        } else if !BuildInfo.whatsNew.isEmpty {
+            ui.text("What's new", x: panelX + 22 * s, y: ny, scale: max(1, (3 * s).rounded()), color: amber)
+            ny += 16 * max(1, (3 * s).rounded()) / 2 + 12 * s
+            for (i, raw) in BuildInfo.whatsNew.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
+                let text = raw.trimmingCharacters(in: .whitespaces)
+                if text.isEmpty { ny += 5 * s; continue }
+                let heading = i == 0 || !text.hasPrefix("-")
+                for part in WinMenus.wrap(text, width: maxChars) { line(part, heading ? SIMD4(1, 1, 1, 1) : muted) }
             }
         } else {
             ui.text("Welcome, explorer!", x: panelX + 22 * s, y: ny, scale: max(1, (3 * s).rounded()), color: amber)

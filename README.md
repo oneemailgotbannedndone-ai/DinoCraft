@@ -2,6 +2,16 @@
 
 An original prehistoric voxel sandbox built from scratch as a **native macOS app for Apple Silicon**. It uses Swift, AppKit, and Metal, with no Electron, no web views, and no engine middleware.
 
+## What's new
+
+The launcher update, for Mac and Windows (the full list is in `Resources/Data/whatsnew.txt`, which the launcher shows):
+
+- **Launcher** with Play, Update, Cosmetics, Skin Creator, Settings and Quit. The Update button downloads new versions and restarts into them.
+- **Skin Creator**: draw your own face and shirt, then Save & Play. Share skins with codes; friends see them in multiplayer.
+- **Cosmetics**: hats, outfit colours, capes, dino tails and backpacks. Press F5 in game to see yourself.
+- **Windows plays like the Mac**: the full survival game, texture and shader packs, particles, weather and settings.
+- **Looks**: the Mac uses the Windows pixel font, and every built-in texture pack keeps natural colours.
+
 ## Features
 
 - **Worlds.** Endless procedural terrain with biomes, rivers, caves, and ores (coal, iron, gold, diamond, amber, emerald). There are also two extra dimensions, the Underworld and the Amber Skylands, reached through gateways.
