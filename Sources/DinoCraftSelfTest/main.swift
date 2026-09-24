@@ -535,10 +535,12 @@ section("Dimensions") {
     check(dc.block(4, 0, 4) == Blocks.bedrock && fc.block(4, 0, 4) == Blocks.bedrock, "both kinds of world have bedrock at the bottom")
     check(slate > 5_000, "the deep layers are Deep Slate (\(slate))")
     check(deep.seaLevel == flat.seaLevel + WorldConst.deepLayers && deep.depthOffset == 70 && flat.depthOffset == 0, "deep worlds sit 70 blocks higher")
-    check(deep.columnInfo(x: 40, z: 90).height == flat.columnInfo(x: 40, z: 90).height + 70, "surface heights include the deep layers")
-    var same = true
-    for y in 80..<200 { if dc.block(7, y, 7) != fc.block(7, y - 70, 7) { same = false } }
-    check(same, "the land above is the same, just lifted")
+    check(dc.maxHeight > WorldConst.deepLayers + 30, "the land sits on top of the deep layers")
+    var deepest = Int.max
+    for z in stride(from: -4000, through: 4000, by: 160) { for x in stride(from: -4000, through: 4000, by: 160) {
+        deepest = min(deepest, deep.columnInfo(x: x, z: z).height)
+    } }
+    check(deepest >= deep.seaLevel - 24, "oceans in new worlds stay fairly shallow (deepest floor \(deepest - deep.seaLevel))")
     let storage = WorldStorage(root: tempRoot.appendingPathComponent("dims"))
     let meta = try storage.createWorld(name: "Hard", seedText: "1", gameMode: .creative, difficulty: .easy, hardcore: true)
     check(meta.isHardcore && meta.gameMode == .survival && meta.difficulty == .hard, "hardcore worlds are survival on hard")

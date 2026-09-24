@@ -61,7 +61,7 @@ final class WinMenus {
         case launchGame
     }
 
-    private enum Page { case launcher, cosmetics, skin, title, worlds, create, multiplayer, settings, connecting }
+    private enum Page { case launcher, cosmetics, skin, title, worlds, create, multiplayer, settings, connecting, reviews }
 
     private let window: OpaquePointer
     private let renderer: WinRenderer
@@ -89,6 +89,8 @@ final class WinMenus {
     private var skinDraft: PlayerLook?
     /// The launcher's news panel shows the guide to beating DinoCraft instead.
     private var showingGuide = false
+    /// Stars picked on the Reviews page before writing a review.
+    private var reviewStars = 5
     private var skinTab = 0
     private var skinColor: UInt8 = 1
     private var skinMirror = true
@@ -138,6 +140,7 @@ final class WinMenus {
         if options.demoScreen == "worlds" { page = .worlds }
         if options.demoScreen == "create" { page = .create; focus = "name" }
         if options.demoScreen == "cosmetics" { page = .cosmetics }
+        if options.demoScreen == "reviews" { GameLinks.reviews.load(); page = .reviews }
         if options.demoScreen == "skin" {
             page = .skin
             var demo = PlayerLook(encoded: store.settings.cosmetics) ?? PlayerLook()
@@ -289,6 +292,9 @@ final class WinMenus {
 
         case .cosmetics:
             buildCosmetics(&ui, input: input, width: W, height: H, scale: s, now: now)
+
+        case .reviews:
+            buildReviews(&ui, input: input, width: W, height: H, scale: s)
 
         case .skin:
             buildSkinCreator(&ui, input: input, width: W, height: H, scale: s, now: now)
@@ -681,6 +687,10 @@ extension WinMenus {
             click(); showingGuide.toggle()
         }
         y += bh + gap
+        if ui.button("Player Reviews", x: bx, y: y, w: bw, h: bh, scale: s, input: input) {
+            click(); GameLinks.reviews.load(); page = .reviews
+        }
+        y += bh + gap
         if ui.button("Quit", x: bx, y: y, w: bw, h: bh, scale: s, input: input) || input.escape { return .quit }
 
         ui.text("DinoCraft for Windows - \(BuildInfo.current.displayName)", x: 16 * s, y: H - 14 * s - 7 * small, scale: small, color: muted)
@@ -701,6 +711,76 @@ extension WinMenus {
                 x: panelX, y: panelY + panelH + 10 * s, scale: small, color: muted)
         if quitForUpdate { return .quit }
         return nil
+    }
+
+    /// Everyone's reviews (read from GitHub), the average rating, and a star picker that opens
+    /// a pre-filled page for writing your own.
+    fileprivate func buildReviews(_ ui: inout UIBuilder, input: MenuInput, width W: Float, height H: Float, scale s: Float) {
+        let small = max(1, (2 * s).rounded())
+        let head = max(1, (4 * s).rounded())
+        let gold = SIMD4<Float>(1, 0.8, 0.25, 1), dimStar = SIMD4<Float>(0.4, 0.36, 0.5, 1)
+        ui.rect(0, 0, W, H, SIMD4(0.02, 0.01, 0.05, 0.55))
+        ui.centeredText("Player Reviews", centerX: W / 2, y: H * 0.05, scale: head, color: amber)
+        let board = GameLinks.reviews
+        func stars(_ n: Int, x: Float, y: Float, scale: Float) {
+            for k in 0..<5 { ui.text("\u{2605}", x: x + Float(k) * 8 * scale, y: y, scale: scale, color: k < n ? gold : dimStar) }
+        }
+        let panelW = min(W - 60 * s, 900 * s), panelX = W / 2 - panelW / 2, panelY = H * 0.05 + 10 * head + 16 * s
+        let panelH = H - panelY - 150 * s
+        ui.rect(panelX, panelY, panelW, panelH, SIMD4(0.06, 0.04, 0.1, 0.9))
+        var y = panelY + 16 * s
+        let maxChars = max(10, Int((panelW - 40 * s) / (6 * small)))
+        switch board.state {
+        case .idle, .loading:
+            ui.centeredText("Loading reviews...", centerX: W / 2, y: y + 20 * s, scale: small, color: muted)
+        case .failed(let reason):
+            for part in WinMenus.wrap(reason, width: maxChars) {
+                ui.centeredText(part, centerX: W / 2, y: y + 20 * s, scale: small, color: SIMD4(1, 0.7, 0.6, 1))
+                y += 10 * small
+            }
+        case .loaded(let list):
+            if list.isEmpty {
+                ui.centeredText("No reviews yet. Be the first!", centerX: W / 2, y: y + 20 * s, scale: small, color: muted)
+            } else {
+                let big = max(1, (3 * s).rounded())
+                stars(Int(board.average.rounded()), x: panelX + 20 * s, y: y, scale: big)
+                ui.text(String(format: "%.1f out of 5 from %d review%@", board.average, list.count, list.count == 1 ? "" : "s"),
+                        x: panelX + 20 * s + 44 * big, y: y + 2 * s, scale: small, color: SIMD4(1, 1, 1, 1))
+                y += 10 * big + 10 * s
+                for review in list {
+                    guard y < panelY + panelH - 30 * s else { break }
+                    stars(review.stars, x: panelX + 20 * s, y: y, scale: small)
+                    ui.text("\(review.author) - \(review.date)", x: panelX + 20 * s + 46 * small, y: y, scale: small, color: amber)
+                    y += 10 * small
+                    for part in WinMenus.wrap(review.text, width: maxChars).prefix(3) {
+                        ui.text(part, x: panelX + 20 * s, y: y, scale: small, color: muted, shadow: false)
+                        y += 10 * small
+                    }
+                    y += 8 * s
+                }
+            }
+        }
+        // Your review: pick stars, then finish it on GitHub (anyone with a free account can post)
+        let rowY = panelY + panelH + 16 * s
+        ui.text("Your rating:", x: panelX, y: rowY + 12 * s, scale: small, color: SIMD4(1, 1, 1, 1))
+        let starW = 40 * s
+        for k in 1...5 {
+            let sx = panelX + 160 * s + Float(k - 1) * (starW + 6 * s)
+            if ui.button("\u{2605}", x: sx, y: rowY, w: starW, h: 38 * s, scale: s, input: input, primary: k <= reviewStars) {
+                click(); reviewStars = k
+            }
+        }
+        let bw = 260 * s
+        if ui.button("Write a Review", x: panelX + panelW - bw, y: rowY, w: bw, h: 38 * s, scale: s, input: input, primary: true),
+           let url = board.writeURL(stars: reviewStars, username: store.settings.username) {
+            click()
+            _ = SDL_OpenURL(url.absoluteString)
+        }
+        ui.text("Opens GitHub in your browser: add a few words and press Submit.", x: panelX, y: rowY + 48 * s, scale: small, color: muted)
+        if ui.button("Refresh", x: W / 2 - 250 * s, y: H - 60 * s, w: 240 * s, h: 44 * s, scale: s, input: input) { click(); board.load() }
+        if ui.button("Back", x: W / 2 + 10 * s, y: H - 60 * s, w: 240 * s, h: 44 * s, scale: s, input: input) || input.escape {
+            click(); page = .launcher
+        }
     }
 
     /// Choose a hat, outfit colours and something to wear on your back, with a spinning preview.

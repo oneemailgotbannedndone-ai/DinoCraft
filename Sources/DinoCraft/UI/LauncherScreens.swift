@@ -157,6 +157,11 @@ final class LauncherScreen: Screen {
             showingGuide.toggle()
         }
         by += bh + gap
+        if ui.button("launcher.reviews", "Player Reviews", Rect(bx, by, bw, bh), style: .secondary) {
+            GameLinks.reviews.load()
+            e.pushScreen(ReviewsScreen())
+        }
+        by += bh + gap
         if ui.button("launcher.quit", "Quit", Rect(bx, by, bw, bh), style: .secondary) { e.quitGame() }
 
         d.text("DinoCraft \(e.versionString) · \(BuildInfo.current.displayName)", x: 22, y: H - 34, size: 13, color: Theme.textMuted,
@@ -180,6 +185,69 @@ final class LauncherScreen: Screen {
 // MARK: - Cosmetics
 
 /// Choose a hat, outfit colours and something to wear on your back. Friends see it in multiplayer.
+/// Everyone's reviews (read from GitHub), the average rating, and a star picker that opens a
+/// pre-filled page for writing your own.
+final class ReviewsScreen: Screen {
+    private var stars = 5
+
+    override var scene: GameActivityState.Scene { .mainMenu }
+
+    override func draw(_ ui: UIContext, _ e: GameEngine) {
+        MenuBackdrop.draw(ui)
+        let d = ui.draw
+        let W = ui.size.x, H = ui.size.y
+        let panel = Rect(max(30, W / 2 - 480), max(30, H / 2 - 340), min(960, W - 60), min(680, H - 60))
+        ui.panel(panel, title: "Player Reviews")
+        let board = GameLinks.reviews
+        let gold = Color(hex: 0xFFCC40), dimStar = Color(hex: 0x6A5E80)
+        func starRow(_ n: Int, x: Float, y: Float, size: Float) {
+            for k in 0..<5 { d.text("\u{2605}", x: x + Float(k) * size * 1.05, y: y, size: size, color: k < n ? gold : dimStar, face: .display) }
+        }
+        var y = panel.y + 76
+        let left = panel.x + 34, textW = panel.w - 68
+        let listBottom = panel.maxY - 150
+        switch board.state {
+        case .idle, .loading:
+            d.text("Loading reviews…", x: panel.midX, y: y + 30, size: 16, color: Theme.textMuted, align: .center)
+        case .failed(let reason):
+            d.text(reason, x: panel.midX, y: y + 30, size: 16, color: Theme.danger, align: .center, maxWidth: textW)
+        case .loaded(let list):
+            if list.isEmpty {
+                d.text("No reviews yet. Be the first!", x: panel.midX, y: y + 30, size: 16, color: Theme.textMuted, align: .center)
+            } else {
+                starRow(Int(board.average.rounded()), x: left, y: y, size: 26)
+                d.text(String(format: "%.1f out of 5 from %d review%@", board.average, list.count, list.count == 1 ? "" : "s"),
+                       x: left + 150, y: y + 4, size: 17, color: Theme.text)
+                y += 44
+                for review in list {
+                    guard y < listBottom - 40 else { break }
+                    starRow(review.stars, x: left, y: y, size: 15)
+                    d.text("\(review.author)  ·  \(review.date)", x: left + 92, y: y, size: 14, color: Theme.amber)
+                    y += 22
+                    d.text(review.text, x: left, y: y, size: 14, color: Theme.textMuted, maxWidth: textW)
+                    y += 30
+                }
+            }
+        }
+        // Your review
+        let rowY = panel.maxY - 130
+        d.text("Your rating", x: left, y: rowY + 10, size: 16, color: Theme.text, face: .display)
+        for k in 1...5 {
+            if ui.button("reviews.star\(k)", "\u{2605}", Rect(left + 130 + Float(k - 1) * 50, rowY, 44, 40), style: k <= stars ? .primary : .secondary) {
+                stars = k
+            }
+        }
+        if ui.button("reviews.write", "Write a Review", Rect(panel.maxX - 294, rowY, 260, 40), style: .primary),
+           let url = board.writeURL(stars: stars, username: e.settings.username) {
+            NSWorkspace.shared.open(url)
+        }
+        d.text("Opens GitHub in your browser: add a few words and press Submit. Anyone with a free GitHub account can post.",
+               x: left, y: rowY + 52, size: 13, color: Theme.textMuted, maxWidth: textW)
+        if ui.button("reviews.refresh", "Refresh", Rect(panel.midX - 250, panel.maxY - 58, 240, 44), style: .secondary) { board.load() }
+        if ui.button("reviews.back", "Back", Rect(panel.midX + 10, panel.maxY - 58, 240, 44), style: .secondary) { e.popScreen() }
+    }
+}
+
 final class CosmeticsScreen: Screen {
     override var scene: GameActivityState.Scene { .mainMenu }
 

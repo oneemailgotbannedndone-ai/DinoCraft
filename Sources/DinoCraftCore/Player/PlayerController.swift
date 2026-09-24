@@ -41,7 +41,9 @@ public final class PlayerController {
         public var walkSpeed = 4.3
         public var sprintSpeed = 7.4
         public var sneakSpeed = 1.35
-        public var swimSpeed = 2.4
+        public var swimSpeed = 3.2
+        /// Sprint-swimming: a fast dive in the direction you look.
+        public var swimSprintSpeed = 5.6
         public var flySpeed = 10.9
         public var flySprintSpeed = 21.6
         public var gravity = 28.0
@@ -182,7 +184,7 @@ public final class PlayerController {
         if flying {
             speed = isSprinting ? tuning.flySprintSpeed : tuning.flySpeed
         } else if inWater {
-            speed = tuning.swimSpeed * (isSprinting ? 1.35 : 1)
+            speed = isSprinting ? tuning.swimSprintSpeed : tuning.swimSpeed
         } else if isSneaking {
             speed = tuning.sneakSpeed
         } else {
@@ -201,10 +203,19 @@ public final class PlayerController {
             if input.sneak { vy -= speed * 0.75 }
             velocity.y += (vy - velocity.y) * (1 - exp(-12 * dt))
         } else if inWater {
-            velocity.y -= tuning.waterGravity * dt
-            velocity.y *= exp(-2.2 * dt)
-            if input.jump {
-                velocity.y = min(velocity.y + 22 * dt, collidedHorizontally ? 5.0 : 3.4)
+            let swimmingForward = headInWater && fwd > 0.1
+            if swimmingForward {
+                // Swim where you look: up, down or level, gently buoyant.
+                let targetY = sin(pitch) * speed * fwd + (input.jump ? 2.5 : 0) - (input.sneak ? 2.5 : 0)
+                velocity.y += (targetY - velocity.y) * (1 - exp(-5 * dt))
+            } else {
+                velocity.y -= tuning.waterGravity * (input.sneak ? 1.8 : 1) * dt
+                velocity.y *= exp(-2.2 * dt)
+                if input.jump {
+                    // Swim up; at the surface this keeps your head above the water, and next to a
+                    // ledge it lifts you out.
+                    velocity.y = min(velocity.y + 24 * dt, collidedHorizontally ? 5.4 : (headInWater ? 4.0 : 2.2))
+                }
             }
             fallStartY = nil
         } else {

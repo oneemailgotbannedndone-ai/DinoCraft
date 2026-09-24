@@ -90,6 +90,15 @@ public final class TerrainGenerator: @unchecked Sendable {
         (0.06, 3), (0.25, 10), (0.55, 20), (1.0, 30),
     ]
 
+    /// Deep worlds have gentler seas: oceans bottom out about 18 blocks down instead of 40.
+    private static let shallowContinentSpline: [(Double, Double)] = [
+        (-1.0, -18), (-0.40, -15), (-0.22, -11), (-0.10, -5), (-0.03, 0.5),
+        (0.06, 3), (0.25, 10), (0.55, 20), (1.0, 30),
+    ]
+
+    /// Newer worlds tune a few things: shallower oceans, smaller icy regions and icebergs.
+    var modern: Bool { depth > 0 }
+
     @inline(__always) private static func spline(_ points: [(Double, Double)], _ x: Double) -> Double {
         if x <= points[0].0 { return points[0].1 }
         for i in 1..<points.count where x < points[i].0 {
@@ -120,7 +129,7 @@ public final class TerrainGenerator: @unchecked Sendable {
         let hillAmp = (3 + 13 * (1 - TerrainGenerator.smooth(-0.3, 0.45, e))) * (0.35 + 0.65 * land)
 
         var h = Double(TerrainGenerator.baseSeaLevel)
-            + TerrainGenerator.spline(TerrainGenerator.continentSpline, c)
+            + TerrainGenerator.spline(modern ? TerrainGenerator.shallowContinentSpline : TerrainGenerator.continentSpline, c)
             + d * hillAmp
             + pow(r, 1.7) * 125 * mountainMask
             + d * 10 * mountainMask
@@ -154,8 +163,8 @@ public final class TerrainGenerator: @unchecked Sendable {
             let v = variantNoise.fbm2(fx / 900, fz / 900, octaves: 3) * 1.7
             if temperature > 0.32 && humidity < -0.05 {
                 biome = v > 0.32 ? .redMesa : (v < -0.42 ? .volcanicWastes : .desert)
-            } else if temperature < -0.5 {
-                biome = v > 0.25 ? .glacier : .snowyTundra
+            } else if temperature < (modern ? -0.74 : -0.5) {
+                biome = v > (modern ? 0.45 : 0.25) ? .glacier : .snowyTundra
             } else if temperature < -0.22 {
                 biome = v < -0.3 ? .silverForest : .redwoodTaiga
             } else if humidity > 0.3 && temperature > 0.15 {
@@ -259,6 +268,7 @@ public final class TerrainGenerator: @unchecked Sendable {
         placeStructures(chunk)
         placeDetails(chunk, columns: columns)
         placePlants(chunk, columns: columns)
+        if modern { placeIceberg(chunk, columns: columns) }
         chunk.recomputeHeights()
         return chunk
     }
@@ -309,9 +319,16 @@ public final class TerrainGenerator: @unchecked Sendable {
         }
 
         if underwater {
-            let frozen = info.temperature < -0.55 && info.biome != .river
-            for y in h..<sea {
-                chunk.setRaw(x, y, z, (frozen && y == sea - 1) ? Blocks.ice : Blocks.water)
+            if modern {
+                // Cold seas get drifting ice floes rather than one flat sheet (icebergs come later).
+                let cold = info.temperature < -0.6 && info.biome != .river
+                let floe = cold && Hashing.unit(seed, Int32(worldX >> 2), 0, Int32(worldZ >> 2), salt: 57) < Float(min(0.55, (-0.6 - info.temperature) * 2.2))
+                for y in h..<sea { chunk.setRaw(x, y, z, (floe && y == sea - 1) ? Blocks.ice : Blocks.water) }
+            } else {
+                let frozen = info.temperature < -0.55 && info.biome != .river
+                for y in h..<sea {
+                    chunk.setRaw(x, y, z, (frozen && y == sea - 1) ? Blocks.ice : Blocks.water)
+                }
             }
         }
     }
@@ -719,6 +736,33 @@ public final class TerrainGenerator: @unchecked Sendable {
             guard abs(h - base) <= 1 else { continue }
             put(chunk, x - ox, h, z - oz, log, overwrite: true)
             if (mushrooms >> UInt64(i * 3)) & 3 == 0 { put(chunk, x - ox, h + 1, z - oz, Blocks.brownMushroom, overwrite: false) }
+        }
+    }
+
+    /// Now and then a chunk of cold ocean gets an iceberg: packed ice poking out of the water
+    /// with a snowy top, and a much bigger body hidden below.
+    private func placeIceberg(_ chunk: Chunk, columns: [ColumnInfo]) {
+        let center = columns[8 * 16 + 8]
+        guard center.biome == .ocean, center.temperature < -0.45 else { return }
+        var rng = SplitMix64(seed: Hashing.hash(seed, chunk.pos.x, 21, chunk.pos.z, salt: 2121))
+        guard rng.nextInt(3) == 0 else { return }
+        let sea = TerrainGenerator.baseSeaLevel
+        let radius = 3 + rng.nextInt(3)
+        let above = 4 + rng.nextInt(9)
+        let cx = 6 + rng.nextInt(4), cz = 6 + rng.nextInt(4)
+        for z in 0..<16 {
+            for x in 0..<16 {
+                let dx = Double(x - cx), dz = Double(z - cz)
+                let r = sqrt(dx * dx + dz * dz) + Double(rng.nextInt(2)) * 0.4
+                guard r <= Double(radius) + 0.5 else { continue }
+                let t = 1 - r / (Double(radius) + 0.5)               // 1 at the middle, 0 at the rim
+                let top = sea + Int((Double(above) * pow(t, 1.3)).rounded())
+                let bottom = max(columns[z * 16 + x].height, sea - Int(Double(radius) * 2.2 * t) - 2)
+                for y in bottom...top {
+                    let id: BlockID = y == top && top > sea ? Blocks.snow : (y >= sea - 1 ? Blocks.packedIce : Blocks.ice)
+                    chunk.setRaw(x, y, z, id)
+                }
+            }
         }
     }
 

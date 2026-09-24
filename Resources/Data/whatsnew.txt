@@ -20,6 +20,13 @@ Deeper world
 - New worlds now go all the way down to Y -70: a layer of Deep Slate with caverns, lava pools and richer ores.
 - Reach the bottom for the new "Rock Bottom" advancement. Older worlds keep their old floor.
 
+Oceans, ice and swimming
+- Swim where you look: dive and rise with the camera, sprint to swim fast, sneak to sink.
+- New worlds have gentler oceans and smaller icy regions. Cold seas get drifting ice floes and icebergs.
+
+Player reviews
+- The launcher's Player Reviews page shows everyone's star ratings and reviews. Pick your stars and press Write a Review.
+
 More
 - New pickaxe and bedrock textures.
 - Sprinting is faster. VSync is off by default, with a Max FPS setting.
