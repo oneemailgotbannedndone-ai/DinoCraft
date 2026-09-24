@@ -2,6 +2,13 @@
 
 An original prehistoric voxel sandbox built from scratch as a **native macOS app for Apple Silicon**. It uses Swift, AppKit, and Metal, with no Electron, no web views, and no engine middleware.
 
+## Download
+
+- [**Download for Windows**](https://github.com/oneemailgotbannedndone-ai/DinoCraft-Releases/releases/latest/download/DinoCraft-Windows.zip): right-click the zip → **Extract All**, then open **DinoCraft.exe**.
+- [**Download for Mac**](https://github.com/oneemailgotbannedndone-ai/DinoCraft-Releases/releases/latest/download/DinoCraft-Mac.zip) (Apple Silicon): double-click the zip, drag **DinoCraft.app** to Applications and open it (the first time: System Settings → Privacy & Security → **Open Anyway**).
+
+These links always point at the newest build in the public [DinoCraft-Releases](https://github.com/oneemailgotbannedndone-ai/DinoCraft-Releases/releases) repository; they start working once the first release is published (see *Publishing updates* below). Its front page (`.github/releases-README.md`) is refreshed with every release.
+
 ## What's new
 
 The launcher update, for Mac and Windows (the full list is in `Resources/Data/whatsnew.txt`, which the launcher shows):

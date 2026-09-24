@@ -59,7 +59,6 @@ final class LauncherScreen: Screen {
             y += 6
             for raw in release.notes.split(separator: "\n", omittingEmptySubsequences: false) {
                 let text = raw.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "**", with: "")
-                if text.hasPrefix("Co-Authored-By") || text.hasPrefix("Claude-Session") { continue }
                 if text.isEmpty { y += 8; continue }
                 wrapped(text, 15, Theme.textMuted)
             }

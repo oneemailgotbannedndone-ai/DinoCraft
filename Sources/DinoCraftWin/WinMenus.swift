@@ -568,7 +568,6 @@ extension WinMenus {
             for raw in release.notes.split(separator: "\n", omittingEmptySubsequences: false) {
                 let text = raw.trimmingCharacters(in: .whitespaces)
                 if text.isEmpty { ny += 5 * s; continue }
-                if text.hasPrefix("Co-Authored-By") || text.hasPrefix("Claude-Session") { continue }
                 for part in WinMenus.wrap(text.replacingOccurrences(of: "**", with: ""), width: maxChars) { line(part, muted) }
             }
         } else if !BuildInfo.whatsNew.isEmpty {

@@ -217,8 +217,8 @@ jobs:
           {
             echo "## Download"
             echo ""
-            echo "- **Windows:** download **DinoCraft-Windows.zip**, right-click it and choose *Extract All*, then open **DinoCraft.exe**."
-            echo "- **Mac (Apple Silicon):** download **DinoCraft-Mac.zip**, double-click it, then right-click **DinoCraft.app** and choose *Open* the first time."
+            echo "- **Windows:** download **DinoCraft-Windows.zip** below, right-click it and choose *Extract All*, then open **DinoCraft.exe** (if Windows warns you, click *More info* → *Run anyway*)."
+            echo "- **Mac (Apple Silicon):** download **DinoCraft-Mac.zip** below, double-click it, drag **DinoCraft.app** to Applications and open it (the first time: System Settings → Privacy & Security → *Open Anyway*)."
             echo ""
             echo "Already playing? The launcher's **Update** button installs this version for you."
             echo ""
@@ -231,3 +231,9 @@ jobs:
             --repo oneemailgotbannedndone-ai/DinoCraft-Releases \
             --title "DinoCraft build ${{ github.run_number }}" \
             --notes-file notes.txt
+          # Keep the download page (README with "latest" download links) up to date.
+          sha=$(gh api repos/oneemailgotbannedndone-ai/DinoCraft-Releases/contents/README.md --jq .sha 2>/dev/null || true)
+          gh api -X PUT repos/oneemailgotbannedndone-ai/DinoCraft-Releases/contents/README.md \
+            -f message="Download page for build ${{ github.run_number }}" \
+            -f content="$(base64 -w0 .github/releases-README.md)" \
+            ${sha:+-f sha="$sha"}
