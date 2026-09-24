@@ -54,6 +54,30 @@ struct PlayerLook: Equatable {
     var back = Back.none
     var accent = 0
 
+    // MARK: Custom skin (painted in the skin creator)
+
+    /// Paint colours; 0 means "not painted" (the model's own colour shows through).
+    static let paintColors: [UInt32] = [0x000000, 0x1A1A1E, 0xF2F0EA, 0xC8323C, 0xE07A2A, 0xF2E24A, 0x3AA65A, 0x2E6E2E,
+                                        0x3A6ED8, 0x8FD0E8, 0x8A4AD5, 0xF08AC0, 0x7A5230, 0xD9A77E, 0x8A8A92, 0x7A1E24]
+    static let faceWidth = 8, faceHeight = 8
+    static let chestWidth = 8, chestHeight = 10
+    /// Face pixels, row by row from the top-left as you look at the explorer (empty = the default face).
+    var face: [UInt8] = []
+    /// Shirt-front pixels, the same way (empty = a plain shirt).
+    var chest: [UInt8] = []
+
+    var hasFace: Bool { face.contains { $0 != 0 } }
+    var hasChest: Bool { chest.contains { $0 != 0 } }
+
+    private static func hex(_ pixels: [UInt8]) -> String {
+        String(pixels.map { Character(String($0 & 15, radix: 16)) })
+    }
+
+    private static func pixels(_ text: String, count: Int) -> [UInt8] {
+        let values = text.compactMap { $0.hexDigitValue }.map { UInt8($0) }
+        return values.count == count ? values : []
+    }
+
     /// The look someone has before choosing cosmetics (and on older versions of the game).
     static func defaultLook(for name: String) -> PlayerLook {
         var look = PlayerLook()
@@ -68,7 +92,21 @@ struct PlayerLook: Equatable {
 
     /// For example `hat=cap;shirt=3;pants=0;skin=1;back=cape;accent=2`.
     var encoded: String {
-        "hat=\(hat.rawValue);shirt=\(shirt);pants=\(pants);skin=\(skin);back=\(back.rawValue);accent=\(accent)"
+        var text = "hat=\(hat.rawValue);shirt=\(shirt);pants=\(pants);skin=\(skin);back=\(back.rawValue);accent=\(accent)"
+        if hasFace { text += ";face=" + PlayerLook.hex(face) }
+        if hasChest { text += ";chest=" + PlayerLook.hex(chest) }
+        return text
+    }
+
+    /// A code friends can paste into their skin creator.
+    var shareCode: String { "DINOSKIN:" + encoded }
+
+    /// Reads a share code (or a bare encoded look).
+    init?(shareCode: String) {
+        var text = shareCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.uppercased().hasPrefix("DINOSKIN:") { text = String(text.dropFirst(9)) }
+        guard text.contains("hat=") || text.contains("face=") else { return nil }
+        self.init(encoded: text)
     }
 
     init() {}
@@ -86,6 +124,8 @@ struct PlayerLook: Equatable {
             case "skin": skin = index(PlayerLook.skinTones.count)
             case "back": back = Back(rawValue: kv[1]) ?? .none
             case "accent": accent = index(PlayerLook.accentColors.count)
+            case "face": face = PlayerLook.pixels(kv[1], count: PlayerLook.faceWidth * PlayerLook.faceHeight)
+            case "chest": chest = PlayerLook.pixels(kv[1], count: PlayerLook.chestWidth * PlayerLook.chestHeight)
             default: break
             }
         }
@@ -120,14 +160,23 @@ enum PlayerAvatar {
         }
 
         var body: [Box] = [b(-0.25, 0, -0.13, 0.25, 0.72, 0.13, shirt), b(-0.26, 0, -0.14, 0.26, 0.07, 0.14, belt)]
+        if look.hasChest {
+            body += painted(look.chest, width: PlayerLook.chestWidth, height: PlayerLook.chestHeight, left: 0.25, right: -0.25,
+                            top: 0.72, bottom: 0.07, z: -0.13)
+        }
         if look.back == .backpack {
             let leather = color(0x7A5230)
             body += [b(-0.19, 0.12, 0.13, 0.19, 0.62, 0.32, leather), b(-0.2, 0.44, 0.13, 0.2, 0.64, 0.34, accent),
                      b(-0.23, 0.14, -0.14, -0.17, 0.72, 0.14, leather), b(0.17, 0.14, -0.14, 0.23, 0.72, 0.14, leather)]
         }
 
-        var head: [Box] = [b(-0.22, 0, -0.22, 0.22, 0.42, 0.22, skin),
-                           b(-0.13, 0.22, -0.23, -0.06, 0.28, -0.22, eye), b(0.06, 0.22, -0.23, 0.13, 0.28, -0.22, eye)]
+        var head: [Box] = [b(-0.22, 0, -0.22, 0.22, 0.42, 0.22, skin)]
+        if look.hasFace {
+            head += painted(look.face, width: PlayerLook.faceWidth, height: PlayerLook.faceHeight, left: 0.22, right: -0.22,
+                            top: 0.42, bottom: 0, z: -0.22)
+        } else {
+            head += [b(-0.13, 0.22, -0.23, -0.06, 0.28, -0.22, eye), b(0.06, 0.22, -0.23, 0.13, 0.28, -0.22, eye)]
+        }
         switch look.hat {
         case .explorer:
             let hat = color(0xC8A46A), band = color(0x6A4A2A)
@@ -187,6 +236,29 @@ enum PlayerAvatar {
             break
         }
         return parts
+    }
+
+    /// Thin boxes for painted pixels on a front face (at depth `z`, facing -Z), merging runs in each row.
+    /// `left` is the x of the first column as you look at the explorer.
+    private static func painted(_ pixels: [UInt8], width: Int, height: Int, left: Float, right: Float,
+                                top: Float, bottom: Float, z: Float) -> [Box] {
+        var boxes: [Box] = []
+        let cw = (right - left) / Float(width), ch = (top - bottom) / Float(height)
+        for row in 0..<height {
+            var col = 0
+            while col < width {
+                let value = pixels[row * width + col]
+                guard value != 0 else { col += 1; continue }
+                var run = 1
+                while col + run < width && pixels[row * width + col + run] == value { run += 1 }
+                let x0 = left + Float(col) * cw, x1 = left + Float(col + run) * cw
+                let y1 = top - Float(row) * ch, y0 = y1 - ch
+                boxes.append((SIMD3(min(x0, x1), y0, z - 0.008), SIMD3(max(x0, x1), y1, z + 0.001),
+                              color(PlayerLook.paintColors[Int(value) & 15])))
+                col += run
+            }
+        }
+        return boxes
     }
 
     /// The joint rotation for a part (the same animation on Mac and Windows).

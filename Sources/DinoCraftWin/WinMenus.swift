@@ -14,6 +14,9 @@ struct MenuInput {
     var tab = false
     var wheel: Float = 0
     var quit = false
+    /// Buttons held this frame (for painting in the skin creator).
+    var leftDown = false
+    var rightDown = false
 }
 
 extension UIBuilder {
@@ -196,6 +199,10 @@ final class WinMenus {
                 if code == Int(SDL_SCANCODE_TAB.rawValue) { input.tab = true }
             }
         }
+        var mx: Float = 0, my: Float = 0
+        let buttons = SDL_GetMouseState(&mx, &my)
+        input.leftDown = buttons & 1 != 0
+        input.rightDown = buttons & 4 != 0
         return input
     }
 

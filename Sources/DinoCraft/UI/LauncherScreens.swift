@@ -180,19 +180,19 @@ final class CosmeticsScreen: Screen {
         }
         func cycle(_ i: inout Int, _ count: Int, _ step: Int) { i = (i + step + count) % count }
         let hats = PlayerLook.Hat.allCases, backs = PlayerLook.Back.allCases
-        var hat = hats.firstIndex(of: look.hat) ?? 0, back = backs.firstIndex(of: look.back) ?? 0
-        row("cos.hat", "Hat", look.hat.displayName, minus: { cycle(&hat, hats.count, -1) }, plus: { cycle(&hat, hats.count, 1) })
+        var hatIndex = hats.firstIndex(of: look.hat) ?? 0, backIndex = backs.firstIndex(of: look.back) ?? 0
+        row("cos.hat", "Hat", look.hat.displayName, minus: { cycle(&hatIndex, hats.count, -1) }, plus: { cycle(&hatIndex, hats.count, 1) })
         row("cos.shirt", "Shirt", PlayerLook.shirtNames[look.shirt], minus: { cycle(&look.shirt, PlayerLook.shirtColors.count, -1) },
             plus: { cycle(&look.shirt, PlayerLook.shirtColors.count, 1) })
         row("cos.pants", "Trousers", PlayerLook.pantsNames[look.pants], minus: { cycle(&look.pants, PlayerLook.pantsColors.count, -1) },
             plus: { cycle(&look.pants, PlayerLook.pantsColors.count, 1) })
         row("cos.skin", "Skin", PlayerLook.skinNames[look.skin], minus: { cycle(&look.skin, PlayerLook.skinTones.count, -1) },
             plus: { cycle(&look.skin, PlayerLook.skinTones.count, 1) })
-        row("cos.back", "On your back", look.back.displayName, minus: { cycle(&back, backs.count, -1) }, plus: { cycle(&back, backs.count, 1) })
+        row("cos.back", "On your back", look.back.displayName, minus: { cycle(&backIndex, backs.count, -1) }, plus: { cycle(&backIndex, backs.count, 1) })
         row("cos.accent", "Accent colour", PlayerLook.accentNames[look.accent],
             minus: { cycle(&look.accent, PlayerLook.accentColors.count, -1) }, plus: { cycle(&look.accent, PlayerLook.accentColors.count, 1) })
-        look.hat = hats[hat]
-        look.back = backs[back]
+        look.hat = hats[hatIndex]
+        look.back = backs[backIndex]
 
         let half = (w - 12) / 2
         if ui.button("cos.random", "Surprise Me", Rect(x, y + 6, half, 50), style: .secondary) {
@@ -218,8 +218,8 @@ final class CosmeticsScreen: Screen {
         for part in PlayerAvatar.parts(look) {
             for box in part.boxes {
                 let lo = part.pivot + box.0, hi = part.pivot + box.1
-                // The cape and tail hang behind the body; draw them flat against the back.
-                let rect = Rect(cx + lo.x * scale, feet - hi.y * scale, (hi.x - lo.x) * scale, (hi.y - lo.y) * scale)
+                // Seen from the front, the explorer's +x side is on the viewer's left.
+                let rect = Rect(cx - hi.x * scale, feet - hi.y * scale, (hi.x - lo.x) * scale, (hi.y - lo.y) * scale)
                 boxes.append((lo.z, rect, Color(linear: box.2.x, box.2.y, box.2.z, 1)))
             }
         }
