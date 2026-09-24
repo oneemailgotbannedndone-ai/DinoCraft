@@ -72,6 +72,10 @@ final class GameSession {
     private(set) var swingProgress: Double = 0
     private var swingTimer: Double = -1
     private(set) var equipOffset: Double = 0
+    /// Sway, landing dips, sprint lean, eating and tool swings for the first-person hand.
+    private(set) var hand = HandAnimator()
+    /// Seconds until each puff of crumbs while eating.
+    private var crumbTimes: [Double] = []
     private var lastHeldItem: ItemID?
 
     let entities = EntityManager()
@@ -719,6 +723,15 @@ final class GameSession {
             equipOffset = 1
         }
         equipOffset = max(0, equipOffset - dt * 5)
+        let tool = held.flatMap { items[$0]?.tool?.kind }
+        hand.update(dt: dt, player: player, swing: swingProgress, tool: tool)
+        if !crumbTimes.isEmpty {
+            crumbTimes = crumbTimes.map { $0 - dt }
+            for _ in crumbTimes.filter({ $0 <= 0 }) {
+                effectBursts.append((player.eyePosition + player.lookDirection * 0.45 - DVec3(0, 0.2, 0), .crumbs))
+            }
+            crumbTimes.removeAll { $0 <= 0 }
+        }
     }
 
     /// Returns true if something happened.
@@ -841,7 +854,8 @@ final class GameSession {
             inventory.consumeSelected()
             onSound?("eat", 0.7, 1)
             advancements.record("eat", info.name)
-            swing()
+            hand.startEating()
+            crumbTimes = [0, 0.2, 0.4]
             return true
         }
 
@@ -1321,6 +1335,7 @@ final class GameSession {
             case .footstep(let id):
                 if let g = soundGroup(id) { onSound?("step_\(g)", player.isSneaking ? 0.12 : 0.28, 1) }
             case .landed(let distance, let id):
+                hand.landed(fallDistance: distance)
                 if distance > 3.5 && player.gameMode == .survival && !player.inWater {
                     damage((distance - 3).rounded(.down), cause: "Fell from a high place")
                     onSound?("land", 0.8, 1)

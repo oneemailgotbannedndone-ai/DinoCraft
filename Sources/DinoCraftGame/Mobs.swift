@@ -11,7 +11,7 @@ enum MobKind: String, CaseIterable, Codable {
 }
 
 /// Kinds of particle burst the game can ask for.
-enum EffectBurst { case dust, confetti, ink }
+enum EffectBurst { case dust, confetti, ink, crumbs }
 
 struct MobDrop {
     let item: String

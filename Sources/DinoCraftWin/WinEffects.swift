@@ -47,6 +47,71 @@ struct EffectBuilder {
         }
     }
 
+    /// Local-space geometry of extruded items, per texture layer: position, uv and shade per vertex.
+    static var extrusionCache: [Float: [(SIMD3<Float>, SIMD2<Float>, Float)]] = [:]
+
+    /// An item picture given thickness like on the Mac: front and back faces plus a wall along
+    /// every edge between solid and see-through pixels (-0.5…0.5, 1/16 thick), transformed by `m`.
+    mutating func extruded(_ m: Mat4, layer: Float, mask: [Bool], light: Float = 1, glow: Float = 0) {
+        let geometry: [(SIMD3<Float>, SIMD2<Float>, Float)]
+        if let cached = EffectBuilder.extrusionCache[layer] {
+            geometry = cached
+        } else {
+            var g: [(SIMD3<Float>, SIMD2<Float>, Float)] = []
+            let n = Int(Double(mask.count).squareRoot())
+            let t: Float = 1.0 / 32, px = 1 / Float(n)
+            func quad(_ p: [SIMD3<Float>], _ uv: [SIMD2<Float>], _ shade: Float) {
+                for i in [0, 1, 2, 0, 2, 3] { g.append((p[i], uv[i], shade)) }
+            }
+            quad([SIMD3(-0.5, 0.5, t), SIMD3(0.5, 0.5, t), SIMD3(0.5, -0.5, t), SIMD3(-0.5, -0.5, t)],
+                 [SIMD2(0, 0), SIMD2(1, 0), SIMD2(1, 1), SIMD2(0, 1)], 1)
+            quad([SIMD3(0.5, 0.5, -t), SIMD3(-0.5, 0.5, -t), SIMD3(-0.5, -0.5, -t), SIMD3(0.5, -0.5, -t)],
+                 [SIMD2(1, 0), SIMD2(0, 0), SIMD2(0, 1), SIMD2(1, 1)], 0.8)
+            func solid(_ x: Int, _ y: Int) -> Bool { x >= 0 && y >= 0 && x < n && y < n && mask[y * n + x] }
+            for y in 0..<n {
+                for x in 0..<n where solid(x, y) {
+                    let x0 = -0.5 + Float(x) * px, x1 = x0 + px
+                    let y1 = 0.5 - Float(y) * px, y0 = y1 - px
+                    let uv = SIMD2<Float>((Float(x) + 0.5) * px, (Float(y) + 0.5) * px)
+                    let uvs = [uv, uv, uv, uv]
+                    if !solid(x - 1, y) { quad([SIMD3(x0, y0, -t), SIMD3(x0, y0, t), SIMD3(x0, y1, t), SIMD3(x0, y1, -t)], uvs, 0.7) }
+                    if !solid(x + 1, y) { quad([SIMD3(x1, y0, t), SIMD3(x1, y0, -t), SIMD3(x1, y1, -t), SIMD3(x1, y1, t)], uvs, 0.7) }
+                    if !solid(x, y - 1) { quad([SIMD3(x0, y1, t), SIMD3(x1, y1, t), SIMD3(x1, y1, -t), SIMD3(x0, y1, -t)], uvs, 0.9) }
+                    if !solid(x, y + 1) { quad([SIMD3(x0, y0, -t), SIMD3(x1, y0, -t), SIMD3(x1, y0, t), SIMD3(x0, y0, t)], uvs, 0.55) }
+                }
+            }
+            EffectBuilder.extrusionCache[layer] = g
+            geometry = g
+        }
+        vertices.reserveCapacity(vertices.count + geometry.count * EffectBuilder.floatsPerVertex)
+        for (p, uv, shade) in geometry {
+            let q = m * SIMD4<Float>(p.x, p.y, p.z, 1)
+            let c = shade * light
+            vertices += [q.x, q.y, q.z, uv.x, uv.y, layer, c, c, c, 1, glow]
+        }
+    }
+
+    /// An untextured box from `lo` to `hi` transformed by `m`, shaded per face.
+    mutating func box(_ m: Mat4, _ lo: SIMD3<Float>, _ hi: SIMD3<Float>, color: SIMD3<Float>, light: Float = 1) {
+        func p(_ x: Float, _ y: Float, _ z: Float) -> SIMD3<Float> {
+            let q = m * SIMD4<Float>(x, y, z, 1)
+            return SIMD3(q.x, q.y, q.z)
+        }
+        let uv = (SIMD2<Float>(0, 0), SIMD2<Float>(1, 0), SIMD2<Float>(1, 1), SIMD2<Float>(0, 1))
+        let faces: [([SIMD3<Float>], Float)] = [
+            ([p(hi.x, hi.y, hi.z), p(hi.x, hi.y, lo.z), p(hi.x, lo.y, lo.z), p(hi.x, lo.y, hi.z)], 0.7),
+            ([p(lo.x, hi.y, lo.z), p(lo.x, hi.y, hi.z), p(lo.x, lo.y, hi.z), p(lo.x, lo.y, lo.z)], 0.7),
+            ([p(lo.x, hi.y, lo.z), p(hi.x, hi.y, lo.z), p(hi.x, hi.y, hi.z), p(lo.x, hi.y, hi.z)], 1.0),
+            ([p(lo.x, lo.y, hi.z), p(hi.x, lo.y, hi.z), p(hi.x, lo.y, lo.z), p(lo.x, lo.y, lo.z)], 0.5),
+            ([p(lo.x, hi.y, hi.z), p(hi.x, hi.y, hi.z), p(hi.x, lo.y, hi.z), p(lo.x, lo.y, hi.z)], 0.85),
+            ([p(hi.x, hi.y, lo.z), p(lo.x, hi.y, lo.z), p(lo.x, lo.y, lo.z), p(hi.x, lo.y, lo.z)], 0.85),
+        ]
+        for face in faces {
+            let c = color * face.1 * light
+            quad(face.0[0], face.0[1], face.0[2], face.0[3], uv: uv, layer: -1, color: SIMD4(c, 1))
+        }
+    }
+
     /// A flat item picture (-0.5…0.5 in x and y) transformed by `m`, visible from both sides.
     mutating func card(_ m: Mat4, layer: Float, light: Float = 1) {
         func p(_ x: Float, _ y: Float) -> SIMD3<Float> {
@@ -76,7 +141,11 @@ extension WinSolo {
         } else {
             let layer = renderer.iconLayer(item, items: items, blocks: blocks)
             guard layer >= 0 else { return }
-            fx.card(m, layer: layer, light: light)
+            if let mask = renderer.alphaMask(layer: layer) {
+                fx.extruded(m, layer: layer, mask: mask, light: light)
+            } else {
+                fx.card(m, layer: layer, light: light)
+            }
         }
     }
 
@@ -161,8 +230,9 @@ extension WinSolo {
             }
         }
 
-        // The held item (or nothing), swinging and bobbing like on the Mac.
-        if !s.spectator, !hudHidden, cameraView == .firstPerson, let stack = s.inventory.selectedStack, let info = items[stack.item] {
+        // The held item (or your arm), swinging and bobbing like on the Mac.
+        if !s.spectator, !hudHidden, cameraView == .firstPerson {
+            let stack = s.inventory.selectedStack, info = stack.flatMap { items[$0.item] }
             let t = Float(s.swingProgress)
             let swingA = sin(t * .pi), swingB = sin(sqrt(t) * .pi)
             let equip = Float(s.equipOffset)
@@ -170,15 +240,30 @@ extension WinSolo {
             let bobX = sin(phase) * 0.018 * amount, bobY = -abs(cos(phase)) * 0.022 * amount
             let view = MathUtil.rotationY(Float(camera.yaw)) * MathUtil.rotationX(Float(camera.pitch))
             let light = brightness(s.world.light(at: s.player.eyePosition))
+            let motion = s.hand.motion
+            let handMotion = MathUtil.translation(motion.offset) * MathUtil.rotationZ(motion.roll) * MathUtil.rotationY(motion.yaw)
+                * MathUtil.rotationX(motion.pitch)
             let local: Mat4
+            if let stack, let info {
             if isCubeItem(info) {
                 local = MathUtil.translation(SIMD3(0.56 + bobX - swingB * 0.18, -0.46 + bobY - equip * 0.6 + swingA * 0.12, -0.9 - swingA * 0.12))
                     * MathUtil.rotationX(-swingA * 0.9) * MathUtil.rotationY(0.78) * MathUtil.scale(SIMD3(repeating: 0.26))
             } else {
-                local = MathUtil.translation(SIMD3(0.46 + bobX - swingB * 0.16, -0.36 + bobY - equip * 0.6 + swingA * 0.1, -0.7 - swingA * 0.1))
-                    * MathUtil.rotationX(-swingA * 1.2) * MathUtil.rotationY(-0.35) * MathUtil.rotationZ(0.35) * MathUtil.scale(SIMD3(repeating: 0.42))
+                // A 3D item held at an angle so its thickness shows, like on the Mac
+                local = MathUtil.translation(SIMD3(0.5 + bobX - swingB * 0.16, -0.38 + bobY - equip * 0.6 + swingA * 0.1, -0.76 - swingA * 0.1))
+                    * MathUtil.rotationX(-swingA * 1.2) * MathUtil.rotationY(-1.25) * MathUtil.rotationZ(0.35) * MathUtil.scale(SIMD3(repeating: 0.55))
             }
-            appendItem(&hand, stack.item, view * local, light: light)
+            appendItem(&hand, stack.item, view * handMotion * local, light: light)
+            } else {
+                // Empty hand: your gloved arm
+                local = MathUtil.translation(SIMD3(0.56 + bobX - swingB * 0.2, -0.54 + bobY - equip * 0.5 + swingA * 0.16, -0.4 - swingA * 0.18))
+                    * MathUtil.rotationY(-0.28) * MathUtil.rotationX(0.45 - swingA * 1.1)
+                let m = view * handMotion * local
+                let skin = SIMD3<Float>(0.8, 0.58, 0.42), glove = SIMD3<Float>(0.36, 0.24, 0.16), cuff = SIMD3<Float>(0.62, 0.42, 0.18)
+                hand.box(m, SIMD3(-0.1, -0.1, -0.55), SIMD3(0.1, 0.1, -0.22), color: glove * glove, light: light)
+                hand.box(m, SIMD3(-0.105, -0.105, -0.25), SIMD3(0.105, 0.105, -0.17), color: cuff * cuff, light: light)
+                hand.box(m, SIMD3(-0.095, -0.095, -0.17), SIMD3(0.095, 0.095, 0.4), color: skin * skin, light: light)
+            }
         }
         return WorldEffects(solid: solid.vertices, blended: blended.vertices, hand: hand.vertices)
     }

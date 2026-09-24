@@ -253,6 +253,9 @@ final class ModelRenderer {
             bobY = -abs(cos(phase)) * 0.022 * amount
         }
         let toWorld = camera.rotation.inverse
+        let motion = s.hand.motion
+        let handMotion = MathUtil.translation(motion.offset) * MathUtil.rotationZ(motion.roll) * MathUtil.rotationY(motion.yaw)
+            * MathUtil.rotationX(motion.pitch)
 
         if let stack = s.inventory.selectedStack, let info = s.items[stack.item], let mesh = mesh(for: info) {
             var model: Mat4
@@ -268,11 +271,12 @@ final class ModelRenderer {
                     * MathUtil.rotationZ(0.35)
                     * MathUtil.scale(SIMD3(repeating: 0.6))
             }
+            model = handMotion * model
             var u = ModelUniforms(mvp: projection * model, model: toWorld * model,
                                   light: SIMD4(light.sky, light.block, 1, 0), tint: .zero, viewPos: .zero)
             draw(enc, mesh, uniforms: &u)
         } else if let arm {
-            let model = MathUtil.translation(SIMD3(0.52 + bobX - swingB * 0.2, -0.5 + bobY - equip * 0.5 + swingA * 0.16, -0.36 - swingA * 0.18))
+            let model = handMotion * MathUtil.translation(SIMD3(0.52 + bobX - swingB * 0.2, -0.5 + bobY - equip * 0.5 + swingA * 0.16, -0.36 - swingA * 0.18))
                 * MathUtil.rotationY(-0.28)
                 * MathUtil.rotationX(0.45 - swingA * 1.1)
             var u = ModelUniforms(mvp: projection * model, model: toWorld * model,

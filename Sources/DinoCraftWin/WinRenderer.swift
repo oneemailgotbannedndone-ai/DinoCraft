@@ -158,6 +158,9 @@ final class WinRenderer {
     /// Average colour (linear) of each block and item texture layer, for dropped items.
     private var blockLayerColors: [SIMD3<Float>]
     private var itemLayerColors: [SIMD3<Float>]
+    /// Which pixels of each texture are solid, for 3D (extruded) items.
+    private var blockLayerMasks: [[Bool]] = []
+    private var itemLayerMasks: [[Bool]] = []
     private let blockNames: [String]
     private let itemNames: [String]
     /// The texture pack whose art is loaded ("dino" is DinoCraft's own).
@@ -191,12 +194,14 @@ final class WinRenderer {
         blockTexture = blockArray.texture
         blockLayers = blockArray.layers
         blockLayerColors = blockArray.colors
+        blockLayerMasks = blockArray.masks
         let layers = blockArray.layers
         blocks.bindTextureLayers { layers[$0] ?? 0 }
         let itemArray = WinRenderer.loadTextureArray(gl: gl, names: items.textureNames, folders: ["items", "blocks"], pack: pack)
         itemTexture = itemArray.texture
         itemLayers = itemArray.layers
         itemLayerColors = itemArray.colors
+        itemLayerMasks = itemArray.masks
         gl.activeTexture(GLC.TEXTURE0)
 
         // Shared quad index buffer: (0,1,2)(0,2,3) per quad.
@@ -258,20 +263,24 @@ final class WinRenderer {
         gl.deleteTexture(itemTexture)
         blockTexture = blockArray.texture
         blockLayerColors = blockArray.colors
+        blockLayerMasks = blockArray.masks
         itemTexture = itemArray.texture
         itemLayerColors = itemArray.colors
+        itemLayerMasks = itemArray.masks
         texturePack = pack
+        EffectBuilder.extrusionCache.removeAll()
         Log.info("Texture pack '\(pack.name)' active", category: "Renderer")
     }
 
     private static func loadTextureArray(gl: GL, names rawNames: [String], folders: [String], pack: TexturePack)
-        -> (texture: UInt32, layers: [String: UInt16], colors: [SIMD3<Float>]) {
+        -> (texture: UInt32, layers: [String: UInt16], colors: [SIMD3<Float>], masks: [[Bool]]) {
         var seen = Set<String>()
         let names = rawNames.filter { seen.insert($0).inserted }
         let size = 32
         var pixels = [UInt8](repeating: 0, count: size * size * 4 * max(1, names.count))
         var layers: [String: UInt16] = [:]
         var colors: [SIMD3<Float>] = []
+        var masks: [[Bool]] = []
         var missing = 0
         for (i, name) in names.enumerated() {
             layers[name] = UInt16(i)
@@ -298,6 +307,7 @@ final class WinRenderer {
                 weight += 1
             }
             colors.append(weight > 0 ? sum / weight : SIMD3(0.5, 0.5, 0.5))
+            masks.append((0..<(size * size)).map { source[$0 * 4 + 3] > 127 })
             for p in 0..<(size * size) {
                 let a = UInt16(source[p * 4 + 3])
                 pixels[base + p * 4] = UInt8(UInt16(source[p * 4]) * a / 255)
@@ -320,7 +330,7 @@ final class WinRenderer {
         gl.texParameteri(GLC.TEXTURE_2D_ARRAY, GLC.TEXTURE_WRAP_S, GLC.REPEAT)
         gl.texParameteri(GLC.TEXTURE_2D_ARRAY, GLC.TEXTURE_WRAP_T, GLC.REPEAT)
         Log.info("Loaded \(names.count) textures from \(folders.first ?? "?")", category: "Renderer")
-        return (texture, layers, colors)
+        return (texture, layers, colors, masks)
     }
 
     /// The overlay layer for an item's icon (see `UIBuilder.icon`), or -1 when it has none.
@@ -332,6 +342,16 @@ final class WinRenderer {
         }
         if let block = info.block { return Float(blocks.faceLayers[Int(block) * 6 + BlockFace.south.rawValue]) }
         return -1
+    }
+
+    /// Solid pixels of an icon layer (from `iconLayer`), for drawing it as a 3D item.
+    func alphaMask(layer: Float) -> [Bool]? {
+        if layer >= UIBuilder.itemLayerOffset {
+            let i = Int(layer - UIBuilder.itemLayerOffset)
+            return i < itemLayerMasks.count ? itemLayerMasks[i] : nil
+        }
+        let i = Int(layer)
+        return i >= 0 && i < blockLayerMasks.count ? blockLayerMasks[i] : nil
     }
 
     /// The average colour of an item's icon, for drawing it as a small model.

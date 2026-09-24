@@ -148,6 +148,15 @@ final class ParticleSystem {
                 p.emissive = true
                 emit(p)
             }
+        case .crumbs:
+            for _ in 0..<10 {
+                var p = Particle(center + DVec3(Double.random(in: -0.1...0.1), 0, Double.random(in: -0.1...0.1)),
+                                 DVec3(Double.random(in: -0.8...0.8), Double.random(in: 0.5...1.5), Double.random(in: -0.8...0.8)),
+                                 life: 0.6, size: 0.035, color: SIMD4(0.72, 0.52, 0.3, 1))
+                p.layer = -2
+                p.gravity = 12
+                emit(p)
+            }
         case .ink:
             for _ in 0..<80 {
                 var p = Particle(center + DVec3(Double.random(in: -1...1), Double.random(in: 0...3), Double.random(in: -1...1)),

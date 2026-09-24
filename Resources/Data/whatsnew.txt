@@ -27,6 +27,11 @@ Oceans, ice and swimming
 Player reviews
 - The launcher's Player Reviews page shows everyone's star ratings and reviews. Pick your stars and press Write a Review.
 
+Animations
+- Items are 3D on Windows too: in your hand and on the ground. An empty hand shows your arm.
+- Your hand sways when you turn, dips when you land, leans into a sprint and brings food to your mouth (with crumbs).
+- Swords slash sideways; pickaxes and axes chop down.
+
 More
 - New pickaxe and bedrock textures.
 - Sprinting is faster. VSync is off by default, with a Max FPS setting.
