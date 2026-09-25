@@ -210,9 +210,23 @@ final class ModelRenderer {
     /// Dropped items: spinning, bobbing, lit by the chunk light at their position.
     func encodeItems(_ enc: MTLRenderCommandEncoder, session: GameSession, camera: Camera, frame: inout FrameUniforms, time: Double) {
         let list = session.entities.items
-        guard !list.isEmpty else { return }
+        let framed = session.framedItems
+        guard !list.isEmpty || !framed.isEmpty else { return }
         begin(enc, &frame)
         let maxDist = Float(session.world.renderDistance * 16)
+        // Items in item frames: still, flat against the wall.
+        for f in framed {
+            let rel = SIMD3<Float>(Float(f.position.x - camera.position.x), Float(f.position.y - camera.position.y),
+                                   Float(f.position.z - camera.position.z))
+            guard simd_length(rel) < maxDist, let info = session.items[f.stack.item], let mesh = mesh(for: info) else { continue }
+            let scale: Float = isCube(info) ? 0.3 : 0.55
+            let light = session.world.light(at: f.position)
+            let rotation = MathUtil.rotationY(f.yaw) * MathUtil.scale(SIMD3(repeating: scale))
+            let model = MathUtil.translation(rel) * rotation
+            var u = ModelUniforms(mvp: frame.viewProj * model, model: rotation, light: SIMD4(light.sky, light.block, 0, 0), tint: .zero,
+                                  viewPos: SIMD4(rel, 1))
+            draw(enc, mesh, uniforms: &u)
+        }
         for e in list where !e.removed {
             let rel = SIMD3<Float>(Float(e.position.x - camera.position.x), Float(e.position.y - camera.position.y),
                                    Float(e.position.z - camera.position.z))

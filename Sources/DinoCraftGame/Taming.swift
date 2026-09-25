@@ -70,6 +70,10 @@ extension GameSession {
             }
             return true
         }
+        if mob.species.kind == .armorStand {
+            if isRemote { onToast?("Armour stands work in your own worlds (or ones you host) for now."); return true }
+            return useArmorStand(mob)
+        }
         guard let rule = Taming.rule(mob.species.kind), !mob.isDying else { return false }
         let held = inventory.selectedStack.flatMap { items[$0.item]?.name }
         let isFood = held.map { rule.foods.contains($0) } ?? false

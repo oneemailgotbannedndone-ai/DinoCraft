@@ -213,6 +213,16 @@ extension WinSolo {
             }
         }
 
+        // Items in item frames: still, flat against the wall.
+        for f in s.framedItems {
+            let r = rel(f.position)
+            guard Double(simd_length(r)) < maxDistance, let info = items[f.stack.item] else { continue }
+            let scale: Float = isCubeItem(info) ? 0.3 : 0.55
+            let light = brightness(s.world.light(at: f.position))
+            let m = MathUtil.translation(r) * MathUtil.rotationY(f.yaw) * MathUtil.scale(SIMD3(repeating: scale))
+            appendItem(&solid, f.stack.item, m, light: light)
+        }
+
         // The block you're aiming at
         if let hit = s.target, !s.spectator, cameraView != .front {
             let origin = rel(DVec3(Double(hit.block.x), Double(hit.block.y), Double(hit.block.z)))

@@ -10,7 +10,7 @@ enum MobKind: String, CaseIterable, Codable {
          grumblesaurus, grinasaurus,
          cod, salmon, clownfish, blueTang,
          pachy, iguanodon, therizino, gallimimus, oviraptor, microraptor,
-         boat, egg
+         boat, egg, armorStand
 }
 
 /// Kinds of particle burst the game can ask for.
@@ -204,6 +204,9 @@ struct MobSpecies {
                    callPitch: 2.8, deepCall: false),
         .boat: MobSpecies(kind: .boat, displayName: "Boat", hostile: false, maxHealth: 4, width: 1.2, height: 0.6,
                    walkSpeed: 0, runSpeed: 7.5, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: false,
+                   detectRange: 0, drops: [], callPitch: 1, deepCall: false),
+        .armorStand: MobSpecies(kind: .armorStand, displayName: "Armour Stand", hostile: false, maxHealth: 1, width: 0.5, height: 1.9,
+                   walkSpeed: 0, runSpeed: 0, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: false,
                    detectRange: 0, drops: [], callPitch: 1, deepCall: false),
         .egg: MobSpecies(kind: .egg, displayName: "Dino Egg", hostile: false, maxHealth: 3, width: 0.46, height: 0.58,
                    walkSpeed: 0, runSpeed: 0, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: false,
@@ -449,6 +452,10 @@ final class MobManager {
             }
             if m.species.kind == .egg {
                 updateEgg(m, dt: dt, session: s)
+                continue
+            }
+            if m.species.kind == .armorStand {
+                physics(m, desired: .zero, speed: 0, dt: dt, session: s)
                 continue
             }
             if m.isTamed {
@@ -856,6 +863,10 @@ final class MobManager {
             breakBoat(m, session: s)
             return
         }
+        if m.species.kind == .armorStand {
+            breakArmorStand(m, session: s)
+            return
+        }
         m.health -= amount
         m.hurtTimer = 0.35
         let strength = m.species.width > 1.2 ? 2.0 : 6.5
@@ -965,7 +976,7 @@ final class MobManager {
         if difficulty == .peaceful { mobs.removeAll { $0.species.hostile && !$0.isTamed } }
         if s.dimension == .overworld { trySpawnFish(s) }
         let hostiles = mobs.filter { $0.species.hostile }.count
-        let friendlies = mobs.filter { !$0.species.hostile && $0.species.kind != .villager && !$0.species.aquatic && !$0.species.isVehicle && !$0.isTamed && $0.species.kind != .egg }.count
+        let friendlies = mobs.filter { !$0.species.hostile && $0.species.kind != .villager && !$0.species.aquatic && !$0.species.isVehicle && !$0.isTamed && $0.species.kind != .egg && $0.species.kind != .armorStand }.count
         let allowHostile = hostiles < hostileCap
         let allowFriendly = friendlies < 10 && Double.random(in: 0..<1) < 0.25
         guard allowHostile || allowFriendly else { return }

@@ -39,6 +39,7 @@ enum CreatureShapes {
         case .microraptor: return microraptor()
         case .boat: return boat()
         case .egg: return egg(Breeding.kind(ofEgg: variant))
+        case .armorStand: return armorStand(Decorations.armor(variant))
         default: return nil
         }
     }
@@ -48,6 +49,7 @@ enum CreatureShapes {
         switch kind {
         case .villager: return VillagerProfession.all.count
         case .egg: return Breeding.kinds.count
+        case .armorStand: return 256
         default: return 1
         }
     }
@@ -276,6 +278,45 @@ enum CreatureShapes {
             boxes.append(b(min(x, x * 1.05), y, -0.03, max(x, x * 1.05), y + 0.05, 0.04, spot))
         }
         m.add(.leg(0), .zero, boxes)
+        return m.parts
+    }
+
+    /// A wooden armour stand, wearing hide, iron or diamond armour in each slot (materials 0-3: none, hide, iron, diamond).
+    static func armorStand(_ armor: [Int]) -> [ShapePart] {
+        var m = Model()
+        let wood: UInt32 = 0xB08050, dark: UInt32 = 0x7A5230, stone: UInt32 = 0x8A8C94
+        let colours: [(UInt32, UInt32)] = [(0, 0), (0x8A5A34, 0x6A4224), (0xC8CED6, 0x98A0AA), (0x4ADCD0, 0x24A8A0)]
+        var body = [
+            b(-0.4, 0, -0.4, 0.4, 0.08, 0.4, stone),          // base plate
+            b(-0.05, 0.08, -0.05, 0.05, 1.45, 0.05, wood),     // pole
+            b(-0.3, 0.72, -0.06, 0.3, 0.8, 0.06, dark),        // hips
+            b(-0.38, 1.36, -0.06, 0.38, 1.44, 0.06, dark),     // shoulders
+            b(-0.12, 1.46, -0.12, 0.12, 1.72, 0.12, wood),     // head
+            b(-0.2, 0.08, -0.04, -0.12, 0.72, 0.04, wood),     // legs
+            b(0.12, 0.08, -0.04, 0.2, 0.72, 0.04, wood),
+            b(-0.38, 0.9, -0.04, -0.3, 1.36, 0.04, wood),      // arms
+            b(0.3, 0.9, -0.04, 0.38, 1.36, 0.04, wood),
+        ]
+        func piece(_ slot: Int) -> (UInt32, UInt32)? { armor.indices.contains(slot) && armor[slot] > 0 ? colours[armor[slot]] : nil }
+        if let (c, d) = piece(0) {                                            // helmet
+            body.append(b(-0.16, 1.44, -0.16, 0.16, 1.78, 0.16, c))
+            body.append(b(-0.16, 1.54, -0.17, 0.16, 1.58, -0.16, d))
+        }
+        if let (c, d) = piece(1) {                                            // chestplate
+            body.append(b(-0.34, 0.86, -0.14, 0.34, 1.42, 0.14, c))
+            body.append(b(-0.42, 1.2, -0.12, -0.3, 1.42, 0.12, d))
+            body.append(b(0.3, 1.2, -0.12, 0.42, 1.42, 0.12, d))
+        }
+        if let (c, d) = piece(2) {                                            // leggings
+            body.append(b(-0.3, 0.66, -0.12, 0.3, 0.86, 0.12, d))
+            body.append(b(-0.26, 0.26, -0.1, -0.06, 0.7, 0.1, c))
+            body.append(b(0.06, 0.26, -0.1, 0.26, 0.7, 0.1, c))
+        }
+        if let (c, _) = piece(3) {                                            // boots
+            body.append(b(-0.26, 0.08, -0.14, -0.06, 0.28, 0.1, c))
+            body.append(b(0.06, 0.08, -0.14, 0.26, 0.28, 0.1, c))
+        }
+        m.add(.body, .zero, body)
         return m.parts
     }
 

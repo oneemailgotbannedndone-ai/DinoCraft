@@ -1,5 +1,15 @@
 DinoCraft - the Toonland update
 
+Amber circuits and decorations
+- Amber Dust (from amber) carries power up to 15 blocks, lighting up as it goes. Power it with a Lever (flip
+  it on and off), a Button (on for a second) or a Pressure Plate (on while something stands on it).
+- Powered dust switches on Amber Lamps, opens doors next to it, and pushes Pistons: a piston shoves up to 12
+  blocks in front of it and pulls its head back when the power stops. Pistons face you when you place them,
+  or up and down when you look steeply.
+- Paintings: hang one on a wall for a random picture (six to collect). Item Frames: put any item in one to
+  show it off, and right-click to take it back. Armour Stands: right-click with armour to dress one up,
+  or with an empty hand to take it all back. Hit it to pick the stand up.
+
 Fossils, volcanoes, meteorites, storms and maps
 - Fossil Dig Sites appear in plains, savannas and deserts: stepped pits with lantern posts, a supply chest and
   Fossil Deposits. Mine a deposit for a fossil: a Tooth, Claw, Ribs, Fern or, rarely, a Skull.

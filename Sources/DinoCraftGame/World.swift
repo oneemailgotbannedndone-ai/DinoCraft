@@ -76,6 +76,8 @@ final class World: BlockSource {
 
     /// Called after every gameplay block change (used by the multiplayer host).
     var onBlockChanged: ((BlockPos, BlockID) -> Void)?
+    /// A second listener for every block change (the amber circuits).
+    var onBlockSet: ((BlockPos, BlockID) -> Void)?
     /// When set (multiplayer client), chunks are requested from the host instead of generated.
     var remoteRequest: (([ChunkPos]) -> Void)?
     private var remoteRequestedAt: [ChunkPos: Double] = [:]
@@ -128,6 +130,7 @@ final class World: BlockSource {
         guard s.chunk.block(lx, Int(p.y), lz) != id else { return false }
         s.chunk.set(lx, Int(p.y), lz, id)
         onBlockChanged?(p, id)
+        onBlockSet?(p, id)
         for dz: Int32 in -1...1 {
             for dx: Int32 in -1...1 {
                 if let n = slots[ChunkPos(p.chunk.x + dx, p.chunk.z + dz)] {

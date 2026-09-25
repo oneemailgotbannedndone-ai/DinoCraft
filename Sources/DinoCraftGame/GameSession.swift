@@ -137,6 +137,10 @@ final class GameSession {
     /// Changes after each enchantment so the table offers something new.
     var enchantSeed = UInt64.random(in: 1...UInt64.max)
     var onOpenEnchanting: ((BlockPos) -> Void)?
+    /// Levers, dust, lamps and pistons (see `Circuits`).
+    let circuits: CircuitManager
+    /// What's hanging in item frames (see `Decorations`).
+    let frames = FrameManager()
     /// Volcano eruptions, meteor showers and flying fireballs (see `Hazards`).
     var hazards = HazardState()
     var onOpenMap: (() -> Void)?
@@ -157,6 +161,7 @@ final class GameSession {
         self.meta = meta
         self.isRemote = remote
         variants = BlockVariants(blocks: blocks)
+        circuits = CircuitManager(blocks: blocks)
         self.isNewWorld = isNew
         self.storage = storage
         self.blocks = blocks
@@ -225,7 +230,10 @@ final class GameSession {
             mobs.load(from: mobsURL)
             containers.load(from: containersURL, items: items)
             crops.load(from: cropsURL)
+            circuits.load(from: circuitsURL)
+            frames.load(from: framesURL, registry: items)
         }
+        world.onBlockSet = { [circuits] pos, id in circuits.noteChange(pos, id) }
         advancements.load(from: advancementsURL)
         advancements.onRecord = { [weak self] type, target, amount in
             guard let self else { return }
@@ -249,6 +257,12 @@ final class GameSession {
     }
     private var containersURL: URL {
         storage.directory(for: meta.id).appendingPathComponent(dimension == .overworld ? "containers.json" : "containers_\(dimension.rawValue).json")
+    }
+    private var framesURL: URL {
+        storage.directory(for: meta.id).appendingPathComponent(dimension == .overworld ? "frames.json" : "frames_\(dimension.rawValue).json")
+    }
+    private var circuitsURL: URL {
+        storage.directory(for: meta.id).appendingPathComponent(dimension == .overworld ? "circuits.json" : "circuits_\(dimension.rawValue).json")
     }
     private var cropsURL: URL {
         storage.directory(for: meta.id).appendingPathComponent(dimension == .overworld ? "crops.json" : "crops_\(dimension.rawValue).json")
@@ -421,6 +435,7 @@ final class GameSession {
         updateFishing(dt)
         updateOrbs(dt)
         updateHazards(dt)
+        if !isRemote { circuits.update(dt: dt, session: self) }
         updateNavigation(dt)
         updateHandAnimation(dt)
         survival(dt)
@@ -770,6 +785,9 @@ final class GameSession {
         _ = place(pos, id)
     }
 
+    /// Like `naturalPlace`, saying whether it worked.
+    func naturalPlaceChecked(_ pos: BlockPos, _ id: BlockID) -> Bool { place(pos, id) }
+
     /// Right-clicking a display case: put the fossil in your hand on show, or take one back out.
     private func useDisplayCase(_ pos: BlockPos, id: BlockID) -> Bool {
         if id == Blocks.displayCase {
@@ -883,6 +901,11 @@ final class GameSession {
             swing()
             onOpenCrafting?()
             return true
+        }
+        if pressed, let hit = target, !player.isSneaking, useCircuitBlock(hit.block, id: hit.id) { return true }
+        if pressed, let hit = target, !player.isSneaking, frameFacing(hit.id) != nil {
+            if isRemote { onToast?("Item frames work in your own worlds (or ones you host) for now."); return true }
+            return useItemFrame(hit.block)
         }
         if pressed, let hit = target, !player.isSneaking, hit.id == Blocks.displayCase || Blocks.displayCases.contains(hit.id) {
             return useDisplayCase(hit.block, id: hit.id)
@@ -1010,6 +1033,8 @@ final class GameSession {
             return true
         }
 
+        if info.name == Decorations.painting { return pressed && placePainting() }
+        if info.name == Decorations.armorStand { return pressed && placeArmorStand() }
         guard var blockID = info.block, let hit = target else { return false }
         var pos = hit.adjacent
         if blocks[hit.id]?.replaceable == true { pos = hit.block }
@@ -1031,7 +1056,12 @@ final class GameSession {
             upperDoor = upper
         } else if let family = variants.family(of: blockID) {
             let face = blocks[blockID]?.placement == "look" ? BlockVariants.horizontalFacing(player.lookDirection) : towardPlayer
-            if let variant = family[face] { blockID = variant }
+            if circuits.ids?.pistons.contains(blockID) == true {
+                if let variant = pistonVariant(family, towardPlayer: towardPlayer) { blockID = variant }
+            } else if blocks[blockID]?.shape == .box && blocks.isSolid[Int(blockID)] == false && family.count == 4 && hit.face != .up && hit.face != .down {
+                // Wall hangings (item frames) go on the side you clicked, facing out.
+                if let variant = family[hit.face] { blockID = variant }
+            } else if let variant = family[face] { blockID = variant }
         }
         guard let placed = blocks[blockID] else { return false }
         let below = world.block(pos.offset(.down))
@@ -1181,17 +1211,22 @@ final class GameSession {
         world = World(registry: blocks, generator: generator, storage: isRemote ? nil : storage, worldID: isRemote ? nil : meta.id,
                       meshFactory: meshFactory, jobs: jobs, renderDistance: renderDistance)
         world.onBlockChanged = blockObserver
+        world.onBlockSet = { [circuits] pos, id in circuits.noteChange(pos, id) }
         world.remoteRequest = remoteChunkRequester
         entities.clear()
         mobs.clear()
         containers.clear()
         crops.clear()
+        circuits.clear()
+        frames.clear()
         arrows.clear()
         if !isRemote {
             entities.load(from: entitiesURL, items: items)
             mobs.load(from: mobsURL)
             containers.load(from: containersURL, items: items)
             crops.load(from: cropsURL)
+            circuits.load(from: circuitsURL)
+            frames.load(from: framesURL, registry: items)
         }
         let x = Int(floor(destination.x)), z = Int(floor(destination.z))
         let estimate = arrival.map { Int($0.y) } ?? generator.estimatedSurface(x: x, z: z)
@@ -1417,6 +1452,7 @@ final class GameSession {
             prepareContainer(at: pos, kind: kind)
             spillContainer(at: pos)
         }
+        if !isRemote, frameFacing(old) != nil, frameFacing(id) == nil { spillFrame(at: pos) }
         if harvest, id == Blocks.air || id == Blocks.water, old != id, let info = blocks[old], info.isBreakable {
             giveDrops(info, at: pos)
         }
@@ -1840,6 +1876,8 @@ final class GameSession {
         mobs.save(to: mobsURL)
         containers.save(to: containersURL, items: items)
         crops.save(to: cropsURL)
+        circuits.save(to: circuitsURL)
+        frames.save(to: framesURL, registry: items)
         let queued = world.saveModifiedChunks()
         Log.info("Saved '\(meta.name)' [\(dimension.rawValue)] (\(queued) chunks queued)", category: "Save")
     }

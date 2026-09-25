@@ -963,6 +963,65 @@ final class WinSolo: CommandHost {
             s.player.pitch = -0.25
             return
         }
+        if options.demoScreen == "circuits" || options.demoScreen == "decorations" {
+            demoPlaced = true
+            let look = s.player.lookDirection
+            let fwdFace = BlockVariants.horizontalFacing(look)
+            let fn = fwdFace.normal
+            let rn = [BlockFace.north, .east, .south, .west].first { $0.normal == SIMD3<Int32>(-fn.z, 0, fn.x) } ?? .east
+            if options.demoScreen == "circuits" {
+                // Build the test rig up in the air, clear of hills and trees.
+                s.player.gameMode = .creative
+                s.player.setFlying(true)
+                s.player.teleport(to: s.player.position + DVec3(0, 14, 0))
+            }
+            let base = BlockPos(Int(floor(s.player.position.x)), Int(floor(s.player.position.y)), Int(floor(s.player.position.z)))
+            func at(_ across: Int, _ ahead: Int, _ up: Int = 0) -> BlockPos {
+                BlockPos(base.x + fn.x * Int32(ahead) + rn.normal.x * Int32(across), base.y + Int32(up), base.z + fn.z * Int32(ahead) + rn.normal.z * Int32(across))
+            }
+            func put(_ p: BlockPos, _ name: String) { if let id = blocks.id(named: name) { _ = s.world.setBlock(p, id) } }
+            // A clear stage: a stone floor with air above.
+            for a in -5...5 { for f in 2...8 {
+                put(at(a, f, -1), "polished_stone")
+                for u in 0...3 { _ = s.world.setBlock(at(a, f, u), Blocks.air) }
+            } }
+            let toward = fwdFace.opposite
+            if options.demoScreen == "circuits" {
+                // Lever → dust → lamp, a branch to a piston shoving cobblestone, and a door that opens on power.
+                put(at(-4, 4), "lever")
+                for a in -3...2 { put(at(a, 4), "amber_dust") }
+                put(at(3, 4), "amber_lamp")
+                put(at(0, 5), "amber_dust")
+                let dirs: [BlockFace] = [.north, .east, .south, .west]
+                if let i = dirs.firstIndex(of: fwdFace) { put(at(0, 6), "piston_\(BlockRegistry.name(of: dirs[i]))") }
+                put(at(0, 7), "cobblestone")
+                if let lower = s.variants.door(upper: false, open: false, facing: toward),
+                   let upper = s.variants.door(upper: true, open: false, facing: toward) {
+                    _ = s.world.setBlock(at(-2, 3), lower)
+                    _ = s.world.setBlock(at(-2, 3, 1), upper)
+                }
+                put(at(4, 6), "amber_lamp")    // unpowered, for comparison
+                if let on = blocks.id(named: "lever_on") { s.naturalPlace(at(-4, 4), on) }
+                s.player.pitch = -0.55
+            } else {
+                // A planked wall with paintings and framed items, and an armour stand in front of it.
+                for a in -4...4 { for u in 0...2 { put(at(a, 6, u), "planks") } }
+                let face = BlockRegistry.name(of: toward)
+                for (i, motif) in Decorations.paintings.prefix(4).enumerated() { put(at(-3 + i * 2, 5, 1), "painting_\(motif)_\(face)") }
+                for (i, item) in ["diamond_sword", "fossil_skull", "amber_lamp", "map"].enumerated() {
+                    let p = at(-3 + i * 2, 5, 2)
+                    put(p, "item_frame_\(face)")
+                    if let id = items.id(named: item) { s.frames.set(ItemStack(item: id, count: 1), at: p) }
+                }
+                let stand = s.mobs.spawn(.armorStand, at: DVec3(Double(at(2, 3).x) + 0.5, Double(base.y), Double(at(2, 3).z) + 0.5))
+                stand.variant = Decorations.variant([3, 2, 2, 1])
+                stand.yaw = atan2(Double(fn.x), Double(fn.z))
+                let bare = s.mobs.spawn(.armorStand, at: DVec3(Double(at(-2, 3).x) + 0.5, Double(base.y), Double(at(-2, 3).z) + 0.5))
+                bare.yaw = stand.yaw
+                s.player.pitch = -0.05
+            }
+            return
+        }
         if ["digsite", "museum", "volcano", "meteors", "storm", "map"].contains(options.demoScreen ?? "") {
             demoPlaced = true
             let look = s.player.lookDirection

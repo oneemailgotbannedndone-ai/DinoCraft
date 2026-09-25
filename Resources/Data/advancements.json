@@ -38,6 +38,8 @@
     {"id": "sunken_treasure", "category": "Adventure", "title": "Sunken Treasure", "description": "Fish up treasure", "icon": "emerald", "type": "fish", "target": "treasure"},
     {"id": "hold_the_line", "category": "Adventure", "title": "Hold the Line", "description": "Block an attack with a shield", "icon": "shield", "type": "block"},
     {"id": "javelin", "category": "Adventure", "title": "Javelin", "description": "Throw a spear", "icon": "spear", "type": "shoot", "target": "spear"},
+    {"id": "tinkerer", "category": "Building", "title": "Tinkerer", "description": "Flip a lever wired to amber circuits", "icon": "amber_dust", "type": "circuit"},
+    {"id": "interior_decorator", "category": "Building", "title": "Interior Decorator", "description": "Hang a painting, fill an item frame and set up an armour stand", "icon": "painting", "type": "decorate", "count": 3, "distinct": true},
     {"id": "paleontologist", "category": "Adventure", "title": "Paleontologist", "description": "Dig a fossil out of a fossil deposit", "icon": "fossil_tooth", "type": "dig"},
     {"id": "curator", "category": "Building", "title": "Curator", "description": "Put all five kinds of fossil on display", "icon": "fossil_skull", "type": "display", "count": 5, "distinct": true},
     {"id": "hot_spot", "category": "Adventure", "title": "Hot Spot", "description": "Be near a volcano when it erupts", "icon": "magma_rock", "type": "eruption"},
