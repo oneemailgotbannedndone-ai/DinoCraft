@@ -263,6 +263,17 @@ final class Mob {
     var enraged = false
     /// Fish: seconds spent out of the water.
     var dryTime = 0.0
+    /// Tamed by the player (see `Taming`).
+    var owner: String?
+    var sitting = false
+    var saddled = false
+    var petName: String?
+    /// A guardian's current enemy.
+    weak var guardTarget: Mob?
+    /// While ridden: where the rider steers, and whether they sprint or jump.
+    var rideInput: DVec3?
+    var rideSprint = false
+    var rideJump = false
 
     init(species: MobSpecies, position: DVec3) {
         id = Mob.nextID
@@ -304,6 +315,10 @@ private struct SavedMob: Codable {
     var yaw: Double
     var variant: Int?
     var hx: Double?, hy: Double?, hz: Double?
+    var owner: String?
+    var sitting: Bool?
+    var saddled: Bool?
+    var name: String?
 }
 
 /// Creatures: spawning rules per dimension, biome, light and time of day;
@@ -376,7 +391,7 @@ final class MobManager {
             }
             let toPlayer = (chosen?.pos ?? player.position) - m.position
             let distance = simd_length(toPlayer)
-            if m.species.hostile && simd_distance(player.position, m.position) > 96 && best > 96 { m.removed = true; continue }
+            if m.species.hostile && !m.isTamed && simd_distance(player.position, m.position) > 96 && best > 96 { m.removed = true; continue }
 
             m.hurtTimer = max(0, m.hurtTimer - dt)
             m.attackTimer = max(0, m.attackTimer - dt)
@@ -392,6 +407,10 @@ final class MobManager {
             }
             if m.species.kind == .grumblesaurus {
                 updateBoss(m, target: chosen, dt: dt, session: s)
+                continue
+            }
+            if m.isTamed {
+                updateTamed(m, dt: dt, session: s)
                 continue
             }
             if m.species.aquatic {
@@ -433,6 +452,7 @@ final class MobManager {
                         m.lunge = 1
                         s.damageTarget(id: target.id, amount: m.species.damage, cause: "Snatched by a \(m.species.displayName)",
                                        attacker: m.species.displayName, knockback: dir)
+                        alertGuardians(against: m, near: s.player.position)
                         s.onSound?("amb_dino_high", audible(distance) * 0.6, m.species.callPitch)
                     }
                 } else if m.species.ranged {
@@ -452,6 +472,7 @@ final class MobManager {
                         m.lunge = 1
                         s.damageTarget(id: target.id, amount: m.species.damage, cause: "Mauled by a \(m.species.displayName)",
                                        attacker: m.species.displayName, knockback: dir)
+                        alertGuardians(against: m, near: s.player.position)
                     }
                 }
             } else if m.fleeTimer > 0 && distance < 24 {
@@ -521,7 +542,7 @@ final class MobManager {
         }
     }
 
-    private func physics(_ m: Mob, desired input: DVec3, speed: Double, dt: Double, session s: GameSession) {
+    func physics(_ m: Mob, desired input: DVec3, speed: Double, dt: Double, session s: GameSession) {
         let world = s.world
         let reg = world.registry
         if m.species.aquatic {
@@ -534,7 +555,7 @@ final class MobManager {
         }
         var desired = input
         // Friendly creatures won't walk off cliffs or into water.
-        if !m.species.hostile && simd_length(desired) > 0 && m.onGround && !m.inLiquid {
+        if !m.species.hostile && m.rideInput == nil && simd_length(desired) > 0 && m.onGround && !m.inLiquid {
             let probe = m.position + desired * (m.species.width / 2 + 0.6)
             let px = Int(floor(probe.x)), pz = Int(floor(probe.z)), py = Int(floor(m.position.y))
             let wet = reg.isWet[Int(world.block(px, py, pz))] || reg.isWet[Int(world.block(px, py - 1, pz))]
@@ -892,7 +913,7 @@ final class MobManager {
         case .normal: hostileCap = 5
         case .hard: hostileCap = 9
         }
-        if difficulty == .peaceful { mobs.removeAll { $0.species.hostile } }
+        if difficulty == .peaceful { mobs.removeAll { $0.species.hostile && !$0.isTamed } }
         if s.dimension == .overworld { trySpawnFish(s) }
         let hostiles = mobs.filter { $0.species.hostile }.count
         let friendlies = mobs.filter { !$0.species.hostile && $0.species.kind != .villager && !$0.species.aquatic }.count
@@ -1038,9 +1059,10 @@ final class MobManager {
     // MARK: Persistence (friendly creatures persist; hostiles are ambient)
 
     func save(to url: URL) {
-        let saved = mobs.filter { !$0.species.hostile && !$0.species.aquatic && !$0.isDying && !$0.removed }.map {
+        let saved = mobs.filter { (!$0.species.hostile || $0.isTamed) && !$0.species.aquatic && !$0.isDying && !$0.removed }.map {
             SavedMob(kind: $0.species.kind.rawValue, x: $0.position.x, y: $0.position.y, z: $0.position.z, health: $0.health, yaw: $0.yaw,
-                     variant: $0.variant, hx: $0.home?.x, hy: $0.home?.y, hz: $0.home?.z)
+                     variant: $0.variant, hx: $0.home?.x, hy: $0.home?.y, hz: $0.home?.z,
+                     owner: $0.owner, sitting: $0.sitting ? true : nil, saddled: $0.saddled ? true : nil, name: $0.petName)
         }
         do {
             try AtomicFile.write(JSONEncoder().encode(saved), to: url)
@@ -1059,6 +1081,10 @@ final class MobManager {
                 m.yaw = s.yaw
                 m.variant = s.variant ?? m.variant
                 if let hx = s.hx, let hy = s.hy, let hz = s.hz { m.home = DVec3(hx, hy, hz) }
+                m.owner = s.owner
+                m.sitting = s.sitting ?? false
+                m.saddled = s.saddled ?? false
+                m.petName = s.name
             }
             Log.info("Restored \(mobs.count) creatures", category: "Save")
         } catch {

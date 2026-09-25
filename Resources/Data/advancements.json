@@ -30,6 +30,9 @@
     { "id": "found_him", "category": "Adventure", "title": "Just Keep Swimming", "description": "Swim with a Clownfish", "icon": "tropical_fish", "type": "near", "target": "clownfish" },
     { "id": "fishy", "category": "Adventure", "title": "Something Fishy", "description": "Catch a fish", "icon": "raw_fish", "type": "pickup", "target": "raw_fish|tropical_fish" },
     { "id": "reef", "category": "Adventure", "title": "Under the Sea", "description": "Pick up coral from a reef", "icon": "coral", "type": "pickup", "target": "coral|coral_block" },
+    { "id": "best_friends", "category": "Adventure", "title": "Best Friends", "description": "Tame a creature with its favourite food", "icon": "berries", "type": "tame" },
+    { "id": "dino_rider", "category": "Adventure", "title": "Dino Rider", "description": "Saddle up and ride a dinosaur", "icon": "saddle", "type": "ride" },
+    { "id": "raptor_squad", "category": "Adventure", "title": "Clever Girls", "description": "Tame a Raptor to guard you", "icon": "raw_dino_meat", "type": "tame", "target": "raptor" },
     { "id": "big_game", "category": "Adventure", "title": "Big Game", "description": "Stand next to a Longneck", "icon": "dino_hide", "type": "near", "target": "longneck" },
 
     { "id": "farmer", "category": "Farming", "title": "Barnyard", "description": "Meet a pig, a cow, a sheep and a chicken", "icon": "hay_bale", "type": "near", "target": "pig|cow|sheep|chicken", "count": 4, "distinct": true },

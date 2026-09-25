@@ -1,5 +1,16 @@
 DinoCraft - the Toonland update
 
+Taming, riding and pets
+- Tame creatures by feeding them their favourite food (it can take a few tries):
+  Trikey, Parasaurolophus, Iguanodon, Stegosaurus, Longneck, Pachycephalosaurus and Gallimimus eat berries or wheat;
+  Raptors and Compys eat raw dino meat; Dodos, Oviraptors and Pookpooks make lovely pets.
+- Tamed creatures follow you, catch up if you run off, and sit when you right-click them.
+- Craft a Saddle (5 dino hide + an iron ingot), put it on a big plant-eater and ride it: steer with your movement keys,
+  jump with Jump, sprint to gallop and sneak to get off. Gallimimus is the fastest.
+- Tamed Raptors and Compys are guards: they fight whatever attacks you and whatever you attack.
+- Name them with /name Blue while looking at them. Feed them to heal them. They're saved with your world.
+- New advancements: Best Friends, Dino Rider and Clever Girls.
+
 New dinosaurs
 - Pachycephalosaurus: a dome-headed headbutter on the plains and mountains (leave it alone and it leaves you alone).
 - Gallimimus: an ostrich-like sprinter that races off when startled.

@@ -52,6 +52,8 @@ final class GameSession {
     // Interaction
     private(set) var target: RaycastHit?
     private(set) var targetMob: Mob?
+    /// The creature you're riding (see `Taming`).
+    var riding: Mob?
     private(set) var breakingPos: BlockPos?
     private(set) var breakProgress: Double = 0
     private var hitSoundTimer = 0.0, attackCooldown = 0.0, useCooldown = 0.0, combatCooldown = 0.0
@@ -363,7 +365,10 @@ final class GameSession {
 
         let px = Int(floor(player.position.x)), pz = Int(floor(player.position.z))
         let before = player.position
-        if world.isLoaded(px, pz) {
+        if riding != nil {
+            // Riding: the keys steer the creature, and you move with it.
+            steerMount(move)
+        } else if world.isLoaded(px, pz) {
             player.update(dt: dt, input: move, world: world)
         }
         // Lifetime stats: play time and distance walked (not flown). Menu backdrops have no input and don't count.
@@ -378,6 +383,7 @@ final class GameSession {
                 self?.onSound?("pickup", 0.35, Float.random(in: 0.9...1.35))
             }
             mobs.update(dt: dt, session: self)
+            followMount()
         }
         arrows.update(dt: dt, session: self)
         collectArrows()
@@ -468,7 +474,7 @@ final class GameSession {
         combatCooldown = max(0, combatCooldown - dt)
 
         let mobHit = mobs.raycast(origin: player.eyePosition, direction: player.lookDirection, maxDistance: 4.2)
-        if let (mob, distance) = mobHit, target == nil || distance < target!.distance {
+        if let (mob, distance) = mobHit, mob !== riding, target == nil || distance < target!.distance {
             targetMob = mob
         } else {
             targetMob = nil
@@ -586,6 +592,7 @@ final class GameSession {
         let flat = simd_length(DVec3(look.x, 0, look.z)) > 0.01 ? simd_normalize(DVec3(look.x, 0, look.z)) : DVec3(0, 0, -1)
         if !(network?.attackMob(mob, damage: damage, knockback: flat) ?? false) {
             mobs.hurt(mob, amount: damage, knockback: flat, session: self)
+            mobs.alertGuardians(against: mob, near: player.position)
             if mob.health <= 0 {
                 advancements.record("kill", mob.species.kind.rawValue)
                 if mob.species.hostile { advancements.record("kill", "hostile") }
@@ -766,6 +773,7 @@ final class GameSession {
 
     /// Returns true if something happened.
     private func useItem(pressed: Bool) -> Bool {
+        if pressed, let mob = targetMob, interactWithCreature(mob) { return true }
         if pressed, let mob = targetMob, mob.species.kind == .villager, !mob.isDying {
             swing()
             onOpenTrade?(mob)
@@ -1047,6 +1055,8 @@ final class GameSession {
     /// Travels to another dimension: saves this one, streams in the target and
     /// places the player at the scaled coordinates (building a return gateway if needed).
     func changeDimension(to target: WorldDimension, portal: BlockID?, arrival: DVec3?) {
+        riding?.rideInput = nil
+        riding = nil
         guard target != dimension || arrival != nil else { return }
         save()
         world.shutdown()
@@ -1528,6 +1538,8 @@ final class GameSession {
         onSound?("hurt", 0.8, 1)
         guard health <= 0 else { return }
         isDead = true
+        riding?.rideInput = nil
+        riding = nil
         deathMessage = cause
         advancements.record("die")
         breakingPos = nil

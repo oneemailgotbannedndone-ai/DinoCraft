@@ -131,6 +131,7 @@
     { "name": "spawn_egg_therizino", "displayName": "Therizinosaurus Spawn Egg" },
     { "name": "spawn_egg_gallimimus", "displayName": "Gallimimus Spawn Egg" },
     { "name": "spawn_egg_oviraptor", "displayName": "Oviraptor Spawn Egg" },
-    { "name": "spawn_egg_microraptor", "displayName": "Microraptor Spawn Egg" }
+    { "name": "spawn_egg_microraptor", "displayName": "Microraptor Spawn Egg" },
+    { "name": "saddle", "displayName": "Saddle", "maxStack": 1 }
   ]
 }

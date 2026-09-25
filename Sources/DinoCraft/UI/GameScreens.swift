@@ -433,7 +433,7 @@ enum HUD {
         } else if let mob = s.targetMob {
             let frac = Float(max(0, mob.health) / mob.species.maxHealth)
             let bar = Rect(W / 2 - 110, 74, 220, 8)
-            d.text(mob.species.displayName, x: W / 2, y: 48, size: 15, color: mob.species.hostile ? Color(hex: 0xFF8A80) : Theme.text,
+            d.text(mob.label, x: W / 2, y: 48, size: 15, color: mob.species.hostile && !mob.isTamed ? Color(hex: 0xFF8A80) : Theme.text,
                    face: .display, align: .center, shadow: Color(linear: 0, 0, 0, 0.8))
             d.fill(bar, Color(linear: 0, 0, 0, 0.55), radius: 4)
             d.fill(Rect(bar.x, bar.y, bar.w * frac, bar.h), mob.species.hostile ? Theme.danger : Theme.jungle, radius: 4)

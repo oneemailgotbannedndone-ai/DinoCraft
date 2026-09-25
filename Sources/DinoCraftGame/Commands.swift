@@ -76,6 +76,7 @@ enum Commands {
         Spec("say", "/say <message>", "Announce a message", args: [.text]),
         Spec("msg", "/msg <player> <message>", "Send a private message to one player", args: [.players, .text],
              aliases: ["tell", "w", "whisper"], readOnly: true),
+        Spec("name", "/name <name>", "Name the tamed creature you're looking at", args: [.text], aliases: ["rename"], readOnly: true),
     ]
 
     static func spec(_ name: String) -> Spec? {
@@ -423,6 +424,18 @@ enum Commands {
                 return reply("No player called \(rest[0]) is here. Type /list to see who's playing.")
             }
             if let problem = e.whisper(to: target, text: rest.dropFirst().joined(separator: " ")) { reply(problem) }
+
+        case "name":
+            guard !rest.isEmpty else { return reply("Usage: \(command.usage)") }
+            // The tamed creature you're looking at, or else your nearest one.
+            let pet = s.targetMob.flatMap { $0.isTamed ? $0 : nil }
+                ?? s.mobs.mobs.filter { $0.isTamed && !$0.isDying }.min { simd_distance($0.position, s.player.position) < simd_distance($1.position, s.player.position) }
+            guard let pet, simd_distance(pet.position, s.player.position) < 12 else {
+                return reply("Look at one of your tamed creatures to name it (feed a dino its favourite food to tame it).")
+            }
+            let newName = String(rest.joined(separator: " ").prefix(20))
+            pet.petName = newName
+            reply("Your \(pet.species.displayName) is now called \(newName).")
 
         default:
             reply("Unknown command /\(name). Type /help for the list.")

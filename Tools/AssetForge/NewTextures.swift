@@ -183,6 +183,7 @@ enum NewTextures {
         if let egg = EggTextures.item(name) { return egg }
         if let toon = ToonTextures.item(name) { return toon }
         if let ocean = OceanTextures.item(name) { return ocean }
+        if let pet = PetTextures.item(name) { return pet }
         if let more = MoreTextures.item(name) { return more }
         let c = Canvas(S)
         switch name {

@@ -148,6 +148,23 @@ extension WinSolo {
             ui.text(p.name, x: sx - width / 2, y: sy - 7 * small, scale: small, color: white, shadow: false)
         }
 
+        // Name tags over your tamed creatures (and the name of whatever you're looking at that's yours)
+        for m in s.mobs.mobs where m.isTamed && !m.isDying && m !== s.riding {
+            let rel = m.position + DVec3(0, m.species.height + 0.45, 0) - camera.position
+            guard simd_length(rel) < 20 else { continue }
+            let clip = viewProj * SIMD4<Float>(Float(rel.x), Float(rel.y), Float(rel.z), 1)
+            guard clip.w > 0.1 else { continue }
+            let sx = (clip.x / clip.w * 0.5 + 0.5) * W, sy = (0.5 - clip.y / clip.w * 0.5) * H
+            let text = m === s.targetMob ? m.label : (m.petName ?? (m.sitting ? "\(m.species.displayName) (sitting)" : ""))
+            guard !text.isEmpty else { continue }
+            let width = UIBuilder.textWidth(text, scale: small)
+            ui.rect(sx - width / 2 - 3 * small, sy - 9 * small, width + 6 * small, 11 * small, SIMD4(0, 0, 0, 0.45))
+            ui.text(text, x: sx - width / 2, y: sy - 7 * small, scale: small, color: SIMD4(0.75, 1, 0.7, 1), shadow: false)
+        }
+        if s.riding != nil {
+            ui.centeredText("Sneak to get off", centerX: W / 2, y: H - 110 * sc, scale: small, color: SIMD4(1, 1, 1, 0.7))
+        }
+
         // Crosshair, mining progress and bow draw
         if !screenIsOpen && cameraView != .front {
             let color: SIMD4<Float> = s.targetMob != nil ? SIMD4(1, 0.55, 0.45, 0.95) : SIMD4(0.9, 0.9, 0.9, 0.85)

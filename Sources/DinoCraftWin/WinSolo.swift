@@ -743,6 +743,25 @@ final class WinSolo: CommandHost {
             boss.enraged = true
             Log.info("Automated check: King Grumblesaurus placed on the stage", category: "Game")
         }
+        if options.demoScreen == "pets" {
+            // Automated check: riding a saddled Trikey, with a named Raptor guard and a sitting Dodo alongside.
+            demoPlaced = true
+            let look = s.player.lookDirection
+            let forward = simd_normalize(DVec3(look.x, 0, look.z)), right = DVec3(-forward.z, 0, forward.x)
+            func ground(_ p: DVec3) -> DVec3 {
+                DVec3(p.x, Double(s.world.findStandingY(Int(floor(p.x)), Int(floor(p.z)), near: Int(s.player.position.y)) ?? Int(p.y)), p.z)
+            }
+            let mount = s.mobs.spawn(.trikey, at: ground(s.player.position))
+            mount.owner = Taming.owner; mount.saddled = true; mount.yaw = atan2(forward.x, forward.z) + .pi
+            let raptor = s.mobs.spawn(.raptor, at: ground(s.player.position + forward * 4 + right * 1.5))
+            raptor.owner = Taming.owner; raptor.petName = "Blue"
+            let dodo = s.mobs.spawn(.dodo, at: ground(s.player.position + forward * 4 - right * 1.8))
+            dodo.owner = Taming.owner; dodo.sitting = true
+            s.mount(mount)
+            s.followMount()
+            s.player.pitch = -0.25
+            return
+        }
         if options.demoScreen == "dinos" || options.demoScreen == "villagers" {
             // Automated check: the newer dinosaurs (or one villager of each profession) lined up in front of you.
             let look = s.player.lookDirection
