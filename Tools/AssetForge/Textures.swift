@@ -700,11 +700,11 @@ enum TexturePainter {
         t["leaves"] = paintLeaves(11, palette: ginkgo, coverage: 0.72)
         t["redwood_needles"] = paintLeaves(35, palette: needles, coverage: 0.82)
         t["water"] = paintWater()
-        t["coal_ore"] = paintOre(50, base: paintStone(51), colors: [0x26262C, 0x121216, 0x4A4A55], blobs: 4, size: 1.6)
-        t["iron_ore"] = paintOre(52, base: paintStone(53), colors: [0xD6A488, 0xA87254, 0xF0CDB4], blobs: 4, size: 1.5)
-        t["gold_ore"] = paintOre(54, base: paintStone(55), colors: [0xF6C94A, 0xC8961F, 0xFFF0A0], blobs: 4, size: 1.4)
-        t["diamond_ore"] = paintOre(56, base: paintStone(57), colors: [0x5DF2E6, 0x1FA8A0, 0xD8FFFB], blobs: 3, size: 1.5)
-        t["amber_ore"] = paintOre(58, base: paintStone(59), colors: [0xF29A22, 0xB45E0E, 0xFFD27A], blobs: 3, size: 1.8, glow: true)
+        t["coal_ore"] = BetterTextures.ore("coal", base: paintStone(), seed: 50)!
+        t["iron_ore"] = BetterTextures.ore("iron", base: paintStone(), seed: 52)!
+        t["gold_ore"] = BetterTextures.ore("gold", base: paintStone(), seed: 54)!
+        t["diamond_ore"] = BetterTextures.ore("diamond", base: paintStone(), seed: 56)!
+        t["amber_ore"] = BetterTextures.ore("amber", base: paintStone(), seed: 58)!
         t["fossil_stone"] = paintFossil()
         t["bedrock"] = paintBedrock()
         t["glass"] = paintGlass()

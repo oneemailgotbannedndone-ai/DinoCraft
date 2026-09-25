@@ -215,6 +215,107 @@ enum BetterTextures {
         return c
     }
 
+    // MARK: Ores
+
+    /// How each ore's deposits look: colours (outline, dark, body, light, sparkle), shape and how many.
+    private struct OreStyle {
+        enum Shape { case lump, nugget, gem, crystal, drop }
+        let colors: (UInt32, UInt32, UInt32, UInt32, UInt32)
+        let shape: Shape
+        let clusters: Int
+        let size: Double
+        let glow: Bool
+    }
+
+    private static let ores: [String: OreStyle] = [
+        "coal": OreStyle(colors: (0x0A0A0D, 0x17171C, 0x2A2A32, 0x4A4A56, 0x8C8C9A), shape: .lump, clusters: 5, size: 2.3, glow: false),
+        "iron": OreStyle(colors: (0x6A4A36, 0xB48262, 0xDEB294, 0xF4D4BC, 0xFFFFFF), shape: .nugget, clusters: 5, size: 2.2, glow: false),
+        "gold": OreStyle(colors: (0x8A6410, 0xD8A020, 0xFAD23C, 0xFFF08A, 0xFFFFF0), shape: .nugget, clusters: 5, size: 2.1, glow: false),
+        "diamond": OreStyle(colors: (0x0A4A4A, 0x159A94, 0x3FD9CE, 0x9BF6EE, 0xFFFFFF), shape: .gem, clusters: 4, size: 3.0, glow: false),
+        "emerald": OreStyle(colors: (0x063A1A, 0x0E7A3A, 0x22C25E, 0x8AF2B0, 0xE8FFF0), shape: .crystal, clusters: 3, size: 3.2, glow: false),
+        "amber": OreStyle(colors: (0x5A2A04, 0xB4600E, 0xF29A22, 0xFFD27A, 0xFFF4D0), shape: .drop, clusters: 4, size: 2.6, glow: true),
+    ]
+
+    /// An ore block: the stone with each deposit set into a shadowed socket, shaded to look solid,
+    /// with a glint of light. Deposits wrap across the edges so ores tile seamlessly.
+    static func ore(_ kind: String, base: Canvas, seed: UInt64) -> Canvas? {
+        guard let style = ores[kind] else { return nil }
+        let c = Canvas(S)
+        c.px = base.px
+        let (outlineHex, darkHex, bodyHex, lightHex, sparkHex) = style.colors
+        let outline = RGBA(hex: outlineHex), dark = RGBA(hex: darkHex), body = RGBA(hex: bodyHex), light = RGBA(hex: lightHex), spark = RGBA(hex: sparkHex)
+        var rng = SplitMix64(seed: seed)
+        // Spread the clusters out: keep the candidate furthest from the others each time.
+        var centres: [(Double, Double)] = []
+        for _ in 0..<style.clusters {
+            var best = (0.0, 0.0), bestGap = -1.0
+            for _ in 0..<12 {
+                let p = (Double(rng.nextInt(S)), Double(rng.nextInt(S)))
+                let gap = centres.map { q -> Double in
+                    let dx = min(abs(p.0 - q.0), Double(S) - abs(p.0 - q.0)), dy = min(abs(p.1 - q.1), Double(S) - abs(p.1 - q.1))
+                    return dx * dx + dy * dy
+                }.min() ?? 1000
+                if gap > bestGap { bestGap = gap; best = p }
+            }
+            centres.append(best)
+        }
+        func wrap(_ v: Int) -> Int { ((v % S) + S) % S }
+        for (cx, cy) in centres {
+            // Each cluster is a few pieces of different sizes.
+            let pieces = style.shape == .gem || style.shape == .crystal ? 1 + rng.nextInt(2) : 2 + rng.nextInt(3)
+            for k in 0..<pieces {
+                let px = cx + (k == 0 ? 0 : Double(rng.nextInt(7)) - 3), py = cy + (k == 0 ? 0 : Double(rng.nextInt(7)) - 3)
+                let r = style.size * (k == 0 ? 1 : 0.55 + rng.nextDouble() * 0.35)
+                let wobble = rng.nextDouble() * 6.28
+                let reach = Int(r * 2 + 3)
+                for yy in -reach...reach {
+                    for xx in -reach...reach {
+                        let dx = Double(xx) + 0.5 - (px - floor(px)), dy = Double(yy) + 0.5 - (py - floor(py))
+                        let X = wrap(Int(floor(px)) + xx), Y = wrap(Int(floor(py)) + yy)
+                        // Signed "inside" value (>0 inside) and a facet/light value from -1 (lit) to 1 (shadow).
+                        var inside: Double, facet: Double
+                        switch style.shape {
+                        case .lump, .nugget, .drop:
+                            let a = atan2(dy, dx)
+                            let rr = r * (1 + (style.shape == .lump ? 0.22 : 0.12) * sin(a * 3 + wobble))
+                            let d = (dx * dx + dy * dy * (style.shape == .drop ? 0.8 : 1)).squareRoot()
+                            inside = rr - d
+                            facet = (dx + dy) / max(0.5, rr) * 0.9
+                        case .gem:
+                            let d = abs(dx) + abs(dy)
+                            inside = r * 1.25 - d
+                            facet = dx < 0 && dy < 0 ? -1 : (dx >= 0 && dy >= 0 ? 1 : (dy < 0 ? -0.2 : 0.3))
+                        case .crystal:
+                            let w = r * 0.62, h = r * 1.45
+                            inside = min(w - abs(dx), h - abs(dy) - max(0, abs(dx) - w * 0.2) * 1.1)
+                            facet = dx < -w * 0.3 ? -1 : (dx > w * 0.3 ? 1 : -0.1)
+                        }
+                        if inside > 0 {
+                            var col: RGBA
+                            if inside < (style.shape == .nugget ? 0.55 : 0.85) { col = outline.mix(dark, 0.35) }
+                            else if facet < -0.45 { col = light }
+                            else if facet > 0.45 { col = dark }
+                            else { col = body }
+                            if style.shape == .drop && abs(dx + 0.6) < 0.6 && abs(dy - 0.3) < 0.6 && k == 0 { col = RGBA(hex: 0x3A1A04) }   // trapped speck
+                            c[X, Y] = col
+                        } else if inside > -1.3 {
+                            // The socket: stone darkened around the deposit (and a warm halo for glowing ores).
+                            let shade = style.glow ? c[X, Y].mix(body, 0.35) : c[X, Y].shade(0.72)
+                            c[X, Y] = shade
+                        }
+                    }
+                }
+                // A glint on the lit side of the biggest piece
+                if k == 0 {
+                    let gx = wrap(Int(floor(px - r * 0.35))), gy = wrap(Int(floor(py - r * 0.35)))
+                    c[gx, gy] = spark
+                    if r > 2.2 { c[wrap(gx + 1), gy] = spark.mix(light, 0.5) }
+                }
+            }
+        }
+        return c
+    }
+
     /// Bedrock: dark, jagged chunks of rock with deep cracks and a few pale flecks.
     static func bedrock() -> Canvas {
         let c = Canvas(S)

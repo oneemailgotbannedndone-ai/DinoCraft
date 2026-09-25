@@ -13,6 +13,10 @@ Global leaderboard
 - A new Leaderboard in the launcher: see everyone's play time, kills, blocks mined and placed, distance, crafting, deaths and bosses.
 - Your stats are counted in every world and shared automatically every few minutes while you play.
 
+Better ores
+- Every ore is repainted: glossy coal lumps, rusty iron and shiny gold nuggets, faceted diamonds,
+  hexagonal emerald crystals and glowing amber, each set into the stone with a shadow and a glint.
+
 Bigger caves
 - New worlds have wider tunnels and much bigger caverns, and the deep slate caves are bigger too.
 
