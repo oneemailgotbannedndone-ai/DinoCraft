@@ -11,6 +11,31 @@ enum ContainerKind: String, Codable {
     var displayName: String { self == .chest ? "Chest" : "Furnace" }
 }
 
+/// A double chest is two chests side by side (see `DoubleChests`). Each half keeps its own 27 slots
+/// (so saving and multiplayer work as before); the screen shows them as one 54-slot chest.
+enum ChestHalves {
+    static let size = 27
+
+    /// The chest at `pos` and its partner, in screen order (the one further towards -x or -z on top);
+    /// just `[pos]` for a single chest.
+    static func positions(_ pos: BlockPos, registry: BlockRegistry, block: (Int, Int, Int) -> BlockID) -> [BlockPos] {
+        let id = block(Int(pos.x), Int(pos.y), Int(pos.z))
+        guard let p = DoubleChests.partner(x: Int(pos.x), y: Int(pos.y), z: Int(pos.z), id: id,
+                                           facing: registry.facingIndex[Int(id)], block: block) else { return [pos] }
+        let other = BlockPos(pos.x + Int32(p.dx), pos.y, pos.z + Int32(p.dz))
+        return p.dx < 0 || p.dz < 0 ? [other, pos] : [pos, other]
+    }
+
+    /// Screen slot `i` → which half and which of its slots.
+    static func locate(_ i: Int, in halves: [BlockPos]) -> (pos: BlockPos, slot: Int)? {
+        let half = i / size
+        guard half < halves.count else { return nil }
+        return (halves[half], i % size)
+    }
+
+    static func title(_ halves: [BlockPos]) -> String { halves.count > 1 ? "Large Chest" : "Chest" }
+}
+
 /// Storage attached to a chest or furnace block.
 final class Container {
     static let furnaceInput = 0, furnaceFuel = 1, furnaceOutput = 2

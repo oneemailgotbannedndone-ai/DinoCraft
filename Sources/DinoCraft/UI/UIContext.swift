@@ -3,19 +3,25 @@ import simd
 import DinoCraftCore
 @testable import DinoCraftGame
 
+/// DinoCraft's look: like working at a crafting table. Oak planks in a dark walnut frame,
+/// honey-gold for the main actions and cream lettering.
 enum Theme {
-    static let deep = Color(hex: 0x140E24)
-    static let panelTop = Color(hex: 0x2B1F4A, alpha: 0.95)
-    static let panelBottom = Color(hex: 0x1A1230, alpha: 0.95)
-    static let amber = Color(hex: 0xF6B24A)
-    static let amberDeep = Color(hex: 0xE0702E)
+    static let deep = Color(hex: 0x1E120A)
+    static let panelTop = Color(hex: 0x86592F, alpha: 0.98)
+    static let panelBottom = Color(hex: 0x6A4424, alpha: 0.98)
+    static let frame = Color(hex: 0x3A2212)
+    static let plankSeam = Color(hex: 0x4A2C14)
+    static let grain = Color(hex: 0x70461F)
+    static let iron = Color(hex: 0x6E6E78)
+    static let amber = Color(hex: 0xF4B44A)
+    static let amberDeep = Color(hex: 0xC8742A)
     static let jungle = Color(hex: 0x6CC45E)
     static let teal = Color(hex: 0x3FC1B0)
-    static let text = Color(hex: 0xF7F0E1)
-    static let textMuted = Color(hex: 0xB9AFC9)
+    static let text = Color(hex: 0xFBF2DE)
+    static let textMuted = Color(hex: 0xE2CDA6)
     static let textDark = Color(hex: 0x2A1608)
     static let danger = Color(hex: 0xE5484D)
-    static let field = Color(hex: 0x0F0A1C, alpha: 0.75)
+    static let field = Color(hex: 0x24150A, alpha: 0.85)
 }
 
 enum UISound { case hover, click, back, toggle }
@@ -111,19 +117,56 @@ final class UIContext {
 
     // MARK: Containers
 
+    /// A crafting-table panel: oak planks with grain and joints in a dark walnut frame, iron nails
+    /// in the corners and the title carved into a board across the top.
     func panel(_ r: Rect, title: String? = nil, radius: Float = 22) {
-        draw.shadow(r, radius: radius, blur: 26, color: Color(linear: 0, 0, 0, 0.55), offset: 12)
-        draw.fill(r, Theme.panelTop, radius: radius, bottom: Theme.panelBottom)
-        draw.stroke(r, Theme.amber.alpha(0.22), radius: radius, width: 1.5)
-        draw.fill(Rect(r.x + 40, r.y + 1.5, r.w - 80, 2), Theme.amber.alpha(0.5), radius: 1)
+        let corner: Float = 8
+        draw.shadow(r, radius: corner, blur: 26, color: Color(linear: 0, 0, 0, 0.55), offset: 12)
+        draw.fill(r, Theme.frame, radius: corner)
+        let inner = r.inset(9)
+        draw.fill(inner, Theme.panelTop, radius: 3, bottom: Theme.panelBottom)
+        // Boards, with seams, grain streaks and staggered joints (placed the same way every frame)
+        let plank: Float = 46
+        var y = inner.y + plank
+        while y < inner.maxY - 4 {
+            draw.fill(Rect(inner.x, y - 1, inner.w, 2), Theme.plankSeam)
+            draw.fill(Rect(inner.x, y + 1, inner.w, 1), Color(linear: 1, 0.8, 0.5, 0.08))
+            y += plank
+        }
+        for board in 0...Int(inner.h / plank) {
+            let top = inner.y + Float(board) * plank
+            var x = inner.x + Float((board * 37) % 60)
+            var k = 0
+            while x < inner.maxX - 40 {
+                let len = Float(22 + (board * 13 + k * 7) % 34)
+                let gy = top + plank * (0.3 + Float((board + k) % 3) * 0.18)
+                if gy < inner.maxY - 3 { draw.fill(Rect(x, gy, len, 1.5), Theme.grain.alpha(0.55)) }
+                x += Float(70 + (board * 11 + k * 17) % 60)
+                k += 1
+            }
+            if board % 2 == 1 && top + plank <= inner.maxY {
+                let jx = inner.x + inner.w * (board % 4 == 1 ? 0.37 : 0.66)
+                draw.fill(Rect(jx, top + 1, 2, plank - 2), Theme.plankSeam)
+            }
+        }
+        draw.stroke(inner, Color(linear: 0, 0, 0, 0.45), radius: 3, width: 2)
+        draw.stroke(r, Color(linear: 1, 0.75, 0.45, 0.16), radius: corner, width: 1.5)
+        for p in [SIMD2(r.x + 5, r.y + 5), SIMD2(r.maxX - 5, r.y + 5), SIMD2(r.x + 5, r.maxY - 5), SIMD2(r.maxX - 5, r.maxY - 5)] {
+            draw.circle(center: p, radius: 3, Theme.iron)
+            draw.circle(center: p - SIMD2(0.8, 0.8), radius: 1.2, Color(hex: 0xB8B8C2))
+        }
         if let title {
+            // The title on a darker board, like a carved sign
+            let sign = Rect(inner.x, inner.y, inner.w, 62)
+            draw.fill(sign, Color(hex: 0x5A361A, alpha: 0.9), radius: 3)
+            draw.fill(Rect(sign.x, sign.maxY - 2, sign.w, 2), Theme.frame)
             draw.text(title, in: Rect(r.x, r.y + 18, r.w, 44), size: 30, color: Theme.text, face: .display,
-                      shadow: Color(linear: 0, 0, 0, 0.6))
+                      shadow: Color(linear: 0, 0, 0, 0.7))
         }
     }
 
     func dim(_ alpha: Float = 0.55) {
-        draw.fill(Rect(0, 0, size.x, size.y), Color(hex: 0x0B0716, alpha: alpha * 0.8), bottom: Color(hex: 0x0B0716, alpha: alpha))
+        draw.fill(Rect(0, 0, size.x, size.y), Color(hex: 0x140A04, alpha: alpha * 0.8), bottom: Color(hex: 0x140A04, alpha: alpha))
     }
 
     // MARK: Widgets
@@ -140,7 +183,7 @@ final class UIContext {
         let p = anim(id + ".p", pressed ? 1 : 0, speed: 30)
         let lift = h * 2 - p * 2.5
         let rr = r.offset(0, -lift)
-        let radius = min(14, r.h * 0.3)
+        let radius = min(6, r.h * 0.15)
 
         var top: Color, bottom: Color, textColor: Color, border: Color?
         switch style {
@@ -148,9 +191,10 @@ final class UIContext {
             top = Theme.amber.mix(.white, 0.14 * h); bottom = Theme.amberDeep.mix(Theme.amber, 0.15 * h)
             textColor = Theme.textDark; border = nil
         case .secondary:
-            top = Color(hex: 0x3B2D60, alpha: 0.92).mix(Color(hex: 0x4E3C7E, alpha: 0.95), h)
-            bottom = Color(hex: 0x291E47, alpha: 0.92).mix(Color(hex: 0x36295E, alpha: 0.95), h)
-            textColor = Theme.text; border = Theme.amber.alpha(0.18 + 0.55 * h)
+            // An oak plank
+            top = Color(hex: 0x8E6036).mix(Color(hex: 0xA8743F), h)
+            bottom = Color(hex: 0x6A4424).mix(Color(hex: 0x7E5430), h)
+            textColor = Theme.text; border = Theme.frame.mix(Theme.amber, 0.6 * h)
         case .danger:
             top = Color(hex: 0xD9474C).mix(.white, 0.1 * h); bottom = Color(hex: 0xA62F38)
             textColor = .white; border = nil
@@ -159,7 +203,7 @@ final class UIContext {
             textColor = Theme.text.mix(Theme.amber, h); border = nil
         }
         if !enabled {
-            top = Color(hex: 0x34304A, alpha: 0.8); bottom = Color(hex: 0x262238, alpha: 0.8)
+            top = Color(hex: 0x4A3322, alpha: 0.85); bottom = Color(hex: 0x3A281A, alpha: 0.85)
             textColor = Theme.textMuted.alpha(0.6); border = Color(linear: 1, 1, 1, 0.06)
         }
         if style != .ghost {
@@ -174,7 +218,11 @@ final class UIContext {
             draw.stroke(rr.inset(1), Color(linear: 1, 1, 1, enabled ? 0.16 + 0.1 * h : 0.05), radius: radius - 1, width: 1,
                         bottom: Color(linear: 1, 1, 1, 0))
         }
-        if let border { draw.stroke(rr, border, radius: radius, width: 1.4) }
+        if style != .ghost {
+            // Dark outline and a shadowed lower lip, like a board's edge
+            draw.stroke(rr, border ?? Theme.frame, radius: radius, width: 2)
+            draw.fill(Rect(rr.x + 2, rr.maxY - 4, rr.w - 4, 2), Color(linear: 0, 0, 0, 0.25), radius: 1)
+        }
         draw.text(label, in: rr, size: fontSize, color: textColor, face: .display,
                   shadow: style == .primary || !enabled ? nil : Color(linear: 0, 0, 0, 0.55))
         if let badge {
@@ -216,7 +264,7 @@ final class UIContext {
             draw.text(detail, in: Rect(r.x + 16, r.y + r.h * 0.45, r.w - 100, r.h * 0.5), size: 12.5, color: Theme.textMuted, align: .left)
         }
         let sw = Rect(r.maxX - 66, r.midY - 13, 50, 26)
-        draw.fill(sw, Color(hex: 0x0F0A1C, alpha: 0.8).mix(Theme.jungle, on), radius: 13)
+        draw.fill(sw, Color(hex: 0x24150A, alpha: 0.8).mix(Theme.jungle, on), radius: 13)
         draw.stroke(sw, Color(linear: 1, 1, 1, 0.12), radius: 13, width: 1)
         let kx = sw.x + 13 + on * 24
         draw.circle(center: SIMD2(kx, sw.midY + 1), radius: 10.5, Color(linear: 0, 0, 0, 0.3))

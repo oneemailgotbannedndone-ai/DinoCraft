@@ -982,7 +982,7 @@ final class GameSession {
                 onSound?("discover", 0.9, target == .underworld ? 0.7 : (target == .toonland ? 1.5 : 1.2))
                 switch target {
                 case .underworld: onToast?("The Underworld Gateway awakens!")
-                case .toonland: onToast?("The Toonland Gateway spins into a happy swirl!")
+                case .toonland: onToast?("The Toonland Gateway swirls with golden light!")
                 default: onToast?("The Skylands Gateway shimmers open!")
                 }
                 Log.info("Activated \(target.rawValue) gateway \(width)x\(height) at \(start)", category: "Game")
@@ -1135,11 +1135,19 @@ final class GameSession {
         Log.info("Door at \(lower) \(open ? "opened" : "closed")", category: "Game")
     }
 
+    /// Both halves of a double chest (or just this chest), in screen order.
+    func chestHalves(_ pos: BlockPos) -> [BlockPos] {
+        ChestHalves.positions(pos, registry: blocks) { [world] x, y, z in world.block(x, y, z) }
+    }
+
     private func openContainer(at pos: BlockPos, kind: ContainerKind) {
-        if isRemote {
-            network?.containerOpened(pos)
-        } else {
-            prepareContainer(at: pos, kind: kind)
+        let halves = kind == .chest ? chestHalves(pos) : [pos]
+        for half in halves {
+            if isRemote {
+                network?.containerOpened(half)
+            } else {
+                prepareContainer(at: half, kind: kind)
+            }
         }
         onSound?("ui_open", 0.5, kind == .chest ? 0.9 : 0.7)
         onOpenContainer?(pos, kind)

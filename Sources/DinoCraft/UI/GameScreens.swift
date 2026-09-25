@@ -17,7 +17,7 @@ final class PauseScreen: Screen {
         let W = ui.size.x, H = ui.size.y
         d.opacity = a
         d.outlinedText("Paused", x: W / 2, y: H * 0.2 - (1 - a) * 12, size: 64, fill: Color(hex: 0xFFE69A), fillBottom: Color(hex: 0xF08A2E),
-                       outline: Color(hex: 0x2A1740), outlineWidth: 5)
+                       outline: Color(hex: 0x3A2414), outlineWidth: 5)
         if let s = e.session {
             d.text("\(s.meta.name)  ·  \(s.modeName)  ·  \(s.dimension == .overworld ? SkyModel.periodName(worldTime: s.worldTime) : s.dimension.displayName)",
                    x: W / 2, y: H * 0.2 + 84, size: 16, color: Theme.text.alpha(0.85), align: .center, shadow: Color(linear: 0, 0, 0, 0.6))
@@ -153,7 +153,7 @@ final class CreditsScreen: Screen {
             if !text.isEmpty {
                 if size > 40 {
                     d.outlinedText(text, x: W / 2, y: y, size: size, fill: Color(hex: 0xFFE69A), fillBottom: Color(hex: 0xF08A2E),
-                                   outline: Color(hex: 0x2A1740), outlineWidth: 4)
+                                   outline: Color(hex: 0x3A2414), outlineWidth: 4)
                 } else {
                     d.text(text, x: W / 2, y: y, size: size, color: strong ? Theme.amber : Theme.text, face: strong ? .display : .body,
                            align: .center, tracking: strong ? 0.12 : 0, shadow: Color(linear: 0, 0, 0, 0.7))
@@ -344,17 +344,8 @@ enum LoadingView {
         switch session.dimension {
         case .underworld: d.fill(Rect(0, 0, W, H), Color(hex: 0x3A0E0A), bottom: Color(hex: 0x120404))
         case .skylands: d.fill(Rect(0, 0, W, H), Color(hex: 0x6A5A9A), bottom: Color(hex: 0xE8A04A))
-        case .toonland:
-            d.fill(Rect(0, 0, W, H), Color(hex: 0x3A3A3A), bottom: Color(hex: 0x101010))
-            let cell: Float = 40
-            let shift = Float(ui.time * 30).truncatingRemainder(dividingBy: cell * 2)
-            for row in 0..<2 {
-                let y = row == 0 ? Float(0) : H - cell
-                for k in -2..<Int(W / cell) + 3 where (k + row) % 2 == 0 {
-                    d.fill(Rect(Float(k) * cell + (row == 0 ? shift : -shift), y, cell, cell), Color(hex: 0xF2F2F2))
-                }
-            }
-        default: d.fill(Rect(0, 0, W, H), Color(hex: 0x1C1236), bottom: Color(hex: 0x0A0614))
+        case .toonland: d.fill(Rect(0, 0, W, H), Color(hex: 0x6A8AC8), bottom: Color(hex: 0xE8B25A))
+        default: d.fill(Rect(0, 0, W, H), Color(hex: 0x2A1A0C), bottom: Color(hex: 0x140A04))
         }
         // Drifting voxel silhouettes
         for i in 0..<18 {
@@ -367,14 +358,14 @@ enum LoadingView {
         MenuBackdrop.draw(ui, strength: 0.6)
         let bob = Float(sin(ui.time * 1.5)) * 4
         d.outlinedText(Brand.title, x: W / 2, y: H * 0.26 + bob, size: 80, fill: Color(hex: Brand.top), fillBottom: Color(hex: Brand.bottom),
-                       outline: Color(hex: 0x2A1740), outlineWidth: 6)
+                       outline: Color(hex: 0x3A2414), outlineWidth: 6)
         let title = session.loadingTitle
         d.text(title, x: W / 2, y: H * 0.26 + 110, size: 24, color: Theme.text, face: .display, align: .center, shadow: Color(linear: 0, 0, 0, 0.6))
         d.text(session.meta.name, x: W / 2, y: H * 0.26 + 146, size: 16, color: Theme.textMuted, align: .center)
 
         let bar = Rect(W / 2 - 240, H * 0.26 + 196, 480, 14)
         let progress = ui.anim("loading.progress", session.loadingProgress, speed: 6)
-        d.fill(bar, Color(hex: 0x0F0A1C, alpha: 0.9), radius: 7)
+        d.fill(bar, Color(hex: 0x24150A, alpha: 0.9), radius: 7)
         d.stroke(bar, Theme.amber.alpha(0.3), radius: 7, width: 1)
         let fill = Rect(bar.x + 2, bar.y + 2, max(10, (bar.w - 4) * progress), bar.h - 4)
         d.fill(fill, Theme.amberDeep, radius: 5, bottom: Theme.amber)
@@ -427,7 +418,7 @@ enum HUD {
         if s.portalProgress > 0 {
             let a = Float(min(1, s.portalProgress))
             let tint = s.portalKind == Blocks.skylandsPortal ? Color(hex: 0xF2B04A)
-                : (s.portalKind == Blocks.toonlandPortal ? Color(hex: 0xF4F4F4) : Color(hex: 0x8A1A4A))
+                : (s.portalKind == Blocks.toonlandPortal ? Color(hex: 0xF2B84A) : Color(hex: 0x8A1A4A))
             d.fill(Rect(0, 0, W, H), tint.alpha(a * 0.5), bottom: tint.alpha(a * 0.8))
         }
         if let boss = s.mobs.boss(near: s.player.position) {
@@ -476,12 +467,12 @@ enum HUD {
         let hx = W / 2 - total / 2, hy = H - slot - 18
         let backing = Rect(hx - 8, hy - 8, total + 16, slot + 16)
         d.shadow(backing, radius: 16, blur: 14, color: Color(linear: 0, 0, 0, 0.45), offset: 4)
-        d.fill(backing, Color(hex: 0x1A1230, alpha: 0.72), radius: 16)
+        d.fill(backing, Color(hex: 0x2A1A0C, alpha: 0.72), radius: 16)
         d.stroke(backing, Theme.amber.alpha(0.18), radius: 16, width: 1)
         let selX = ui.anim("hud.sel", Float(s.inventory.selected), speed: 22)
         for i in 0..<9 {
             let r = Rect(hx + Float(i) * (slot + gap), hy, slot, slot)
-            d.fill(r, Color(hex: 0x0D0818, alpha: 0.55), radius: 10)
+            d.fill(r, Color(hex: 0x1A0E06, alpha: 0.55), radius: 10)
             if let stack = s.inventory.slots[i], let info = e.items[stack.item] {
                 d.itemIcon(info, r.inset(8))
                 if stack.count > 1 {
@@ -570,7 +561,7 @@ enum HUD {
             let w = d.font.measure(text, size: 15, face: .display) + 40
             let r = Rect(W / 2 - w / 2, 28 - (1 - a) * 12, w, 40)
             d.opacity = a
-            d.fill(r, Color(hex: 0x1A1230, alpha: 0.85), radius: 20)
+            d.fill(r, Color(hex: 0x2A1A0C, alpha: 0.85), radius: 20)
             d.stroke(r, Theme.amber.alpha(0.4), radius: 20, width: 1)
             d.text(text, in: r, size: 15, color: Theme.text, face: .display)
             d.opacity = 1
@@ -610,14 +601,14 @@ enum DebugOverlay {
         }
         let h = Float(lines.count) * 20 + 20
         let panel = Rect(12, 12, 430, h)
-        d.fill(panel, Color(hex: 0x05030A, alpha: 0.65), radius: 10)
+        d.fill(panel, Color(hex: 0x080402, alpha: 0.65), radius: 10)
         for (i, line) in lines.enumerated() {
             d.text(line, x: 24, y: 22 + Float(i) * 20, size: 13.5, color: i == 0 ? Theme.jungle : Theme.text)
         }
         // Frame-time graph
         let history = p.history
         let g = Rect(12, panel.maxY + 8, 430, 60)
-        d.fill(g, Color(hex: 0x05030A, alpha: 0.55), radius: 8)
+        d.fill(g, Color(hex: 0x080402, alpha: 0.55), radius: 8)
         let bw = g.w / Float(history.count)
         for (i, t) in history.enumerated() {
             let ms = Float(t * 1000)

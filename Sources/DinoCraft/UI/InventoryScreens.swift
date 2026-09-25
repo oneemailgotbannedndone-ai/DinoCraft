@@ -14,8 +14,13 @@ enum SlotView {
         let d = ui.draw
         let hover = ui.hoverSilent(id, r)
         let h = ui.anim(id + ".h", hover ? 1 : 0, speed: 22)
-        d.fill(r, Color(hex: 0x0D0818, alpha: 0.62).mix(Color(hex: 0x3E2F66, alpha: 0.88), h * 0.7), radius: 9)
-        d.stroke(r, accent ? Theme.amber.alpha(0.8) : Color(linear: 1, 1, 1, 0.07 + 0.3 * h), radius: 9, width: accent ? 1.8 : 1.1)
+        // A slot sunk into the wood: dark inside, shadowed on top and left, lit on the bottom and right.
+        d.fill(r, Color(hex: 0x241409, alpha: 0.92).mix(Color(hex: 0x5A3A1E, alpha: 0.95), h * 0.7), radius: 3)
+        d.fill(Rect(r.x, r.y, r.w, 3), Color(hex: 0x0E0703, alpha: 0.9), radius: 1)
+        d.fill(Rect(r.x, r.y, 3, r.h), Color(hex: 0x0E0703, alpha: 0.9), radius: 1)
+        d.fill(Rect(r.x, r.maxY - 2, r.w, 2), Color(hex: 0xA8784A, alpha: 0.7), radius: 1)
+        d.fill(Rect(r.maxX - 2, r.y, 2, r.h), Color(hex: 0xA8784A, alpha: 0.7), radius: 1)
+        if accent || h > 0.01 { d.stroke(r, accent ? Theme.amber.alpha(0.9) : Theme.amber.alpha(0.5 * h), radius: 3, width: accent ? 2 : 1.4) }
         if let stack, let info = e.items[stack.item] {
             let lift = h * 1.5
             d.itemIcon(info, r.inset(7).offset(0, -lift), alpha: dim ? 0.4 : 1)
@@ -65,7 +70,7 @@ enum SlotView {
         if y + h > ui.size.y - 8 { y = ui.size.y - h - 8 }
         let r = Rect(x, y, w, h)
         d.shadow(r, radius: 10, blur: 10, color: Color(linear: 0, 0, 0, 0.5), offset: 4)
-        d.fill(r, Color(hex: 0x120B22, alpha: 0.96), radius: 10)
+        d.fill(r, Color(hex: 0x2A180A, alpha: 0.96), radius: 10)
         d.stroke(r, Theme.amber.alpha(0.45), radius: 10, width: 1.2)
         var ly = y + 9
         for l in lines {

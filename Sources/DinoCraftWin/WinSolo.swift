@@ -579,7 +579,7 @@ final class WinSolo: CommandHost {
         }
         let ui = buildUI(width: Float(w), height: Float(h), camera: camera)
         let sky = SkyState.at(worldTime: s.worldTime, dimension: s.dimension, weather: s.weather.intensity)
-        renderer.mono = s.dimension == .toonland && !s.isLoading ? 1 : 0
+        renderer.mono = 0
         renderer.render(world: s.world, camera: camera, sky: sky, time: clock, now: Date.timeIntervalSinceReferenceDate,
                         width: w, height: h, ui: ui, models: models(camera: camera), effects: worldEffects(camera: camera))
 
@@ -728,6 +728,26 @@ final class WinSolo: CommandHost {
                 furnace.burnTotal = 80
             }
             openScreen(.container(pos, .furnace))
+        case "chests", "double-chest":
+            // Automated check: a double chest (and a single one) in front of the player.
+            let face = BlockVariants.horizontalFacing(-look)
+            let base = s.player.position + forward * 3.5
+            let y = Int32(s.world.findStandingY(Int(floor(base.x)), Int(floor(base.z)), near: Int(s.player.position.y)) ?? Int(s.player.position.y))
+            var placed: [BlockPos] = []
+            for offset in [-1.0, 0.0, 2.0] {
+                let spot = base + right * offset
+                let pos = BlockPos(Int32(floor(spot.x)), y, Int32(floor(spot.z)))
+                if let id = s.variants.chest(facing: face) { s.world.setBlock(pos, id); placed.append(pos) }
+            }
+            if options.demoScreen == "double-chest", let first = placed.first {
+                s.prepareContainer(at: first, kind: .chest)
+                for (i, name) in ["diamond", "iron_ingot", "planks", "bread", "torch"].enumerated() {
+                    if let id = items.id(named: name) {
+                        s.containers.ensure(s.chestHalves(first).last ?? first, kind: .chest).slots[i * 4] = ItemStack(item: id, count: 10 + i * 9)
+                    }
+                }
+                openScreen(.container(first, .chest))
+            }
         case "creative":
             openScreen(.creative)
         case "pause":

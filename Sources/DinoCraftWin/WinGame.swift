@@ -674,11 +674,11 @@ final class WinGame {
         let slot = 54 * s, gap = 6 * s
         let total = Float(Inventory.hotbarCount) * slot + Float(Inventory.hotbarCount - 1) * gap
         let x0 = W / 2 - total / 2, y0 = H - slot - 18 * s
-        ui.rect(x0 - 8 * s, y0 - 8 * s, total + 16 * s, slot + 16 * s, SIMD4(0.005, 0.003, 0.012, 0.55))
+        ui.woodPanel(x0 - 8 * s, y0 - 8 * s, total + 16 * s, slot + 16 * s, scale: s)
         for i in 0..<Inventory.hotbarCount {
             let x = x0 + Float(i) * (slot + gap)
             if i == inventory.selected { ui.rect(x - 3 * s, y0 - 3 * s, slot + 6 * s, slot + 6 * s, SIMD4(0.9, 0.45, 0.08, 1)) }
-            ui.rect(x, y0, slot, slot, SIMD4(0.02, 0.012, 0.04, 0.85))
+            ui.rect(x, y0, slot, slot, SIMD4(0.03, 0.017, 0.007, 0.85))
             guard let stack = inventory.slots[i] else { continue }
             ui.icon(x + 9 * s, y0 + 9 * s, slot - 18 * s, layer: iconLayer(stack.item))
             if stack.count > 1 {
@@ -878,7 +878,7 @@ extension WinGame {
                 return
             }
             if let name = blocks[hit.id]?.name, name.hasPrefix("chest") || name.hasPrefix("furnace") {
-                network.openContainer(hit.block)
+                for half in DoubleChests.isChest(hit.id) ? chestHalves(hit.block) : [hit.block] { network.openContainer(half) }
                 openScreen(.container(hit.block))
                 return
             }
@@ -990,12 +990,27 @@ extension WinGame {
         return Wire.NetStack(item: info.name, count: stack.count, damage: stack.damage > 0 ? stack.damage : nil)
     }
 
+    /// A chest and, when it's half of a double chest, its partner (in screen order).
+    private func chestHalves(_ pos: BlockPos) -> [BlockPos] {
+        ChestHalves.positions(pos, registry: blocks) { [world] x, y, z in world.block(x, y, z) }
+    }
+
+    /// The open chest's halves, or [] when a furnace (or nothing) is open.
+    private var openChestHalves: [BlockPos] {
+        guard case .container(let pos) = screen, DoubleChests.isChest(world.block(pos)) else { return [] }
+        return chestHalves(pos)
+    }
+
     private func stack(at ref: SlotRef) -> ItemStack? {
         switch ref {
         case .inventory(let i): return inventory.slots[i]
         case .craft(let i): return i < craftGrid.count ? craftGrid[i] : nil
         case .output: return recipes.match(grid: craftGrid, size: gridSize)?.result
         case .container(let i):
+            if let at = ChestHalves.locate(i, in: openChestHalves) {
+                guard let view = containers[at.pos], at.slot < view.slots.count else { return nil }
+                return view.slots[at.slot]
+            }
             guard case .container(let pos) = screen, let view = containers[pos], i < view.slots.count else { return nil }
             return view.slots[i]
         }
@@ -1011,10 +1026,18 @@ extension WinGame {
         case .output:
             break
         case .container(let i):
-            guard case .container(let pos) = screen, var view = containers[pos], i < view.slots.count else { return }
-            view.slots[i] = value
-            containers[pos] = view
-            network.setContainer(pos, slots: view.slots.map { netStack($0) })
+            var target = (pos: BlockPos(0, 0, 0), slot: i)
+            if let at = ChestHalves.locate(i, in: openChestHalves) {
+                target = at
+            } else if case .container(let pos) = screen {
+                target.pos = pos
+            } else {
+                return
+            }
+            guard var view = containers[target.pos], target.slot < view.slots.count else { return }
+            view.slots[target.slot] = value
+            containers[target.pos] = view
+            network.setContainer(target.pos, slots: view.slots.map { netStack($0) })
         }
     }
 
@@ -1026,7 +1049,17 @@ extension WinGame {
         if shift, let moving = stack(at: ref) {
             switch ref {
             case .inventory(let i):
-                if case .container(let pos) = screen, let view = containers[pos] {
+                let halves = openChestHalves
+                if halves.count > 1, halves.allSatisfy({ containers[$0] != nil }) {
+                    var slots = halves.flatMap { containers[$0]!.slots }
+                    let left = SlotInteraction.quickMove(moving, into: &slots, indices: Array(0..<slots.count), maxStack: inventory.maxStack)
+                    for (n, half) in halves.enumerated() {
+                        let part = Array(slots[(n * ChestHalves.size)..<((n + 1) * ChestHalves.size)])
+                        containers[half]?.slots = part
+                        network.setContainer(half, slots: part.map { netStack($0) })
+                    }
+                    setStack(ref, left)
+                } else if case .container(let pos) = screen, let view = containers[pos] {
                     var slots = view.slots
                     let indices = view.kind == "furnace" ? [0] : Array(0..<slots.count)
                     let left = SlotInteraction.quickMove(moving, into: &slots, indices: indices, maxStack: inventory.maxStack)
@@ -1095,8 +1128,8 @@ extension WinGame {
             topHeight = 3 * step
         case .container(let pos):
             let furnace = containers[pos]?.kind == "furnace"
-            title = furnace ? "Furnace" : "Chest"
-            topHeight = furnace ? 2 * step : 3 * step
+            title = furnace ? "Furnace" : ChestHalves.title(openChestHalves)
+            topHeight = furnace ? 2 * step : Float(max(1, openChestHalves.count) * 3) * step
         case .closed:
             return
         }
@@ -1104,7 +1137,7 @@ extension WinGame {
         let panelH = pad + titleHeight + topHeight + 14 * s + 3 * step + 8 * s + slot + pad
         let px = W / 2 - panelW / 2, py = H / 2 - panelH / 2
         ui.rect(0, 0, W, H, SIMD4(0, 0, 0, 0.45))
-        ui.rect(px, py, panelW, panelH, SIMD4(0.09, 0.06, 0.14, 0.96))
+        ui.woodPanel(px, py, panelW, panelH, scale: s)
         ui.text(title, x: px + pad, y: py + pad, scale: small, color: SIMD4(1, 0.85, 0.55, 1))
 
         hoveredSlot = nil
@@ -1112,8 +1145,7 @@ extension WinGame {
         let white = SIMD4<Float>(1, 1, 1, 1)
         func slotView(_ ref: SlotRef, _ x: Float, _ y: Float, accent: Bool = false) {
             let hovered = mouse.x >= x && mouse.x < x + slot && mouse.y >= y && mouse.y < y + slot
-            let background: SIMD4<Float> = accent ? SIMD4(0.4, 0.24, 0.05, 1) : (hovered ? SIMD4(0.28, 0.22, 0.42, 1) : SIMD4(0.03, 0.02, 0.06, 0.95))
-            ui.rect(x, y, slot, slot, background)
+            ui.woodSlot(x, y, slot, scale: s, hovered: hovered, accent: accent)
             if hovered {
                 hoveredSlot = ref
                 hoveredStack = stack(at: ref)
@@ -1158,7 +1190,10 @@ extension WinGame {
                     ui.rect(fx + step + 8 * s, top + step + slot / 2 - 3 * s, 48 * s * burn, 6 * s, SIMD4(1, 0.35, 0.1, 1))
                     slotView(.container(2), fx + step + 64 * s, top + step / 2)
                 } else {
-                    for i in 0..<min(27, view.slots.count) { slotView(.container(i), left + Float(i % 9) * step, top + Float(i / 9) * step) }
+                    let count = max(1, openChestHalves.count) * ChestHalves.size
+                    for i in 0..<min(count, view.slots.count * max(1, openChestHalves.count)) {
+                        slotView(.container(i), left + Float(i % 9) * step, top + Float(i / 9) * step)
+                    }
                 }
             } else {
                 ui.text("Opening...", x: left, y: top + 10 * s, scale: small, color: SIMD4(1, 1, 1, 0.8))
@@ -1189,7 +1224,7 @@ extension WinGame {
         } else if let st = hoveredStack, let info = items[st.item] {
             let name = info.displayName
             let width = UIBuilder.textWidth(name, scale: small)
-            ui.rect(mouse.x + 14 * s, mouse.y - 6 * s, width + 8 * small, 11 * small, SIMD4(0.05, 0.03, 0.1, 0.96))
+            ui.rect(mouse.x + 14 * s, mouse.y - 6 * s, width + 8 * small, 11 * small, SIMD4(0.074, 0.042, 0.018, 0.96))
             ui.text(name, x: mouse.x + 14 * s + 4 * small, y: mouse.y - 6 * s + 2 * small, scale: small, color: white)
         }
     }

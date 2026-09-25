@@ -950,7 +950,7 @@ final class GameEngine: NSObject, MTKViewDelegate {
         }
 
         let shader = ShaderPack(rawValue: settings.shaderPack) ?? .off
-        let mono: Float = session?.dimension == .toonland && session?.isLoading == false ? 1 : 0
+        let mono: Float = 0
         if (shader != .off && settings.shaderStrength > 0.01) || mono > 0, let depth = rpd.depthAttachment.texture,
            let target = postProcessor.sceneTarget(width: Int(size.x), height: Int(size.y)) {
             // Shader pack: scene → offscreen target → graded into the drawable, interface on top.

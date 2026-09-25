@@ -1,7 +1,7 @@
 import Foundation
 import DinoCraftCore
 
-/// Toonland's songs, written note by note in the style of an old cartoon: an oom-pah band,
+/// Toonland's songs, written note by note in the style of an old-time band: an oom-pah band,
 /// a whistler, slide-whistle swoops and a sung melody (a formant voice), plus the lyrics
 /// timed to the beat for the on-screen sing-along.
 enum SongComposer {
@@ -41,7 +41,7 @@ enum SongComposer {
              [2, 3, 2, 1, 2, 3, 4, 5], [0.5, 1, 0.5, 0.5, 0.5, 1, 0.5, 3.5], chords: [4, 4]),
         Line("so bring a sword and bring a smile,", ["so", "bring", "a", "sword", "and", "bring", "a", "smile"],
              [4, 7, 6, 4, 4, 7, 8, 9], [0.5, 1, 0.5, 1.5, 0.5, 1, 0.5, 2.5], chords: [0, 5]),
-        Line("and cheer him up in cartoon style!", ["and", "cheer", "him", "up", "in", "car", "toon", "style"],
+        Line("and cheer him up in dino style!", ["and", "cheer", "him", "up", "in", "di", "no", "style"],
              [9, 8, 7, 6, 5, 6, 6, 7], [0.5, 1, 0.5, 1, 0.5, 1, 0.5, 3], chords: [4, 0]),
     ]
     static let chorus: [Line] = [

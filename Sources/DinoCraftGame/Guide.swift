@@ -35,7 +35,7 @@ enum GameGuide {
         "Hold Ctrl to sprint. Sprinting is fast now, but it makes you hungry.",
         "Bone Blocks, Amber Blocks and Checker Blocks each build a different gateway.",
         "King Grumblesaurus stomps the ground: jump or keep your distance!",
-        "In Toonland every flower smiles. Pick a few!",
+        "Sunblooms glow in Toonland's meadows. Pick a few to light your base!",
         "Press F5 to see yourself from behind or from the front.",
         "Beds skip the night and set your spawn point.",
         "Villagers trade emeralds for tools, food and treasure.",

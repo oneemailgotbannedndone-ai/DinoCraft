@@ -81,10 +81,11 @@ struct SkyState {
             s.skyLight = SIMD3(1, 0.95, 0.85)
             return s
         case .toonland:
+            // Always a warm, golden late afternoon over the meadows.
             var s = SkyState.at(worldTime: 300)
-            s.zenith = lin(0.78, 0.8, 0.84)
-            s.horizon = lin(0.97, 0.97, 0.97)
-            s.skyLight = SIMD3(1, 1, 1)
+            s.zenith = lin(0.42, 0.62, 0.9)
+            s.horizon = lin(1.0, 0.86, 0.62)
+            s.skyLight = SIMD3(1, 0.93, 0.8)
             return s
         default:
             var s = SkyState.at(worldTime: worldTime)
@@ -143,7 +144,7 @@ final class WinRenderer {
     private var sceneTarget: (framebuffer: UInt32, color: UInt32, depth: UInt32, width: Int32, height: Int32)?
     /// Shader pack: 0 off, 1 vibrant, 2 cinematic, 3 retro, 4 dreamy (the Mac's `ShaderPack` order).
     var shaderPack = 0
-    /// 1 while in Toonland: the scene is shown as an old black-and-white cartoon.
+    /// 1 shows the scene in black and white (no dimension uses it now).
     var mono: Float = 0
     /// Set when the driver can't render offscreen, so post-processing stays off.
     private var postUnavailable = false

@@ -7,8 +7,7 @@ import DinoCraftCore
 
 private let white = SIMD4<Float>(1, 1, 1, 1)
 private let amber = SIMD4<Float>(1, 0.85, 0.55, 1)
-private let dim = SIMD4<Float>(0.75, 0.7, 0.85, 1)
-private let panelColor = SIMD4<Float>(0.09, 0.06, 0.14, 0.96)
+private let dim = SIMD4<Float>(0.805, 0.717, 0.585, 1)
 
 extension WinSolo {
     func buildUI(width W: Float, height H: Float, camera: WinCamera) -> [Float] {
@@ -22,7 +21,7 @@ extension WinSolo {
             return ui.vertices
         }
 
-        if s.player.headInWater { ui.rect(0, 0, W, H, SIMD4(0.02, 0.1, 0.3, 0.35)) }
+        if s.player.headInWater { ui.rect(0, 0, W, H, SIMD4(0.167, 0.093, 0.041, 0.35)) }
         if s.portalProgress > 0 {
             let tint: SIMD3<Float> = s.portalKind == Blocks.toonlandPortal ? SIMD3(0.95, 0.95, 0.95) : SIMD3(0.45, 0.1, 0.7)
             ui.rect(0, 0, W, H, SIMD4(tint, Float(min(1, s.portalProgress)) * 0.55))
@@ -78,7 +77,7 @@ extension WinSolo {
         switch s.dimension {
         case .underworld: (top, bottom) = (SIMD3(0.23, 0.06, 0.04), SIMD3(0.07, 0.02, 0.02))
         case .skylands: (top, bottom) = (SIMD3(0.42, 0.35, 0.6), SIMD3(0.9, 0.63, 0.29))
-        case .toonland: (top, bottom) = (SIMD3(0.23, 0.23, 0.23), SIMD3(0.06, 0.06, 0.06))
+        case .toonland: (top, bottom) = (SIMD3(0.42, 0.54, 0.78), SIMD3(0.91, 0.7, 0.35))
         default: (top, bottom) = (SIMD3(0.11, 0.07, 0.21), SIMD3(0.04, 0.02, 0.08))
         }
         let bands = 24
@@ -107,7 +106,7 @@ extension WinSolo {
         let huge = max(2, (9 * sc).rounded())
         let bob = Float(sin(now * 1.5)) * 4 * sc
         let titleY = H * 0.2 + bob
-        ui.centeredText("DinoCraft", centerX: W / 2 + 4 * sc, y: titleY + 4 * sc, scale: huge, color: SIMD4(0.16, 0.09, 0.25, 1))
+        ui.centeredText("DinoCraft", centerX: W / 2 + 4 * sc, y: titleY + 4 * sc, scale: huge, color: SIMD4(0.219, 0.122, 0.054, 1))
         ui.centeredText("DinoCraft", centerX: W / 2, y: titleY, scale: huge, color: SIMD4(1, 0.8, 0.35, 1))
         let big = max(1, (3 * sc).rounded())
         let infoY = titleY + 7 * huge + 30 * sc
@@ -116,7 +115,7 @@ extension WinSolo {
         let bw = 480 * sc, bh = 14 * sc, bx = W / 2 - bw / 2, by = infoY + 7 * big + 40 * sc
         let progress = Float(max(0, min(1, s.loadingProgress)))
         ui.rect(bx - 2 * sc, by - 2 * sc, bw + 4 * sc, bh + 4 * sc, SIMD4(1, 0.8, 0.4, 0.3))
-        ui.rect(bx, by, bw, bh, SIMD4(0.06, 0.04, 0.11, 0.95))
+        ui.rect(bx, by, bw, bh, SIMD4(0.091, 0.051, 0.023, 0.95))
         ui.rect(bx, by, max(8 * sc, bw * progress), bh, SIMD4(0.95, 0.6, 0.12, 1))
         let shimmer = bx + Float(now * 0.6).truncatingRemainder(dividingBy: 1) * bw * progress
         ui.rect(shimmer - 16 * sc, by, 32 * sc, bh, SIMD4(1, 1, 1, 0.22))
@@ -169,7 +168,7 @@ extension WinSolo {
             let small = max(1, (2 * sc).rounded())
             let x = 14 * sc, y = 118 * sc
             let w = max(UIBuilder.textWidth(goal.step.hint, scale: small), UIBuilder.textWidth(goal.step.title, scale: small)) + 20 * sc
-            ui.rect(x, y, w, 7 * small * 3 + 30 * sc, SIMD4(0.05, 0.03, 0.1, 0.6))
+            ui.rect(x, y, w, 7 * small * 3 + 30 * sc, SIMD4(0.074, 0.042, 0.018, 0.6))
             ui.rect(x, y, 3 * sc, 7 * small * 3 + 30 * sc, amber)
             ui.text("GUIDE \(goal.number)/\(GameGuide.steps.count)  (G)", x: x + 10 * sc, y: y + 6 * sc, scale: small, color: amber)
             ui.text(goal.step.title, x: x + 10 * sc, y: y + 6 * sc + 7 * small + 6 * sc, scale: small, color: white)
@@ -191,18 +190,18 @@ extension WinSolo {
         if s.bowCharge > 0 {
             let charge = Float(min(1, s.bowCharge))
             ui.rect(W / 2 - 22 * sc, H / 2 + 26 * sc, 44 * sc, 5 * sc, SIMD4(0, 0, 0, 0.5))
-            ui.rect(W / 2 - 22 * sc, H / 2 + 26 * sc, 44 * sc * charge, 5 * sc, charge >= 1 ? SIMD4(1, 0.95, 0.4, 1) : SIMD4(0.85, 0.85, 0.9, 1))
+            ui.rect(W / 2 - 22 * sc, H / 2 + 26 * sc, 44 * sc * charge, 5 * sc, charge >= 1 ? SIMD4(1, 0.95, 0.4, 1) : SIMD4(0.941, 0.838, 0.684, 1))
         }
 
         // Hotbar
         let slot = 54 * sc, gap = 6 * sc
         let total = Float(Inventory.hotbarCount) * slot + Float(Inventory.hotbarCount - 1) * gap
         let x0 = W / 2 - total / 2, y0 = H - slot - 18 * sc
-        ui.rect(x0 - 8 * sc, y0 - 8 * sc, total + 16 * sc, slot + 16 * sc, SIMD4(0.005, 0.003, 0.012, 0.55))
+        ui.woodPanel(x0 - 8 * sc, y0 - 8 * sc, total + 16 * sc, slot + 16 * sc, scale: sc)
         for i in 0..<Inventory.hotbarCount {
             let x = x0 + Float(i) * (slot + gap)
             if i == s.inventory.selected { ui.rect(x - 3 * sc, y0 - 3 * sc, slot + 6 * sc, slot + 6 * sc, SIMD4(0.9, 0.45, 0.08, 1)) }
-            ui.rect(x, y0, slot, slot, SIMD4(0.02, 0.012, 0.04, 0.85))
+            ui.rect(x, y0, slot, slot, SIMD4(0.03, 0.017, 0.007, 0.85))
             if let stack = s.inventory.slots[i] { drawStack(&ui, stack, x: x, y: y0, size: slot, scale: sc) }
         }
         if s.zooming {
@@ -242,7 +241,7 @@ extension WinSolo {
             if armor > 0 {
                 for i in 0..<10 {
                     let value = armor - i * 2
-                    let color: SIMD4<Float> = value >= 2 ? SIMD4(0.8, 0.85, 0.95, 1) : (value == 1 ? SIMD4(0.55, 0.58, 0.66, 1) : SIMD4(0.15, 0.15, 0.2, 0.8))
+                    let color: SIMD4<Float> = value >= 2 ? SIMD4(0.8, 0.85, 0.95, 1) : (value == 1 ? SIMD4(0.638, 0.568, 0.464, 1) : SIMD4(0.264, 0.148, 0.065, 0.8))
                     ui.rect(x0 + Float(i) * 8 * small + small, upperY + small, 5 * small, 6 * small, color)
                 }
             }
@@ -439,7 +438,7 @@ extension WinSolo {
             guard column < columns else { break }
             let x = startX + Float(column) * colW, y = startY + Float(row) * rowH
             let done = tracker.isUnlocked(def.id)
-            ui.rect(x + 4 * sc, y, colW - 8 * sc, rowH - 3 * sc, done ? SIMD4(0.22, 0.16, 0.06, 0.95) : SIMD4(0.08, 0.06, 0.12, 0.9))
+            ui.rect(x + 4 * sc, y, colW - 8 * sc, rowH - 3 * sc, done ? SIMD4(0.22, 0.16, 0.06, 0.95) : SIMD4(0.123, 0.069, 0.03, 0.9))
             ui.text((done ? "\u{2713} " : "") + def.title, x: x + 10 * sc, y: y + 3 * sc, scale: small, color: done ? SIMD4(1, 0.8, 0.35, 1) : white)
             let maxChars = max(8, Int((colW - 20 * sc) / (6 * small)))
             let detail = def.description.count > maxChars ? String(def.description.prefix(maxChars - 1)) + "\u{2026}" : def.description
@@ -458,14 +457,14 @@ extension WinSolo {
         let ph = 90 * sc + Float(profession.trades.count) * (rowH + gap) + 40 * sc
         let px = W / 2 - pw / 2, py = H / 2 - ph / 2
         ui.rect(0, 0, W, H, SIMD4(0, 0, 0, 0.45))
-        ui.rect(px, py, pw, ph, panelColor)
+        ui.woodPanel(px, py, pw, ph, scale: sc)
         ui.text("\(profession.name) Villager", x: px + 20 * sc, y: py + 18 * sc, scale: max(1, (3 * sc).rounded()), color: amber)
         ui.text(profession.blurb, x: px + 20 * sc, y: py + 18 * sc + 24 * sc, scale: small, color: dim)
         var y = py + 80 * sc
         for t in profession.trades {
             guard let cost = items.info(named: t.cost), let result = items.info(named: t.result) else { continue }
             let affordable = inv.count(of: cost.id) >= t.costCount
-            ui.rect(px + 20 * sc, y, pw - 40 * sc, rowH, SIMD4(0.05, 0.03, 0.09, 0.9))
+            ui.rect(px + 20 * sc, y, pw - 40 * sc, rowH, SIMD4(0.072, 0.04, 0.018, 0.9))
             drawStack(&ui, ItemStack(item: cost.id, count: t.costCount), x: px + 28 * sc, y: y + 4 * sc, size: rowH - 8 * sc, scale: sc)
             ui.text("\u{2192}", x: px + 36 * sc + rowH, y: y + rowH / 2 - 3.5 * small, scale: small, color: amber)
             drawStack(&ui, ItemStack(item: result.id, count: t.resultCount), x: px + 60 * sc + rowH, y: y + 4 * sc, size: rowH - 8 * sc, scale: sc)
@@ -510,6 +509,22 @@ extension WinSolo {
         return (pos, game.containers.ensure(pos, kind: kind))
     }
 
+    /// The open chest's halves (two for a double chest), or [] when no chest is open.
+    private var openChestHalves: [BlockPos] {
+        guard case .container(let pos, .chest) = screen else { return [] }
+        return game.chestHalves(pos)
+    }
+
+    /// All of the open chest's slots, both halves of a double chest one after the other.
+    private var chestSlots: [ItemStack?] {
+        get { openChestHalves.flatMap { game.containers.ensure($0, kind: .chest).slots } }
+        set {
+            for (n, half) in openChestHalves.enumerated() {
+                game.containers.ensure(half, kind: .chest).slots = Array(newValue[(n * ChestHalves.size)..<((n + 1) * ChestHalves.size)])
+            }
+        }
+    }
+
     func paletteItems() -> [ItemInfo] {
         let q = paletteSearch.lowercased().trimmingCharacters(in: .whitespaces)
         let all = items.all
@@ -524,6 +539,7 @@ extension WinSolo {
         case .output: return recipes.match(grid: craftGrid, size: gridSize)?.result
         case .armor(let i): return s.armor[i]
         case .container(let i):
+            if let at = ChestHalves.locate(i, in: openChestHalves) { return game.containers.ensure(at.pos, kind: .chest).slots[at.slot] }
             guard let open = openContainer, i < open.container.slots.count else { return nil }
             return open.container.slots[i]
         case .palette(let i):
@@ -540,14 +556,23 @@ extension WinSolo {
         case .craft(let i): if i < craftGrid.count { craftGrid[i] = value }
         case .armor(let i): s.armor[i] = value
         case .container(let i):
-            if let open = openContainer, i < open.container.slots.count { open.container.slots[i] = value }
+            if let at = ChestHalves.locate(i, in: openChestHalves) {
+                game.containers.ensure(at.pos, kind: .chest).slots[at.slot] = value
+            } else if let open = openContainer, i < open.container.slots.count {
+                open.container.slots[i] = value
+            }
         case .output, .palette: break
         }
     }
 
     private func slotsChanged() {
         game.inventory.markChanged()
-        if let open = openContainer { game.containerChanged(open.pos) }
+        let halves = openChestHalves
+        if !halves.isEmpty {
+            for half in halves { game.containerChanged(half) }
+        } else if let open = openContainer {
+            game.containerChanged(open.pos)
+        }
     }
 
     private func clickSlot(_ ref: SlotRef, button: SlotButton, shift: Bool) {
@@ -580,13 +605,17 @@ extension WinSolo {
                     setStack(ref, SlotInteraction.quickMove(moving, into: &slots, indices: Array(9..<36) + Array(0..<9), maxStack: inv.maxStack))
                     inv.slots = slots
                 case .inventory(let i):
-                    var targets = Array(0..<open.container.slots.count)
-                    if open.container.kind == .furnace {
+                    if open.container.kind == .chest {
+                        var slots = chestSlots
+                        inv.slots[i] = SlotInteraction.quickMove(moving, into: &slots, indices: Array(0..<slots.count), maxStack: inv.maxStack)
+                        chestSlots = slots
+                    } else {
+                        var targets = Array(0..<open.container.slots.count)
                         if s.smelting?.recipe(for: moving.item) != nil { targets = [Container.furnaceInput] }
                         else if s.smelting?.burnTime(moving.item) != nil { targets = [Container.furnaceFuel] }
                         else { return }
+                        inv.slots[i] = SlotInteraction.quickMove(moving, into: &open.container.slots, indices: targets, maxStack: inv.maxStack)
                     }
-                    inv.slots[i] = SlotInteraction.quickMove(moving, into: &open.container.slots, indices: targets, maxStack: inv.maxStack)
                 default:
                     break
                 }
@@ -690,8 +719,8 @@ extension WinSolo {
             title = "Crafting Bench"
             topHeight = 3 * step
         case .container(_, let kind):
-            title = kind.displayName
-            topHeight = kind == .furnace ? 2 * step : 3 * step
+            title = kind == .chest ? ChestHalves.title(openChestHalves) : kind.displayName
+            topHeight = kind == .furnace ? 2 * step : Float(max(1, openChestHalves.count) * 3) * step
         case .creative:
             title = "Creative Items"
             topHeight = 6 * step + 14 * small
@@ -704,15 +733,14 @@ extension WinSolo {
         let panelH = pad + titleHeight + topHeight + 14 * sc + lowerHeight + pad
         let px = W / 2 - panelW / 2, py = H / 2 - panelH / 2
         ui.rect(0, 0, W, H, SIMD4(0, 0, 0, 0.45))
-        ui.rect(px, py, panelW, panelH, panelColor)
+        ui.woodPanel(px, py, panelW, panelH, scale: sc)
         ui.text(title, x: px + pad, y: py + pad, scale: small, color: amber)
 
         hoveredSlot = nil
         var hoveredStack: ItemStack?
         func slotView(_ ref: SlotRef, _ x: Float, _ y: Float, accent: Bool = false, placeholder: String? = nil) {
             let hovered = mouse.x >= x && mouse.x < x + slot && mouse.y >= y && mouse.y < y + slot
-            let background: SIMD4<Float> = accent ? SIMD4(0.4, 0.24, 0.05, 1) : (hovered ? SIMD4(0.28, 0.22, 0.42, 1) : SIMD4(0.03, 0.02, 0.06, 0.95))
-            ui.rect(x, y, slot, slot, background)
+            ui.woodSlot(x, y, slot, scale: sc, hovered: hovered, accent: accent)
             if hovered {
                 hoveredSlot = ref
                 hoveredStack = stack(at: ref)
@@ -724,7 +752,7 @@ extension WinSolo {
                     drawStack(&ui, st, x: x, y: y, size: slot, scale: sc)
                 }
             } else if let placeholder {
-                ui.centeredText(placeholder, centerX: x + slot / 2, y: y + slot / 2 - 3.5 * small, scale: small, color: SIMD4(0.35, 0.32, 0.45, 1))
+                ui.centeredText(placeholder, centerX: x + slot / 2, y: y + slot / 2 - 3.5 * small, scale: small, color: SIMD4(0.584, 0.326, 0.144, 1))
             }
         }
 
@@ -761,7 +789,9 @@ extension WinSolo {
                     ui.rect(fx + step + 8 * sc, top + step + slot / 2 - 3 * sc, 48 * sc * burn, 6 * sc, SIMD4(1, 0.35, 0.1, 1))
                     slotView(.container(Container.furnaceOutput), fx + step + 64 * sc, top + step / 2)
                 } else {
-                    for i in 0..<min(27, open.container.slots.count) { slotView(.container(i), left + Float(i % 9) * step, top + Float(i / 9) * step) }
+                    for i in 0..<(max(1, openChestHalves.count) * ChestHalves.size) {
+                        slotView(.container(i), left + Float(i % 9) * step, top + Float(i / 9) * step)
+                    }
                 }
             }
         case .creative:
@@ -778,7 +808,7 @@ extension WinSolo {
                 if !menuTyped.isEmpty { paletteSearch = String((paletteSearch + menuTyped).prefix(24)); paletteScroll = 0 }
                 if menuBackspace && !paletteSearch.isEmpty { paletteSearch.removeLast(); paletteScroll = 0 }
             }
-            ui.rect(left, top, gridWidth, searchH, focused ? SIMD4(0.03, 0.02, 0.06, 1) : SIMD4(0.07, 0.05, 0.11, 0.95))
+            ui.rect(left, top, gridWidth, searchH, focused ? SIMD4(0.047, 0.026, 0.012, 1) : SIMD4(0.106, 0.059, 0.026, 0.95))
             let shown = paletteSearch.isEmpty && !focused ? "Click to search \(list.count) items"
                 : paletteSearch + (focused && Int(clock * 2) % 2 == 0 ? "_" : "")
             ui.text(shown, x: left + 4 * sc, y: top + (searchH - 7 * small) / 2, scale: small,
@@ -833,7 +863,7 @@ extension WinSolo {
             if let food = info.food { lines.append("Restores \(food.hunger) hunger") }
             let width = lines.map { UIBuilder.textWidth($0, scale: small) }.max() ?? 0
             let boxH = Float(lines.count) * 10 * small + 4 * small
-            ui.rect(mouse.x + 14 * sc, mouse.y - 6 * sc, width + 8 * small, boxH, SIMD4(0.05, 0.03, 0.1, 0.96))
+            ui.rect(mouse.x + 14 * sc, mouse.y - 6 * sc, width + 8 * small, boxH, SIMD4(0.074, 0.042, 0.018, 0.96))
             for (i, line) in lines.enumerated() {
                 ui.text(line, x: mouse.x + 14 * sc + 4 * small, y: mouse.y - 6 * sc + 2 * small + Float(i) * 10 * small, scale: small,
                         color: i == 0 ? white : dim)

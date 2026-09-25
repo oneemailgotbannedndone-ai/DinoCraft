@@ -48,7 +48,7 @@ final class AdvancementsScreen: Screen {
             d.fill(r, done ? Theme.amber.alpha(0.13) : Color(linear: 1, 1, 1, 0.035), radius: 14)
             if done { d.stroke(r, Theme.amber.alpha(0.7), radius: 14, width: 1.4) }
             let iconRect = Rect(r.x + 14, r.y + 18, 44, 44)
-            d.fill(iconRect.inset(-4), Color(hex: 0x0D0818, alpha: 0.6), radius: 10)
+            d.fill(iconRect.inset(-4), Color(hex: 0x1A0E06, alpha: 0.6), radius: 10)
             if let info = e.items.info(named: def.icon) { d.itemIcon(info, iconRect, alpha: done ? 1 : 0.35) }
             d.text(def.title, x: r.x + 72, y: r.y + 12, size: 16, color: done ? Theme.text : Theme.text.alpha(0.75), face: .display, maxWidth: r.w - 170)
             d.text(def.description, x: r.x + 72, y: r.y + 37, size: 13, color: Theme.textMuted, maxWidth: r.w - 84)
@@ -86,7 +86,7 @@ enum AdvancementToast {
             let r = Rect(W - 16 - 330 * slide + 16 * (1 - slide) - (1 - slide) * 0, y, 330, 66)
             let card = Rect(r.x + (1 - slide) * 350, r.y, r.w, r.h)
             d.shadow(card, radius: 14, blur: 12, color: Color(linear: 0, 0, 0, 0.45), offset: 4)
-            d.fill(card, Color(hex: 0x1A1230, alpha: 0.94), radius: 14)
+            d.fill(card, Color(hex: 0x2A1A0C, alpha: 0.94), radius: 14)
             d.stroke(card, Theme.amber.alpha(0.65), radius: 14, width: 1.5)
             if let info = e.items.info(named: toast.def.icon) { d.itemIcon(info, Rect(card.x + 12, card.y + 13, 40, 40)) }
             d.text("Advancement Made!", x: card.x + 64, y: card.y + 12, size: 12.5, color: Theme.amber, face: .display, tracking: 0.04)

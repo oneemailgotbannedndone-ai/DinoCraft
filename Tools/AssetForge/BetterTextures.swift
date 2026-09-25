@@ -196,6 +196,25 @@ enum BetterTextures {
         }
     }
 
+    /// One half of a double chest, made from the single chest's texture: the metal border is taken off
+    /// the right-hand edge (where the two halves meet), and on the front the latch moves to that edge
+    /// so the pair shares one latch in the middle.
+    static func chestHalf(_ full: Canvas, front: Bool) -> Canvas {
+        let c = Canvas(S)
+        c.px = full.px
+        for y in 0..<S {
+            c[S - 2, y] = full[S - 4, y]
+            c[S - 1, y] = full[S - 3, y]
+        }
+        guard front else { return c }
+        // Cover the old latch with the wood beside it, then draw half a latch on the seam.
+        for y in 8..<16 { for x in 13..<19 { c[x, y] = full[x - 6, y] } }
+        let band = RGBA(hex: 0x3A3A42), bandLight = RGBA(hex: 0x6A6A74)
+        for y in 8..<16 { for x in (S - 3)..<S { c[x, y] = (x == S - 3 || y == 8 || y == 15) ? band : bandLight } }
+        c[S - 1, 12] = RGBA(hex: 0x141418)
+        return c
+    }
+
     /// Bedrock: dark, jagged chunks of rock with deep cracks and a few pale flecks.
     static func bedrock() -> Canvas {
         let c = Canvas(S)

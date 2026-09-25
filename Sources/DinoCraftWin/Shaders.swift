@@ -347,7 +347,7 @@ enum Shaders {
     uniform sampler2D uScene;
     uniform vec4 uParams;   // x preset (1 vibrant, 2 cinematic, 3 retro, 4 dreamy), y time, zw size in pixels
     uniform float uStrength;
-    uniform float uMono;    // Toonland: 1 = old black-and-white cartoon film
+    uniform float uMono;    // 1 = black-and-white (not used by any dimension now)
     out vec4 fragColor;
     float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
     float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }

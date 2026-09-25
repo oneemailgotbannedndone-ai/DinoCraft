@@ -119,25 +119,22 @@ final class MobModelLibrary {
             m.add(.head, SIMD3(0, 0.9, -0.3) * 1.9, [b(-0.18, 0.36, -0.36, -0.1, 0.52, -0.26, c(0xF2EBD6), s: 1.9),
                                                     b(0.1, 0.36, -0.36, 0.18, 0.52, -0.26, c(0xF2EBD6), s: 1.9)])
         case .grumblesaurus, .grinasaurus:
-            // King Grumblesaurus: a big cartoon rex with googly eyes and a crown; frowning until he's cheered up.
+            // King Grumblesaurus: a huge, scarred bronze rex wearing a gold crown. His brows are drawn
+            // down in a scowl until he's won over, then they relax.
             let s: Float = 3.4
             let happy = kind == .grinasaurus
-            let ink = c(0x151515), white = c(0xF2F2F2), gold = c(0xF2C23A)
-            raptor(&m, body: c(0x2E2E2E), stripe: c(0x5A5A5A), belly: c(0xE6E6E6), glow: false, frill: nil, s: s)
+            let eye = c(0xE8A020), pupil = c(0x1A1008), gold = c(0xE8B83A), goldDark = c(0xA8781E), brow = c(0x1E2410)
+            raptor(&m, body: c(0x4A5A2E), stripe: c(0x2A3418), belly: c(0xC8B488), glow: false, frill: nil, s: s)
             var face: [Box] = [
-                b(-0.17, 0.36, -0.52, -0.03, 0.52, -0.38, white, s: s), b(0.03, 0.36, -0.52, 0.17, 0.52, -0.38, white, s: s),
-                b(-0.12, 0.39, -0.53, -0.06, 0.46, -0.51, ink, s: s), b(0.06, 0.39, -0.53, 0.12, 0.46, -0.51, ink, s: s),
+                b(-0.16, 0.42, -0.5, -0.1, 0.47, -0.44, eye, s: s), b(0.1, 0.42, -0.5, 0.16, 0.47, -0.44, eye, s: s),
+                b(-0.14, 0.43, -0.505, -0.12, 0.46, -0.5, pupil, s: s), b(0.12, 0.43, -0.505, 0.14, 0.46, -0.5, pupil, s: s),
                 b(-0.12, 0.52, -0.3, 0.12, 0.58, -0.08, gold, s: s),
                 b(-0.12, 0.58, -0.3, -0.07, 0.66, -0.25, gold, s: s), b(-0.03, 0.58, -0.22, 0.03, 0.68, -0.16, gold, s: s),
                 b(0.07, 0.58, -0.3, 0.12, 0.66, -0.25, gold, s: s),
-                b(-0.1, 0.17, -0.655, 0.1, 0.2, -0.635, ink, s: s),
+                b(-0.12, 0.52, -0.31, 0.12, 0.54, -0.29, goldDark, s: s),
             ]
-            if happy {
-                face += [b(-0.14, 0.2, -0.655, -0.1, 0.25, -0.635, ink, s: s), b(0.1, 0.2, -0.655, 0.14, 0.25, -0.635, ink, s: s),
-                         b(-0.19, 0.24, -0.5, -0.16, 0.28, -0.4, c(0xE8A0A0), s: s), b(0.16, 0.24, -0.5, 0.19, 0.28, -0.4, c(0xE8A0A0), s: s)]
-            } else {
-                face += [b(-0.14, 0.12, -0.655, -0.1, 0.17, -0.635, ink, s: s), b(0.1, 0.12, -0.655, 0.14, 0.17, -0.635, ink, s: s),
-                         b(-0.18, 0.5, -0.54, -0.04, 0.53, -0.5, ink, s: s), b(0.04, 0.5, -0.54, 0.18, 0.53, -0.5, ink, s: s)]
+            if !happy {
+                face += [b(-0.18, 0.48, -0.52, -0.08, 0.51, -0.43, brow, s: s), b(0.08, 0.48, -0.52, 0.18, 0.51, -0.43, brow, s: s)]
             }
             m.add(.head, SIMD3(0, 0.9, -0.3) * s, face)
         case .allosaurus:

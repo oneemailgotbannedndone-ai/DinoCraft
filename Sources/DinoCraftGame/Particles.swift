@@ -125,7 +125,7 @@ final class ParticleSystem {
         ambient(dt: dt, session: s, blocks: blocks)
     }
 
-    /// Big one-off effects: a stomp's dust ring, cheer-up confetti, a splash of ink.
+    /// Big one-off effects: a stomp's dust ring, cheer-up confetti, a splash of mud.
     func emitBurst(_ kind: EffectBurst, at center: DVec3) {
         switch kind {
         case .dust:
@@ -161,7 +161,7 @@ final class ParticleSystem {
             for _ in 0..<80 {
                 var p = Particle(center + DVec3(Double.random(in: -1...1), Double.random(in: 0...3), Double.random(in: -1...1)),
                                  DVec3(Double.random(in: -3...3), Double.random(in: 1...5), Double.random(in: -3...3)),
-                                 life: 1.4, size: 0.16, color: SIMD4(0.05, 0.05, 0.05, 1))
+                                 life: 1.4, size: 0.16, color: SIMD4(0.14, 0.09, 0.05, 1))   // thick mud
                 p.gravity = 9
                 p.collide = true
                 emit(p)

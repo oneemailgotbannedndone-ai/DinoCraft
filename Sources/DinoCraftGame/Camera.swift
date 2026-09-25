@@ -61,11 +61,11 @@ enum SkyModel {
             s.zenith = simd_mix(s.zenith, lin(0.32, 0.64, 0.92), SIMD3(repeating: 0.3 * s.daylight))
             return s
         case .toonland:
-            // Always a bright, sunny afternoon (the picture is greyed by the renderer).
+            // Always a warm, golden late afternoon over the meadows.
             var s = state(worldTime: 300)
-            s.zenith = lin(0.78, 0.8, 0.84)
-            s.horizon = lin(0.97, 0.97, 0.97)
-            s.skyLight = SIMD3(1, 1, 1)
+            s.zenith = lin(0.42, 0.62, 0.9)
+            s.horizon = lin(1.0, 0.86, 0.62)
+            s.skyLight = SIMD3(1, 0.93, 0.8)
             return s
         }
     }

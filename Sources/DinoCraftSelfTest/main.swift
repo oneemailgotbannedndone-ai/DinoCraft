@@ -412,6 +412,31 @@ func persistenceTests() throws {
 }
 section("Persistence", persistenceTests)
 
+section("Double chests") {
+    var world: [SIMD3<Int>: BlockID] = [:]
+    let north = Blocks.chest[0], east = Blocks.chest[1]
+    func look(_ x: Int, _ y: Int, _ z: Int) -> BlockID { world[SIMD3(x, y, z)] ?? Blocks.air }
+    func partner(_ x: Int, _ z: Int) -> (dx: Int, dz: Int)? {
+        let id = look(x, 0, z)
+        let facing: Int8 = id == north ? Int8(BlockFace.north.rawValue) : Int8(BlockFace.east.rawValue)
+        return DoubleChests.partner(x: x, y: 0, z: z, id: id, facing: facing, block: look)
+    }
+    world[SIMD3(0, 0, 0)] = north
+    check(partner(0, 0) == nil, "a lone chest stays single")
+    world[SIMD3(1, 0, 0)] = north
+    check(partner(0, 0)! == (1, 0) && partner(1, 0)! == (-1, 0), "two chests side by side pair up")
+    world[SIMD3(2, 0, 0)] = north
+    check(partner(2, 0) == nil && partner(0, 0)! == (1, 0), "a third chest beside a pair stays single")
+    world[SIMD3(3, 0, 0)] = north
+    check(partner(2, 0)! == (1, 0) && partner(3, 0)! == (-1, 0), "a row of four makes two pairs")
+    world[SIMD3(0, 0, 1)] = north
+    check(partner(0, 1) == nil, "chests don't pair front to back")
+    world[SIMD3(5, 0, 0)] = east; world[SIMD3(6, 0, 0)] = east
+    check(partner(5, 0) == nil, "east-facing chests pair along z, not x")
+    world[SIMD3(5, 0, 1)] = east
+    check(partner(5, 0)! == (0, 1), "east-facing chests side by side pair up")
+}
+
 section("Friends") {
     let a = PlayerIdentity.newID(), b = PlayerIdentity.newID()
     check(a != b && PlayerIdentity.isValid(a), "player IDs are random and valid")

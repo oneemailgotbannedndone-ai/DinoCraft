@@ -31,7 +31,7 @@ final class LauncherScreen: Screen {
 
         let titleY = max(30, H * 0.06)
         d.outlinedText(Brand.title, x: W / 2, y: titleY, size: Brand.title.count > 9 ? 70 : 80, fill: Color(hex: Brand.top),
-                       fillBottom: Color(hex: Brand.bottom), outline: Color(hex: 0x2A1740), outlineWidth: 6, tracking: 0.005)
+                       fillBottom: Color(hex: Brand.bottom), outline: Color(hex: 0x3A2414), outlineWidth: 6, tracking: 0.005)
         d.text(e.options.launcherOnly ? "DINOCRAFT LAUNCHER" : "LAUNCHER", x: W / 2, y: titleY + 96, size: 14, color: Theme.text.alpha(0.85), face: .display, align: .center,
                tracking: 0.2, shadow: Color(linear: 0, 0, 0, 0.7))
 
@@ -333,7 +333,7 @@ final class ReviewsScreen: Screen {
         let panel = Rect(max(30, W / 2 - 480), max(30, H / 2 - 340), min(960, W - 60), min(680, H - 60))
         ui.panel(panel, title: "Player Reviews")
         let board = GameLinks.reviews
-        let gold = Color(hex: 0xFFCC40), dimStar = Color(hex: 0x6A5E80)
+        let gold = Color(hex: 0xFFCC40), dimStar = Color(hex: 0x806A50)
         func starRow(_ n: Int, x: Float, y: Float, size: Float) {
             for k in 0..<5 { d.text("\u{2605}", x: x + Float(k) * size * 1.05, y: y, size: size, color: k < n ? gold : dimStar, face: .display) }
         }
@@ -601,7 +601,7 @@ final class SkinCreatorScreen: Screen {
         let cell = min(34, (panel.maxY - 90 - canvasTop) / Float(rows))
         let canvas = Rect(pickX, canvasTop, cell * Float(cols), cell * Float(rows))
         let baseHex = region.baseColor(look)
-        d.fill(Rect(canvas.x - 4, canvas.y - 4, canvas.w + 8, canvas.h + 8), Color(hex: 0x0B0716), radius: 6)
+        d.fill(Rect(canvas.x - 4, canvas.y - 4, canvas.w + 8, canvas.h + 8), Color(hex: 0x160C04), radius: 6)
         var pixels = look.pixels(region)
         for r in 0..<rows {
             for c in 0..<cols {

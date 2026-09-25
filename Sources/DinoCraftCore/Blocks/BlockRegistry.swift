@@ -414,12 +414,20 @@ public final class BlockRegistry: @unchecked Sendable {
     @inlinable public subscript(id: BlockID) -> BlockInfo? { blocks[Int(id)] }
     public func id(named name: String) -> BlockID? { byName[name] }
 
-    /// All distinct texture names referenced by blocks.
+    /// Textures the mesher uses besides the blocks' own faces: the halves of a double chest, whose
+    /// border stops at the seam so the two chests read as one.
+    public static let extraTextureNames = ["chest_front_half", "chest_side_half", "chest_top_half"]
+
+    /// Texture-array layers of `extraTextureNames`, filled with the other layers.
+    public private(set) var extraLayers: [String: UInt16] = [:]
+
+    /// All distinct texture names referenced by blocks (and the mesher's extras).
     public var textureNames: [String] {
         var seen = Set<String>(), out: [String] = []
         for b in all where b.shape != .none {
             for t in b.faceTextureNames where seen.insert(t).inserted { out.append(t) }
         }
+        for t in BlockRegistry.extraTextureNames where seen.insert(t).inserted { out.append(t) }
         return out
     }
 
@@ -430,5 +438,6 @@ public final class BlockRegistry: @unchecked Sendable {
             for f in 0..<6 { layers[Int(b.id) * 6 + f] = lookup(b.faceTextureNames[f]) }
         }
         faceLayers = layers
+        extraLayers = Dictionary(uniqueKeysWithValues: BlockRegistry.extraTextureNames.map { ($0, lookup($0)) })
     }
 }

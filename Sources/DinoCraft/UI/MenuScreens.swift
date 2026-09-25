@@ -28,8 +28,8 @@ enum MenuBackdrop {
     static func draw(_ ui: UIContext, strength: Float = 1) {
         let d = ui.draw
         let W = ui.size.x, H = ui.size.y
-        d.fill(Rect(0, 0, W, H * 0.45), Color(hex: 0x120A22, alpha: 0.55 * strength), bottom: Color(hex: 0x120A22, alpha: 0.05 * strength))
-        d.fill(Rect(0, H * 0.45, W, H * 0.55), Color(hex: 0x120A22, alpha: 0.1 * strength), bottom: Color(hex: 0x0A0614, alpha: 0.8 * strength))
+        d.fill(Rect(0, 0, W, H * 0.45), Color(hex: 0x1E1208, alpha: 0.55 * strength), bottom: Color(hex: 0x1E1208, alpha: 0.05 * strength))
+        d.fill(Rect(0, H * 0.45, W, H * 0.55), Color(hex: 0x1E1208, alpha: 0.1 * strength), bottom: Color(hex: 0x140A04, alpha: 0.8 * strength))
         // Floating spores and embers
         for i in 0..<46 {
             let h1 = Float(Hashing.unit(99, Int32(i), 1, 0)), h2 = Float(Hashing.unit(99, Int32(i), 2, 0))
@@ -69,7 +69,7 @@ final class MainMenuScreen: Screen {
         }
         let titleY = top + 110 + bob
         d.outlinedText(Brand.title, x: W / 2, y: titleY, size: Brand.title.count > 9 ? 84 : 96, fill: Color(hex: Brand.top), fillBottom: Color(hex: Brand.bottom),
-                       outline: Color(hex: 0x2A1740), outlineWidth: 7, tracking: 0.005)
+                       outline: Color(hex: 0x3A2414), outlineWidth: 7, tracking: 0.005)
         d.text("A  PREHISTORIC  VOXEL  ADVENTURE", x: W / 2, y: titleY + 112, size: 14, color: Theme.text.alpha(0.88), face: .display,
                align: .center, tracking: 0.18, shadow: Color(linear: 0, 0, 0, 0.7))
         d.opacity = 1
@@ -164,7 +164,7 @@ final class WorldSelectScreen: Screen {
                 let (clicked, double) = ui.row("world.\(w.id)", r, selected: selected == w.id)
                 if clicked { selected = w.id }
                 if double { e.loadWorld(w) }
-                d.fill(Rect(r.x + 14, r.y + 14, 56, 56), Color(hex: 0x0F0A1C, alpha: 0.6), radius: 12)
+                d.fill(Rect(r.x + 14, r.y + 14, 56, 56), Color(hex: 0x24150A, alpha: 0.6), radius: 12)
                 d.blockIcon(w.gameMode == .creative ? Blocks.amberLantern : Blocks.grass, Rect(r.x + 18, r.y + 18, 48, 48))
                 d.text(w.name, x: r.x + 86, y: r.y + 16, size: 21, color: Theme.text, face: .display, maxWidth: r.w - 280)
                 let when = relative.localizedString(for: w.lastPlayed, relativeTo: Date())

@@ -1,13 +1,35 @@
 DinoCraft - the Toonland update
 
 Toonland
-- A whole new black-and-white cartoon dimension where everything smiles.
+- A whole new dimension of golden meadows, birch woods and glowing sunblooms.
 - Build a Checker Gateway (coal + bone meal make Checker Blocks) and light it with the Ember Lighter.
 - Follow the checkered roads to the stages, and listen to the Toonland song "Sunny Side Up", with words on screen.
 
 King Grumblesaurus
-- Toonland's boss: ink splatters, ground-shaking stomps and a boss health bar.
+- Toonland's boss: mud splatters, ground-shaking stomps and a boss health bar.
 - Cheer him up to beat the game, win the Smile Trophy and hear his own theme, "Grumble Stomp".
+
+A crafting-table look
+- Menus, inventories and chests are now oak planks in a dark wooden frame with iron nails, on Mac and Windows.
+
+Zoom
+- Hold Z to zoom in. Scroll while holding it to zoom further in or out. Let go and it zooms back out.
+
+Double chests
+- Put two chests side by side (facing the same way) and they join into one Large Chest with twice the room.
+
+Multiplayer
+- /msg <player> <message> sends a private message (also /tell and /w).
+- Hardcore worlds in multiplayer: players who die can only spectate, even if they leave and rejoin.
+- Hardcore hearts look different: dark crimson with a gold crest.
+
+Toonland looks like DinoCraft now
+- No more black-and-white cartoon filter: golden meadows, birch woods, limestone, marble checker roads and glowing sunblooms.
+- King Grumblesaurus is a real bronze rex with a gold crown.
+
+More
+- Render distance goes up to 64 chunks (for strong computers).
+- Axes, swords, shovels and hoes all match the new pickaxe style.
 
 Friends
 - A new Friends page in the launcher. Press Copy My Friend Code and send it to a friend; they press Add Friend (Paste Code).

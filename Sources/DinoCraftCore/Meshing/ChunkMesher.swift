@@ -86,6 +86,8 @@ public final class ChunkMesher {
     private let boxTable: [[BlockBox]]
     private let facingTable: [Int8]
     private var faceLayers: [UInt16]
+    /// Double chest halves: front, back (side) and top/bottom textures.
+    private var chestHalfLayers: (front: UInt16, side: UInt16, top: UInt16) = (0, 0, 0)
 
     private var H = 0
 
@@ -142,6 +144,12 @@ public final class ChunkMesher {
             leafLike[i] = (info?.waving ?? false) && registry.shape[i] == .cube
         }
         faceLayers = registry.faceLayers
+        refreshChestLayers()
+    }
+
+    private func refreshChestLayers() {
+        let l = registry.extraLayers
+        chestHalfLayers = (l["chest_front_half"] ?? 0, l["chest_side_half"] ?? 0, l["chest_top_half"] ?? 0)
     }
 
     deinit {
@@ -152,7 +160,10 @@ public final class ChunkMesher {
     }
 
     /// Refreshes texture layer bindings (call after the atlas is rebuilt).
-    public func refreshTextureLayers() { faceLayers = registry.faceLayers }
+    public func refreshTextureLayers() {
+        faceLayers = registry.faceLayers
+        refreshChestLayers()
+    }
 
     @inline(__always) private func ri(_ x: Int, _ y: Int, _ z: Int) -> Int { (y * R + z) * R + x }
 
@@ -579,10 +590,46 @@ public final class ChunkMesher {
     }
 
     private func emitBox(id: Int, x: Int, y: Int, z: Int) {
+        if DoubleChests.isChest(BlockID(id)), let boxes = boxTable[id].first,
+           let partner = DoubleChests.partner(x: x + 16, y: y, z: z + 16, id: BlockID(id), facing: facingTable[id],
+                                              block: { BlockID(idAt($0, $1, $2)) }) {
+            emitDoubleChestHalf(id: id, x: x, y: y, z: z, b: boxes, partner: partner)
+            return
+        }
         for b in boxTable[id] { emitCuboid(id: id, x: x, y: y, z: z, b: b) }
     }
 
-    private func emitCuboid(id: Int, x: Int, y: Int, z: Int, b: BlockBox) {
+    /// One half of a double chest: the box reaches across to its partner, the face between them is
+    /// left out, and the faces running along the pair use half textures turned so their open
+    /// (border-less) edge meets the seam.
+    private func emitDoubleChestHalf(id: Int, x: Int, y: Int, z: Int, b: BlockBox, partner: (dx: Int, dz: Int)) {
+        let box = BlockBox([partner.dx < 0 ? 0 : Int(b.x0), Int(b.y0), partner.dz < 0 ? 0 : Int(b.z0),
+                            partner.dx > 0 ? 16 : Int(b.x1), Int(b.y1), partner.dz > 0 ? 16 : Int(b.z1)])
+        let towardPartner = partner.dx > 0 ? 0 : partner.dx < 0 ? 1 : partner.dz > 0 ? 4 : 5
+        let awayFromPartner = towardPartner ^ 1
+        let front = Int(facingTable[id]), back = front ^ 1
+        let halves = chestHalfLayers
+        emitCuboid(id: id, x: x, y: y, z: z, b: box, skip: towardPartner) { face, positions, uvs in
+            guard face != awayFromPartner else { return nil }
+            let layer = face == front ? halves.front : face == back ? halves.side : halves.top
+            // Corners on the seam, in the face's own texture coordinates.
+            let seam = positions.indices.filter { k in
+                let p = positions[k]
+                return (partner.dx > 0 && p.0 == 16) || (partner.dx < 0 && p.0 == 0) || (partner.dz > 0 && p.2 == 16) || (partner.dz < 0 && p.2 == 0)
+            }
+            guard let k = seam.first else { return nil }
+            let turned: [(Int, Int)]
+            if seam.allSatisfy({ uvs[$0].0 == uvs[k].0 }) {
+                turned = uvs[k].0 == 16 ? uvs : uvs.map { (16 - $0.0, $0.1) }
+            } else {
+                turned = uvs[k].1 == 16 ? uvs.map { ($0.1, $0.0) } : uvs.map { (16 - $0.1, $0.0) }
+            }
+            return (layer, turned)
+        }
+    }
+
+    private func emitCuboid(id: Int, x: Int, y: Int, z: Int, b: BlockBox, skip: Int = -1,
+                            restyle: ((Int, [(Int, Int, Int)], [(Int, Int)]) -> (UInt16, [(Int, Int)])?)? = nil) {
         let rx = x + 16, rz = z + 16
         let x0 = Int(b.x0), y0 = Int(b.y0), z0 = Int(b.z0), x1 = Int(b.x1), y1 = Int(b.y1), z1 = Int(b.z1)
         let f = VertexFlags.rawUV | (emissionTable[id] > 0 ? VertexFlags.emissive : 0)
@@ -598,13 +645,14 @@ public final class ChunkMesher {
             (4, [(x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1)], [(x0, 16 - y0), (x1, 16 - y0), (x1, 16 - y1), (x0, 16 - y1)], z1 == 16),
             (5, [(x1, y0, z0), (x0, y0, z0), (x0, y1, z0), (x1, y1, z0)], [(16 - x1, 16 - y0), (16 - x0, 16 - y0), (16 - x0, 16 - y1), (16 - x1, 16 - y1)], z0 == 0),
         ]
-        for (face, pos, uv, boundary) in faces {
+        for (face, pos, uv, boundary) in faces where face != skip {
             if boundary {
                 let fa = ChunkMesher.axes[face]
                 let nb = idAt(rx + fa.n.0, y + fa.n.1, rz + fa.n.2)
                 if opaqueTable[nb] { continue }
             }
-            emitRaw(pos, uv, layer: faceLayers[id * 6 + face], normal: UInt8(face), sky: s, light: l, flags: flags, into: path, origin: (x, y, z))
+            let (layer, uvs) = restyle?(face, pos, uv) ?? (faceLayers[id * 6 + face], uv)
+            emitRaw(pos, uvs, layer: layer, normal: UInt8(face), sky: s, light: l, flags: flags, into: path, origin: (x, y, z))
         }
     }
 

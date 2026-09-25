@@ -34,7 +34,7 @@ struct SettingsPanel {
 
         func row(_ column: Int, _ title: String, _ value: String, minus: @escaping () -> Void, plus: @escaping () -> Void) {
             let x = column == 0 ? leftX : rightX
-            ui.rect(x, y[column], colW, rowH, SIMD4(0.08, 0.06, 0.12, 0.85))
+            ui.rect(x, y[column], colW, rowH, SIMD4(0.123, 0.069, 0.03, 0.85))
             ui.text(title, x: x + 10 * s, y: y[column] + rowH / 2 - 3.5 * small, scale: small, color: SIMD4(1, 1, 1, 1))
             let bw = 38 * s, valueW = min(200 * s, colW * 0.45)
             let bx = x + colW - bw * 2 - valueW - 8 * s
@@ -105,7 +105,7 @@ struct SettingsPanel {
         let maxChars = max(8, Int(colW / (6 * small)))
         let about = packs[current].description
         ui.text(about.count > maxChars ? String(about.prefix(maxChars - 1)) + "\u{2026}" : about, x: rightX, y: y[1], scale: small,
-                color: SIMD4(0.8, 0.76, 0.9, 0.9))
+                color: SIMD4(0.866, 0.772, 0.63, 0.9))
         y[1] += 10 * small
 
         audio?.apply(store.settings)

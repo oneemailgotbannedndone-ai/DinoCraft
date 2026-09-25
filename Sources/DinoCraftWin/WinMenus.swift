@@ -24,12 +24,17 @@ extension UIBuilder {
     mutating func button(_ label: String, x: Float, y: Float, w: Float, h: Float, scale s: Float, input: MenuInput,
                          enabled: Bool = true, primary: Bool = false) -> Bool {
         let hovered = enabled && input.mouse.x >= x && input.mouse.x < x + w && input.mouse.y >= y && input.mouse.y < y + h
-        var color: SIMD4<Float> = !enabled ? SIMD4(0.12, 0.1, 0.16, 0.8) : (primary ? SIMD4(0.78, 0.38, 0.08, 1) : SIMD4(0.2, 0.15, 0.32, 0.95))
-        if hovered { color = SIMD4(min(1, color.x + 0.12), min(1, color.y + 0.1), min(1, color.z + 0.1), 1) }
-        rect(x, y, w, h, color)
+        // A wooden plank (golden honey-wood for the main action) with a bevel and a dark outline.
+        var base: SIMD4<Float> = !enabled ? SIMD4(0.07, 0.04, 0.02, 0.9) : (primary ? SIMD4(0.6, 0.3, 0.05, 1) : SIMD4(0.2, 0.1, 0.04, 1))
+        if hovered { base = SIMD4(min(1, base.x * 1.45 + 0.02), min(1, base.y * 1.45 + 0.01), min(1, base.z * 1.4), 1) }
+        let px = max(1, s.rounded())
+        rect(x, y, w, h, SIMD4(0.02, 0.01, 0.004, 1))
+        rect(x + px, y + px, w - 2 * px, h - 2 * px, base)
+        rect(x + px, y + px, w - 2 * px, 2 * px, SIMD4(min(1, base.x * 1.7 + 0.03), min(1, base.y * 1.7 + 0.02), min(1, base.z * 1.6 + 0.01), 1))
+        rect(x + px, y + h - 3 * px, w - 2 * px, 2 * px, SIMD4(base.x * 0.45, base.y * 0.45, base.z * 0.45, 1))
         let small = max(1, (2 * s).rounded())
         centeredText(label, centerX: x + w / 2, y: y + h / 2 - 3.5 * small, scale: small,
-                     color: enabled ? SIMD4(1, 1, 1, 1) : SIMD4(0.6, 0.6, 0.65, 1))
+                     color: enabled ? SIMD4(1, 0.96, 0.86, 1) : SIMD4(0.45, 0.38, 0.3, 1))
         return hovered && input.clicked
     }
 
@@ -37,12 +42,13 @@ extension UIBuilder {
     mutating func field(_ value: String, placeholder: String, x: Float, y: Float, w: Float, h: Float, scale s: Float,
                         focused: Bool, input: MenuInput, time: Double) -> Bool {
         let hovered = input.mouse.x >= x && input.mouse.x < x + w && input.mouse.y >= y && input.mouse.y < y + h
-        rect(x, y, w, h, focused ? SIMD4(0.03, 0.02, 0.06, 1) : SIMD4(0.07, 0.05, 0.11, 0.95))
-        rect(x, y + h - 2 * s, w, 2 * s, focused ? SIMD4(0.95, 0.6, 0.15, 1) : SIMD4(0.3, 0.25, 0.42, 1))
+        rect(x, y, w, h, focused ? SIMD4(0.03, 0.015, 0.006, 1) : SIMD4(0.06, 0.03, 0.012, 0.95))
+        rect(x, y, w, max(1, s.rounded()) * 2, SIMD4(0.01, 0.005, 0.002, 1))
+        rect(x, y + h - 2 * s, w, 2 * s, focused ? SIMD4(0.95, 0.6, 0.15, 1) : SIMD4(0.3, 0.17, 0.07, 1))
         let small = max(1, (2 * s).rounded())
         let textY = y + h / 2 - 3.5 * small
         if value.isEmpty && !focused {
-            text(placeholder, x: x + 10 * s, y: textY, scale: small, color: SIMD4(0.55, 0.52, 0.62, 1), shadow: false)
+            text(placeholder, x: x + 10 * s, y: textY, scale: small, color: SIMD4(0.594, 0.529, 0.432, 1), shadow: false)
         } else {
             let cursor = focused && Int(time * 2) % 2 == 0 ? "_" : ""
             text(value + cursor, x: x + 10 * s, y: textY, scale: small, color: SIMD4(1, 1, 1, 1), shadow: false)
@@ -281,7 +287,7 @@ final class WinMenus {
         let small = max(1, (2 * s).rounded())
         let bw = 360 * s, bh = 46 * s, gap = 12 * s
         let cx = W / 2
-        ui.rect(0, 0, W, H, SIMD4(0.02, 0.01, 0.05, 0.35))
+        ui.rect(0, 0, W, H, SIMD4(0.03, 0.017, 0.007, 0.35))
 
         func header(_ title: String) {
             let scale = max(1, (4 * s).rounded())
@@ -355,14 +361,14 @@ final class WinMenus {
             let formatter = DateFormatter()
             formatter.dateStyle = .medium
             for world in worlds.dropFirst(scroll).prefix(visible) {
-                ui.rect(listX, y, listW, rowH, SIMD4(0.1, 0.07, 0.16, 0.9))
+                ui.rect(listX, y, listW, rowH, SIMD4(0.151, 0.084, 0.037, 0.9))
                 let bwSmall = 92 * s, bhSmall = 36 * s, by = y + (rowH - bhSmall) / 2
                 let textChars = max(8, Int((listW - 3 * bwSmall - 52 * s) / (6 * small)))
                 func fit(_ text: String) -> String { text.count > textChars ? String(text.prefix(textChars - 1)) + "\u{2026}" : text }
                 ui.text(fit(world.name), x: listX + 14 * s, y: y + 10 * s, scale: small, color: SIMD4(1, 1, 1, 1))
                 let mode = world.isHardcore ? ((world.hardcoreDead ?? false) ? "Hardcore - Game Over" : "Hardcore") : world.gameMode.displayName
                 let detail = "\(mode) - \(world.difficulty.displayName) - \(formatter.string(from: world.lastPlayed))"
-                ui.text(fit(detail), x: listX + 14 * s, y: y + 10 * s + 11 * small, scale: small, color: SIMD4(0.7, 0.66, 0.8, 1))
+                ui.text(fit(detail), x: listX + 14 * s, y: y + 10 * s + 11 * small, scale: small, color: SIMD4(0.756, 0.674, 0.55, 1))
                 var bx = listX + listW - 3 * bwSmall - 3 * 8 * s
                 if ui.button("Play", x: bx, y: by, w: bwSmall, h: bhSmall, scale: s, input: input, primary: true) {
                     click()
@@ -432,7 +438,7 @@ final class WinMenus {
                 "One life on Hard. If you fall, the world is lost forever.",
                 "Unlimited blocks, instant breaking and flight (double-tap jump).",
             ][newMode]
-            ui.centeredText(modeInfo, centerX: cx, y: y - 6 * s, scale: small, color: SIMD4(0.8, 0.76, 0.9, 0.9))
+            ui.centeredText(modeInfo, centerX: cx, y: y - 6 * s, scale: small, color: SIMD4(0.866, 0.772, 0.63, 0.9))
             y += 12 * small + 6 * s
             caption("Difficulty")
             if let pick = choices(Difficulty.allCases.map { $0.displayName }, selected: newMode == 1 ? 3 : newDifficulty, enabled: newMode != 1) {
@@ -489,7 +495,7 @@ final class WinMenus {
                 y += 14 * small
             }
             ui.centeredText("Your friend opens their world first (on Mac: Esc > Open to Internet, on Windows: Host).",
-                            centerX: cx, y: y, scale: small, color: SIMD4(0.8, 0.76, 0.9, 0.9))
+                            centerX: cx, y: y, scale: small, color: SIMD4(0.866, 0.772, 0.63, 0.9))
             let canJoin = !address.trimmingCharacters(in: .whitespaces).isEmpty
             let footerY = H * 0.74
             if ui.button("Join", x: cx - bw - gap / 2, y: footerY, w: bw, h: bh, scale: s, input: input, enabled: canJoin, primary: true) || (input.enter && canJoin) {
@@ -583,13 +589,13 @@ final class WinMenus {
 
 extension WinMenus {
     private var amber: SIMD4<Float> { SIMD4(1, 0.85, 0.55, 1) }
-    private var muted: SIMD4<Float> { SIMD4(0.8, 0.76, 0.9, 0.9) }
+    private var muted: SIMD4<Float> { SIMD4(0.866, 0.772, 0.63, 0.9) }
 
     /// The pre-launcher: news about the newest build, the update button, cosmetics, settings and Play.
     fileprivate func buildLauncher(_ ui: inout UIBuilder, input: MenuInput, width W: Float, height H: Float, scale s: Float, now: Double) -> Choice? {
         let small = max(1, (2 * s).rounded())
         let cx = W / 2
-        ui.rect(0, 0, W, H, SIMD4(0.02, 0.01, 0.05, 0.45))
+        ui.rect(0, 0, W, H, SIMD4(0.03, 0.017, 0.007, 0.45))
 
         // Title in the texture pack's colours
         let big = max(1, (8 * s).rounded())
@@ -605,7 +611,7 @@ extension WinMenus {
         // News panel
         let panelX = max(20 * s, cx - 600 * s), panelY = H * 0.27
         let panelW = min(640 * s, cx - panelX - 30 * s), panelH = H * 0.6
-        ui.rect(panelX, panelY, panelW, panelH, SIMD4(0.06, 0.04, 0.1, 0.88))
+        ui.woodPanel(panelX, panelY, panelW, panelH, scale: s)
         ui.rect(panelX, panelY, 5 * s, panelH, SIMD4(0.95, 0.6, 0.12, 1))
         let maxChars = max(10, Int((panelW - 40 * s) / (6 * small)))
         var ny = panelY + 18 * s
@@ -768,7 +774,7 @@ extension WinMenus {
         let head = max(1, (4 * s).rounded())
         let friends = FriendList.shared
         let me = store.settings
-        ui.rect(0, 0, W, H, SIMD4(0.02, 0.01, 0.05, 0.45))
+        ui.rect(0, 0, W, H, SIMD4(0.03, 0.017, 0.007, 0.45))
         ui.centeredText("Friends", centerX: W / 2, y: H * 0.05, scale: head, color: amber)
         ui.centeredText("Add friends with their friend code. Play together once and they show up here too.",
                         centerX: W / 2, y: H * 0.05 + 10 * head, scale: small, color: muted)
@@ -776,7 +782,7 @@ extension WinMenus {
         // Your card: a spinning preview, your one-of-a-kind name tag and your friend code.
         let cardX = 40 * s, cardW = min(W * 0.3, 380 * s), cardY = H * 0.17, cardH = H * 0.66
         let infoY = cardY + cardH * 0.46
-        ui.rect(cardX, infoY, cardW, cardY + cardH - infoY, SIMD4(0.06, 0.04, 0.1, 0.9))
+        ui.woodPanel(cardX, infoY, cardW, cardY + cardH - infoY, scale: s)
         // Stand the preview on top of the card: turn the card's screen position into the preview camera's space.
         let depth: Float = 5.6, tanHalf: Float = 0.766
         let ndcX = (cardX + cardW / 2) / W * 2 - 1, ndcFeet = 1 - 2 * (infoY - 6 * s) / H
@@ -819,7 +825,7 @@ extension WinMenus {
 
         // Friends and recent players
         let listX = cardX + cardW + 24 * s, listW = W - listX - 40 * s, listY = cardY
-        ui.rect(listX, listY, listW, cardH, SIMD4(0.06, 0.04, 0.1, 0.9))
+        ui.woodPanel(listX, listY, listW, cardH, scale: s)
         let rowH = 52 * s
         struct Row { let person: FriendList.Person; let isFriend: Bool }
         let rows = friends.friends.map { Row(person: $0, isFriend: true) } + friends.recent.map { Row(person: $0, isFriend: false) }
@@ -898,7 +904,7 @@ extension WinMenus {
             SIMD4(Float((hex >> 16) & 255) / 255, Float((hex >> 8) & 255) / 255, Float(hex & 255) / 255, 1)
         }
         let u = size / 8
-        ui.rect(x, y, size, size, SIMD4(0.12, 0.1, 0.18, 1))
+        ui.rect(x, y, size, size, SIMD4(0.195, 0.109, 0.048, 1))
         ui.rect(x + 2 * u, y + 1 * u, 4 * u, 4 * u, color(PlayerLook.skinTones[look.skin]))                       // face
         ui.rect(x + 3 * u, y + 2.5 * u, 0.7 * u, 0.7 * u, SIMD4(0.1, 0.08, 0.1, 1))                              // eyes
         ui.rect(x + 4.3 * u, y + 2.5 * u, 0.7 * u, 0.7 * u, SIMD4(0.1, 0.08, 0.1, 1))
@@ -917,8 +923,8 @@ extension WinMenus {
     fileprivate func buildReviews(_ ui: inout UIBuilder, input: MenuInput, width W: Float, height H: Float, scale s: Float) {
         let small = max(1, (2 * s).rounded())
         let head = max(1, (4 * s).rounded())
-        let gold = SIMD4<Float>(1, 0.8, 0.25, 1), dimStar = SIMD4<Float>(0.4, 0.36, 0.5, 1)
-        ui.rect(0, 0, W, H, SIMD4(0.02, 0.01, 0.05, 0.55))
+        let gold = SIMD4<Float>(1, 0.8, 0.25, 1), dimStar = SIMD4<Float>(0.659, 0.368, 0.163, 1)
+        ui.rect(0, 0, W, H, SIMD4(0.03, 0.017, 0.007, 0.55))
         ui.centeredText("Player Reviews", centerX: W / 2, y: H * 0.05, scale: head, color: amber)
         let board = GameLinks.reviews
         func stars(_ n: Int, x: Float, y: Float, scale: Float) {
@@ -926,7 +932,7 @@ extension WinMenus {
         }
         let panelW = min(W - 60 * s, 900 * s), panelX = W / 2 - panelW / 2, panelY = H * 0.05 + 10 * head + 16 * s
         let panelH = H - panelY - 205 * s
-        ui.rect(panelX, panelY, panelW, panelH, SIMD4(0.06, 0.04, 0.1, 0.9))
+        ui.woodPanel(panelX, panelY, panelW, panelH, scale: s)
         var y = panelY + 16 * s
         let maxChars = max(10, Int((panelW - 40 * s) / (6 * small)))
         switch board.state {
@@ -995,7 +1001,7 @@ extension WinMenus {
     /// Choose a hat, outfit colours and something to wear on your back, with a spinning preview.
     fileprivate func buildCosmetics(_ ui: inout UIBuilder, input: MenuInput, width W: Float, height H: Float, scale s: Float, now: Double) {
         let small = max(1, (2 * s).rounded())
-        ui.rect(0, 0, W, H, SIMD4(0.02, 0.01, 0.05, 0.35))
+        ui.rect(0, 0, W, H, SIMD4(0.03, 0.017, 0.007, 0.35))
         let head = max(1, (4 * s).rounded())
         ui.centeredText("Cosmetics", centerX: W / 2, y: H * 0.06, scale: head, color: amber)
         ui.centeredText("Friends see your look in multiplayer, on Mac and Windows.", centerX: W / 2, y: H * 0.06 + 10 * head,
@@ -1015,7 +1021,7 @@ extension WinMenus {
         let rowH = 42 * s, rowGap = 10 * s
         var y = H * 0.22
         func row(_ title: String, _ value: String, minus: () -> Void, plus: () -> Void) {
-            ui.rect(x, y, colW, rowH, SIMD4(0.08, 0.06, 0.12, 0.88))
+            ui.rect(x, y, colW, rowH, SIMD4(0.123, 0.069, 0.03, 0.88))
             ui.text(title, x: x + 12 * s, y: y + rowH / 2 - 3.5 * small, scale: small, color: SIMD4(1, 1, 1, 1))
             let bw = 40 * s, valueW = min(230 * s, colW * 0.5)
             let bx = x + colW - bw * 2 - valueW - 8 * s
@@ -1095,8 +1101,8 @@ extension WinMenus {
     /// Paint your own face and shirt, pixel by pixel, with a live preview. Friends see it in multiplayer.
     fileprivate func buildSkinCreator(_ ui: inout UIBuilder, input: MenuInput, width W: Float, height H: Float, scale s: Float, now: Double) {
         let small = max(1, (2 * s).rounded())
-        let amber = SIMD4<Float>(1, 0.85, 0.55, 1), muted = SIMD4<Float>(0.8, 0.76, 0.9, 0.9)
-        ui.rect(0, 0, W, H, SIMD4(0.02, 0.01, 0.05, 0.45))
+        let amber = SIMD4<Float>(1, 0.85, 0.55, 1), muted = SIMD4<Float>(0.866, 0.772, 0.63, 0.9)
+        ui.rect(0, 0, W, H, SIMD4(0.03, 0.017, 0.007, 0.45))
         let head = max(1, (4 * s).rounded())
         ui.centeredText("Skin Creator", centerX: W / 2, y: H * 0.04, scale: head, color: amber)
         ui.centeredText("Left-click paints, right-click rubs out. Friends see your skin in multiplayer.", centerX: W / 2,
@@ -1145,7 +1151,7 @@ extension WinMenus {
         let base = PlayerAvatar.color(region.baseColor(look))
         func srgb(_ c: SIMD4<Float>) -> SIMD4<Float> { SIMD4(pow(c.x, 1 / 2.2), pow(c.y, 1 / 2.2), pow(c.z, 1 / 2.2), 1) }
         func paintColor(_ i: UInt8) -> SIMD4<Float> { srgb(PlayerAvatar.color(PlayerLook.paintColors[Int(i)])) }
-        ui.rect(canvasX - 4 * s, canvasY - 4 * s, canvasW + 8 * s, canvasH + 8 * s, SIMD4(0.05, 0.03, 0.08, 1))
+        ui.rect(canvasX - 4 * s, canvasY - 4 * s, canvasW + 8 * s, canvasH + 8 * s, SIMD4(0.071, 0.039, 0.017, 1))
         var pixels = look.pixels(region)
         for r in 0..<rows {
             for c in 0..<cols {
