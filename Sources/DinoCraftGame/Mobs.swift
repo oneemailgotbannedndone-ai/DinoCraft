@@ -8,7 +8,8 @@ enum MobKind: String, CaseIterable, Codable {
     case trikey, dodo, longneck, raptor, spitter, crawler, magmaRaptor, villager, stego, ankylo, rex, compy, ptero, parasaur, sailback, boneWalker, scorpion,
          pig, cow, sheep, chicken, pookpook, carnotaurus, allosaurus, baryonyx, troodon, spinosaurus,
          grumblesaurus, grinasaurus,
-         cod, salmon, clownfish, blueTang
+         cod, salmon, clownfish, blueTang,
+         pachy, iguanodon, therizino, gallimimus, oviraptor, microraptor
 }
 
 /// Kinds of particle burst the game can ask for.
@@ -174,6 +175,30 @@ struct MobSpecies {
                    walkSpeed: 1.3, runSpeed: 4.2, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: false,
                    detectRange: 0, drops: [MobDrop(item: "tropical_fish", min: 1, max: 1, chance: 1)],
                    callPitch: 1, deepCall: false),
+        .pachy: MobSpecies(kind: .pachy, displayName: "Pachycephalosaurus", hostile: false, maxHealth: 22, width: 0.9, height: 1.6,
+                   walkSpeed: 1.3, runSpeed: 4.2, damage: 4, attackReach: 1.3, attackCooldown: 1.4, ranged: false, fireproof: false,
+                   detectRange: 0, drops: [MobDrop(item: "raw_dino_meat", min: 1, max: 3, chance: 1), MobDrop(item: "dino_bone", min: 0, max: 2, chance: 1)],
+                   callPitch: 0.95, deepCall: true),
+        .iguanodon: MobSpecies(kind: .iguanodon, displayName: "Iguanodon", hostile: false, maxHealth: 34, width: 1.1, height: 2.4,
+                   walkSpeed: 1.0, runSpeed: 3.0, damage: 4, attackReach: 1.6, attackCooldown: 1.8, ranged: false, fireproof: false,
+                   detectRange: 0, drops: [MobDrop(item: "raw_dino_meat", min: 2, max: 4, chance: 1), MobDrop(item: "dino_hide", min: 1, max: 2, chance: 1)],
+                   callPitch: 0.75, deepCall: true),
+        .therizino: MobSpecies(kind: .therizino, displayName: "Therizinosaurus", hostile: false, maxHealth: 50, width: 1.2, height: 3.2,
+                   walkSpeed: 1.0, runSpeed: 3.2, damage: 7, attackReach: 2.0, attackCooldown: 1.6, ranged: false, fireproof: false,
+                   detectRange: 0, drops: [MobDrop(item: "raw_dino_meat", min: 2, max: 5, chance: 1), MobDrop(item: "feather", min: 2, max: 5, chance: 1), MobDrop(item: "raptor_claw", min: 1, max: 2, chance: 0.7)],
+                   callPitch: 0.6, deepCall: true),
+        .gallimimus: MobSpecies(kind: .gallimimus, displayName: "Gallimimus", hostile: false, maxHealth: 12, width: 0.7, height: 1.9,
+                   walkSpeed: 1.8, runSpeed: 7.0, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: false,
+                   detectRange: 0, drops: [MobDrop(item: "raw_poultry", min: 1, max: 2, chance: 1), MobDrop(item: "feather", min: 0, max: 2, chance: 1)],
+                   callPitch: 1.8, deepCall: false),
+        .oviraptor: MobSpecies(kind: .oviraptor, displayName: "Oviraptor", hostile: false, maxHealth: 8, width: 0.6, height: 1.1,
+                   walkSpeed: 1.5, runSpeed: 4.8, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: false,
+                   detectRange: 0, drops: [MobDrop(item: "feather", min: 1, max: 3, chance: 1), MobDrop(item: "raw_poultry", min: 0, max: 1, chance: 0.7)],
+                   callPitch: 2.3, deepCall: false),
+        .microraptor: MobSpecies(kind: .microraptor, displayName: "Microraptor", hostile: false, maxHealth: 6, width: 0.5, height: 0.5,
+                   walkSpeed: 2.6, runSpeed: 5.0, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: false,
+                   detectRange: 0, drops: [MobDrop(item: "feather", min: 1, max: 3, chance: 1)],
+                   callPitch: 2.8, deepCall: false),
         .grinasaurus: MobSpecies(kind: .grinasaurus, displayName: "Happy Grumblesaurus", hostile: false, maxHealth: 320, width: 2.2, height: 4.4,
                    walkSpeed: 1.2, runSpeed: 2.0, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: true,
                    detectRange: 0, drops: [], callPitch: 0.6, deepCall: true),
@@ -181,13 +206,13 @@ struct MobSpecies {
 
     static func of(_ kind: MobKind) -> MobSpecies { table[kind]! }
 
-    var flying: Bool { kind == .ptero }
+    var flying: Bool { kind == .ptero || kind == .microraptor }
 
     /// Fish: they swim anywhere in the water and flop about on land.
     var aquatic: Bool { [.cod, .salmon, .clownfish, .blueTang].contains(kind) }
 
     /// Neutral creatures leave you alone until you hit them, then fight back.
-    var neutral: Bool { [.trikey, .longneck, .stego, .ankylo, .parasaur, .pookpook].contains(kind) }
+    var neutral: Bool { [.trikey, .longneck, .stego, .ankylo, .parasaur, .pookpook, .pachy, .iguanodon, .therizino].contains(kind) }
 
     var callSound: String {
         switch kind {
@@ -983,6 +1008,24 @@ final class MobManager {
             guard allowFriendly, !s.isNight, light.sky > 0.7, goodGround else { return nil }
             if ground == Blocks.sand { return roll < 0.6 ? .dodo : .pookpook }
             if (biome == .swamp || biome == .fernJungle) && roll < 0.35 { return .sailback }
+            // The newer dinosaurs, each at home in its own kind of country.
+            let roll2 = Double.random(in: 0..<1)
+            switch biome {
+            case .plains, .savanna, .flowerMeadow:
+                if roll2 < 0.2 { return .gallimimus }
+                if roll2 < 0.32 { return .pachy }
+            case .forest, .blossomGrove, .silverForest:
+                if roll2 < 0.16 { return .iguanodon }
+                if roll2 < 0.28 { return .oviraptor }
+                if roll2 < 0.36 { return .microraptor }
+            case .fernJungle:
+                if roll2 < 0.16 { return .therizino }
+                if roll2 < 0.28 { return .microraptor }
+                if roll2 < 0.38 { return .oviraptor }
+            case .mountains:
+                if roll2 < 0.25 { return .pachy }
+            default: break
+            }
             if biome == .snowyTundra || biome == .redwoodTaiga {
                 return roll < 0.4 ? .sheep : (roll < 0.65 ? .cow : (roll < 0.8 ? .pookpook : .stego))
             }

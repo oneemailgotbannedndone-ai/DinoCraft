@@ -125,6 +125,12 @@
     { "name": "spawn_egg_cod", "displayName": "Cod Spawn Egg" },
     { "name": "spawn_egg_salmon", "displayName": "Salmon Spawn Egg" },
     { "name": "spawn_egg_clownfish", "displayName": "Clownfish Spawn Egg" },
-    { "name": "spawn_egg_blue_tang", "displayName": "Blue Tang Spawn Egg" }
+    { "name": "spawn_egg_blue_tang", "displayName": "Blue Tang Spawn Egg" },
+    { "name": "spawn_egg_pachy", "displayName": "Pachycephalosaurus Spawn Egg" },
+    { "name": "spawn_egg_iguanodon", "displayName": "Iguanodon Spawn Egg" },
+    { "name": "spawn_egg_therizino", "displayName": "Therizinosaurus Spawn Egg" },
+    { "name": "spawn_egg_gallimimus", "displayName": "Gallimimus Spawn Egg" },
+    { "name": "spawn_egg_oviraptor", "displayName": "Oviraptor Spawn Egg" },
+    { "name": "spawn_egg_microraptor", "displayName": "Microraptor Spawn Egg" }
   ]
 }

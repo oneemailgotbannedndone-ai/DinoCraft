@@ -1,5 +1,19 @@
 DinoCraft - the Toonland update
 
+New dinosaurs
+- Pachycephalosaurus: a dome-headed headbutter on the plains and mountains (leave it alone and it leaves you alone).
+- Gallimimus: an ostrich-like sprinter that races off when startled.
+- Iguanodon: a big, gentle forest plant-eater with spiked thumbs.
+- Oviraptor: a small, bright feathered forager with a tall crest.
+- Microraptor: a four-winged glider flitting through forests and jungles.
+- Therizinosaurus: a towering feathered giant with huge claws, deep in the jungle. Don't make it angry.
+- Each has its own spawn egg.
+
+Better villagers
+- Every villager has a face now, with eyes, brows and a big nose, and stands with folded arms.
+- Each profession dresses the part: Farmers in straw hats, Toolsmiths with goggles and a leather apron,
+  Masons in caps and white aprons, Fossil Hunters in explorer's helmets with a satchel and neckerchief.
+
 Better textures
 - Wood: planks with wavy grain, knots, lit edges and nail heads; bark with deep furrows; log ends with
   growth rings, a drying crack and a rim of bark (oak, redwood and palm).

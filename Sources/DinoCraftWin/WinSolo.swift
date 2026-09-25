@@ -743,6 +743,24 @@ final class WinSolo: CommandHost {
             boss.enraged = true
             Log.info("Automated check: King Grumblesaurus placed on the stage", category: "Game")
         }
+        if options.demoScreen == "dinos" || options.demoScreen == "villagers" {
+            // Automated check: the newer dinosaurs (or one villager of each profession) lined up in front of you.
+            let look = s.player.lookDirection
+            let forward = simd_normalize(DVec3(look.x, 0, look.z)), right = DVec3(-forward.z, 0, forward.x)
+            let dinos = options.demoScreen == "dinos"
+            let lineup: [(MobKind, Int)] = dinos
+                ? [(.gallimimus, 0), (.pachy, 0), (.iguanodon, 0), (.therizino, 0), (.oviraptor, 0), (.microraptor, 0)]
+                : (0..<VillagerProfession.all.count).map { (.villager, $0) }
+            for (i, entry) in lineup.enumerated() {
+                let across = (Double(i) - Double(lineup.count - 1) / 2) * (dinos ? 3.2 : 1.4)
+                let spot = s.player.position + forward * (dinos ? 7 : 4) + right * across
+                let y = s.world.findStandingY(Int(floor(spot.x)), Int(floor(spot.z)), near: Int(s.player.position.y)) ?? Int(s.player.position.y)
+                let mob = s.mobs.spawn(entry.0, at: DVec3(spot.x, Double(y) + (entry.0 == .microraptor ? 2.5 : 0), spot.z))
+                mob.variant = entry.1
+                mob.yaw = atan2(forward.x, forward.z) + (dinos ? 0.6 : 0)
+            }
+            return
+        }
         guard options.demoEntities else { return }
         let look = s.player.lookDirection
         let forward = simd_normalize(DVec3(look.x, 0, look.z))

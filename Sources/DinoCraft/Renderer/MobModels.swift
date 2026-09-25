@@ -22,17 +22,34 @@ struct MobPart {
 /// Voxel box models for every creature, built once. Models face -Z; parts
 /// rotate around their pivot for walk cycles, head bobs and tail sway.
 final class MobModelLibrary {
-    private var models: [MobKind: [MobPart]] = [:]
+    private var models: [MobKind: [[MobPart]]] = [:]
     let spit: ModelMesh?
 
     init(device: MTLDevice) {
-        for kind in MobKind.allCases { models[kind] = MobModelLibrary.build(kind, device: device) }
+        for kind in MobKind.allCases {
+            models[kind] = (0..<CreatureShapes.variantCount(kind)).map { MobModelLibrary.build(kind, variant: $0, device: device) }
+        }
         var v: [ModelVertex] = []
         ModelBuilder.box(&v, min: SIMD3(repeating: -0.12), max: SIMD3(repeating: 0.12), color: MobModelLibrary.c(0x9ADB4A), emissive: 1)
         spit = ModelMesh(device: device, vertices: v, label: "Spit")
     }
 
-    func parts(_ kind: MobKind) -> [MobPart] { models[kind] ?? [] }
+    /// The model for a creature; villagers dress by profession (`variant`).
+    func parts(_ kind: MobKind, variant: Int = 0) -> [MobPart] {
+        guard let looks = models[kind], !looks.isEmpty else { return [] }
+        return looks[max(0, variant) % looks.count]
+    }
+
+    private static func role(_ r: ShapeRole) -> PartRole {
+        switch r {
+        case .body: return .body
+        case .head: return .head
+        case .tail: return .tail
+        case .leg(let phase): return .leg(phase)
+        case .segment(let i): return .segment(i)
+        case .wing(let side): return .wing(side)
+        }
+    }
 
     static func c(_ hex: UInt32) -> SIMD4<Float> {
         func lin(_ v: UInt32) -> Float {
@@ -80,8 +97,12 @@ final class MobModelLibrary {
         m.add(.wing(1), SIMD3(0.07, h0 + 0.05, -0.1) * s, [b(0, -0.01, -0.03, 0.09, 0.01, 0.05, fin, s: s)])
     }
 
-    private static func build(_ kind: MobKind, device: MTLDevice) -> [MobPart] {
+    private static func build(_ kind: MobKind, variant: Int, device: MTLDevice) -> [MobPart] {
         var m = Builder(device: device)
+        if let shared = CreatureShapes.parts(kind, variant: variant) {
+            for part in shared { m.add(role(part.role), part.pivot, part.boxes.map { ($0.min, $0.max, c($0.color), $0.glow) }) }
+            return m.parts
+        }
         switch kind {
         case .trikey:
             let body = c(0x7FA35A), belly = c(0xC9B37A), frill = c(0xD9824A), horn = c(0xF2EBD6), dark = c(0x5A7A3E)
@@ -296,17 +317,6 @@ final class MobModelLibrary {
             m.add(.tail, SIMD3(0, 0.35, 0.35), [b(-0.08, 0, 0, 0.08, 0.14, 0.3, shell), b(-0.07, 0.12, 0.25, 0.07, 0.45, 0.4, shell),
                                                 b(-0.07, 0.42, 0.05, 0.07, 0.56, 0.38, shell), b(-0.05, 0.36, -0.08, 0.05, 0.5, 0.06, sting, glow: true)])
 
-        case .villager:
-            let robe = c(0x6A4E8A), trim = c(0xE0B24A), skin = c(0x9AB87A), dark = c(0x3E2E52), eye = c(0x1A1A1A)
-            m.add(.body, .zero, [b(-0.26, 0.72, -0.17, 0.26, 1.45, 0.17, robe), b(-0.27, 0.95, -0.18, 0.27, 1.02, 0.18, trim),
-                                 b(-0.36, 0.98, -0.12, -0.26, 1.42, 0.1, robe), b(0.26, 0.98, -0.12, 0.36, 1.42, 0.1, robe),
-                                 b(-0.3, 1.08, -0.3, 0.3, 1.2, -0.17, skin)])
-            m.add(.head, SIMD3(0, 1.45, 0), [b(-0.2, 0, -0.2, 0.2, 0.42, 0.2, skin), b(-0.1, 0.06, -0.44, 0.1, 0.24, -0.2, skin),
-                                             b(-0.15, 0.25, -0.21, -0.07, 0.32, -0.19, eye), b(0.07, 0.25, -0.21, 0.15, 0.32, -0.19, eye),
-                                             b(-0.05, 0.42, -0.14, 0.05, 0.62, 0.22, trim)])
-            m.add(.leg(0), SIMD3(-0.12, 0.72, 0), [b(-0.09, -0.72, -0.09, 0.09, 0, 0.09, dark)])
-            m.add(.leg(.pi), SIMD3(0.12, 0.72, 0), [b(-0.09, -0.72, -0.09, 0.09, 0, 0.09, dark)])
-
         case .stego:
             let body = c(0x8A7A4A), belly = c(0xC8B888), plate = c(0xC8602A), plate2 = c(0xE0A03A), dark = c(0x5E5230)
             var boxes = [b(-0.55, 0.72, -0.9, 0.55, 1.5, 1.0, body), b(-0.5, 0.66, -0.8, 0.5, 0.74, 0.9, belly)]
@@ -353,6 +363,8 @@ final class MobModelLibrary {
                 }
                 m.add(.segment(i), SIMD3(0, 0, z), boxes)
             }
+        default:
+            break   // drawn from CreatureShapes above
         }
         return m.parts
     }
@@ -400,7 +412,7 @@ extension ModelRenderer {
             let base = MathUtil.translation(rel) * MathUtil.rotationY(Float(m.yaw)) * MathUtil.rotationZ(tip)
             let walk = Float(m.walkPhase), amount = Float(m.moveAmount), lunge = Float(m.lunge)
             let seed = Double(m.id)
-            for part in library.parts(m.species.kind) {
+            for part in library.parts(m.species.kind, variant: m.variant) {
                 let local: Mat4
                 switch part.role {
                 case .body:

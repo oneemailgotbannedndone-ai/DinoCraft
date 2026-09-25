@@ -9,7 +9,8 @@ import DinoCraftCore
 enum CreatureKind: String, CaseIterable {
     case trikey, dodo, longneck, raptor, spitter, crawler, magmaRaptor, villager, stego, ankylo, rex, compy, ptero, parasaur,
          sailback, boneWalker, scorpion, pig, cow, sheep, chicken, pookpook, carnotaurus, allosaurus, baryonyx, troodon, spinosaurus,
-         grumblesaurus, grinasaurus, cod, salmon, clownfish, blueTang
+         grumblesaurus, grinasaurus, cod, salmon, clownfish, blueTang,
+         pachy, iguanodon, therizino, gallimimus, oviraptor, microraptor
 }
 
 enum PartRole {
@@ -69,7 +70,22 @@ enum CreatureModels {
         m.add(.wing(1), SIMD3(0.07, h0 + 0.05, -0.1) * s, [b(0, -0.01, -0.03, 0.09, 0.01, 0.05, fin, s: s)])
     }
 
-    static func build(_ kind: CreatureKind) -> [CreaturePart] {
+    private static func role(_ r: ShapeRole) -> PartRole {
+        switch r {
+        case .body: return .body
+        case .head: return .head
+        case .tail: return .tail
+        case .leg(let phase): return .leg(phase)
+        case .segment(let i): return .segment(i)
+        case .wing(let side): return .wing(side)
+        }
+    }
+
+    static func build(_ kind: CreatureKind, variant: Int = 0) -> [CreaturePart] {
+        // Villagers and the newer dinosaurs share one definition with the Mac.
+        if let mob = MobKind(rawValue: kind.rawValue), let shared = CreatureShapes.parts(mob, variant: variant) {
+            return shared.map { part in CreaturePart(role: role(part.role), pivot: part.pivot, boxes: part.boxes.map { ($0.min, $0.max, c($0.color), $0.glow) }) }
+        }
         var m = Builder()
         switch kind {
         case .trikey:
@@ -285,17 +301,6 @@ enum CreatureModels {
             m.add(.tail, SIMD3(0, 0.35, 0.35), [b(-0.08, 0, 0, 0.08, 0.14, 0.3, shell), b(-0.07, 0.12, 0.25, 0.07, 0.45, 0.4, shell),
                                                 b(-0.07, 0.42, 0.05, 0.07, 0.56, 0.38, shell), b(-0.05, 0.36, -0.08, 0.05, 0.5, 0.06, sting, glow: true)])
 
-        case .villager:
-            let robe = c(0x6A4E8A), trim = c(0xE0B24A), skin = c(0x9AB87A), dark = c(0x3E2E52), eye = c(0x1A1A1A)
-            m.add(.body, .zero, [b(-0.26, 0.72, -0.17, 0.26, 1.45, 0.17, robe), b(-0.27, 0.95, -0.18, 0.27, 1.02, 0.18, trim),
-                                 b(-0.36, 0.98, -0.12, -0.26, 1.42, 0.1, robe), b(0.26, 0.98, -0.12, 0.36, 1.42, 0.1, robe),
-                                 b(-0.3, 1.08, -0.3, 0.3, 1.2, -0.17, skin)])
-            m.add(.head, SIMD3(0, 1.45, 0), [b(-0.2, 0, -0.2, 0.2, 0.42, 0.2, skin), b(-0.1, 0.06, -0.44, 0.1, 0.24, -0.2, skin),
-                                             b(-0.15, 0.25, -0.21, -0.07, 0.32, -0.19, eye), b(0.07, 0.25, -0.21, 0.15, 0.32, -0.19, eye),
-                                             b(-0.05, 0.42, -0.14, 0.05, 0.62, 0.22, trim)])
-            m.add(.leg(0), SIMD3(-0.12, 0.72, 0), [b(-0.09, -0.72, -0.09, 0.09, 0, 0.09, dark)])
-            m.add(.leg(.pi), SIMD3(0.12, 0.72, 0), [b(-0.09, -0.72, -0.09, 0.09, 0, 0.09, dark)])
-
         case .stego:
             let body = c(0x8A7A4A), belly = c(0xC8B888), plate = c(0xC8602A), plate2 = c(0xE0A03A), dark = c(0x5E5230)
             var boxes = [b(-0.55, 0.72, -0.9, 0.55, 1.5, 1.0, body), b(-0.5, 0.66, -0.8, 0.5, 0.74, 0.9, belly)]
@@ -342,6 +347,8 @@ enum CreatureModels {
                 }
                 m.add(.segment(i), SIMD3(0, 0, z), boxes)
             }
+        default:
+            break   // drawn from CreatureShapes above
         }
         return m.parts
     }
@@ -372,12 +379,16 @@ enum CreatureModels {
 
     // MARK: - Drawing
 
-    private static var cache: [CreatureKind: [CreaturePart]] = [:]
+    private static var cache: [String: [CreaturePart]] = [:]
 
-    static func parts(_ kind: CreatureKind) -> [CreaturePart] {
-        if let parts = cache[kind] { return parts }
-        let parts = build(kind)
-        cache[kind] = parts
+    /// The model for a creature; villagers dress by profession (`variant`).
+    static func parts(_ kind: CreatureKind, variant: Int = 0) -> [CreaturePart] {
+        let looks = MobKind(rawValue: kind.rawValue).map { CreatureShapes.variantCount($0) } ?? 1
+        let look = max(0, variant) % max(1, looks)
+        let key = "\(kind.rawValue)#\(look)"
+        if let parts = cache[key] { return parts }
+        let parts = build(kind, variant: look)
+        cache[key] = parts
         return parts
     }
 
@@ -412,7 +423,7 @@ enum CreatureModels {
             : (dying > 0 ? SIMD4(0.9, 0.1, 0.1, 0.45) : (kind == .sheep && variant == 1 ? SIMD4(0.08, 0.08, 0.1, 0.8) : SIMD4(0, 0, 0, 0)))
         let tip: Float = dying > 0 ? min(1, dying / 0.4) * (.pi / 2) : 0
         let base = MathUtil.translation(rel) * MathUtil.rotationY(yaw) * MathUtil.rotationZ(tip)
-        for part in parts(kind) {
+        for part in parts(kind, variant: variant) {
             let local: Mat4
             switch part.role {
             case .body:
