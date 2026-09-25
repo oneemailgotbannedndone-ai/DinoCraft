@@ -24,6 +24,7 @@ enum SlotView {
         if let stack, let info = e.items[stack.item] {
             let lift = h * 1.5
             d.itemIcon(info, r.inset(7).offset(0, -lift), alpha: dim ? 0.4 : 1)
+            if stack.enchant != 0 { HUD.enchantGlint(d, r.inset(7).offset(0, -lift), time: ui.time) }
             if showCount { countLabel(d, stack, r) }
             if let durability = info.maxDurability, stack.damage > 0 {
                 let frac = 1 - Float(stack.damage) / Float(durability)
@@ -45,6 +46,9 @@ enum SlotView {
         guard let info = e.items[stack.item] else { return }
         let d = ui.draw
         var lines: [(String, Color, Float, FontFace)] = [(info.displayName, Theme.text, 16, .display)]
+        for (enchantment, level) in Enchantments.list(stack.enchant) {
+            lines.append(("\(enchantment.displayName) \(Enchantments.roman(level))", Color(hex: 0xC8A0FF), 13, .body))
+        }
         if let tool = info.tool {
             let tier = ["", "Wood", "Stone", "Iron", "Diamond"][max(0, min(4, tool.level))]
             lines.append(("\(tier) \(tool.kind.rawValue.capitalized)", Theme.textMuted, 13, .body))

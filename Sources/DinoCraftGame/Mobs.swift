@@ -294,6 +294,8 @@ final class Mob {
     var hatchTimer = 0.0
     /// In love: where its partner is.
     var mateTarget: DVec3?
+    /// Experience already handed out for defeating it.
+    var rewarded = false
 
     init(species: MobSpecies, position: DVec3) {
         id = Mob.nextID

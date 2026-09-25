@@ -129,6 +129,15 @@ final class GameSession {
     var drawingBow = false
     /// Holding up a shield (see `Weapons`).
     var blocking = false
+    /// Experience points collected (see `Experience`), and the orbs lying about.
+    var xpPoints = 0
+    var orbs: [XPOrb] = []
+    /// Villager quests you've taken on (see `Quests`).
+    var quests: [Quest] = []
+    /// Changes after each enchantment so the table offers something new.
+    var enchantSeed = UInt64.random(in: 1...UInt64.max)
+    var onOpenEnchanting: ((BlockPos) -> Void)?
+    var onOpenQuestBook: (() -> Void)?
     var smelting: SmeltingRegistry?
     var onOpenContainer: ((BlockPos, ContainerKind) -> Void)?
     var onOpenTrade: ((Mob) -> Void)?
@@ -179,15 +188,17 @@ final class GameSession {
             air = saved.air ?? 10
             for s in saved.inventory where (0..<Inventory.size).contains(s.slot) {
                 if let id = items.id(named: s.item) {
-                    inventory.slots[s.slot] = ItemStack(item: id, count: max(1, s.count), damage: s.damage ?? 0)
+                    inventory.slots[s.slot] = ItemStack(item: id, count: max(1, s.count), damage: s.damage ?? 0, enchant: UInt16(clamping: s.enchant ?? 0))
                 } else {
                     Log.warning("Dropping unknown saved item '\(s.item)'", category: "Save")
                 }
             }
             for s in saved.armor ?? [] where (0..<4).contains(s.slot) {
-                if let id = items.id(named: s.item) { armor[s.slot] = ItemStack(item: id, count: 1, damage: s.damage ?? 0) }
+                if let id = items.id(named: s.item) { armor[s.slot] = ItemStack(item: id, count: 1, damage: s.damage ?? 0, enchant: UInt16(clamping: s.enchant ?? 0)) }
             }
             inventory.selected = saved.selectedSlot
+            xpPoints = max(0, saved.xp ?? 0)
+            quests = saved.quests.flatMap { try? JSONDecoder().decode([Quest].self, from: $0) } ?? []
             needsSpawnResolve = false
             spawnHint = Int(saved.y)
         } else {
@@ -211,6 +222,12 @@ final class GameSession {
             crops.load(from: cropsURL)
         }
         advancements.load(from: advancementsURL)
+        advancements.onRecord = { [weak self] type, target, amount in
+            guard let self else { return }
+            self.noteQuestEvent(type, target, amount: amount)
+            // Smelting gives a little experience as you take the results out.
+            if type == "smelt" { self.addXP(max(1, amount * 7 / 10)) }
+        }
         if let saved = meta.weather.flatMap({ WeatherKind(rawValue: $0) }) { weather.set(saved, duration: meta.weatherTimer) }
         Log.info("Session '\(meta.name)' opened (\(isNew ? "new" : "existing"), \(meta.gameMode.rawValue)\(meta.isHardcore ? ", hardcore" : ""), \(dim.rawValue), seed \(meta.seedText))", category: "Game")
     }
@@ -397,6 +414,7 @@ final class GameSession {
         arrows.update(dt: dt, session: self)
         collectArrows()
         updateFishing(dt)
+        updateOrbs(dt)
         updateNavigation(dt)
         updateHandAnimation(dt)
         survival(dt)
@@ -469,7 +487,8 @@ final class GameSession {
         guard info.hardness > 0 else { return 0 }
         let tool = heldTool
         let correct = info.tool != .none && tool?.kind == info.tool
-        let speed = correct ? Double(tool?.speed ?? 1) : 1
+        var speed = correct ? Double(tool?.speed ?? 1) : 1
+        if correct { speed *= 1 + 0.35 * heldEnchantLevel(.efficiency) }
         var t = Double(info.hardness) * (canHarvest(info) ? 1.5 : 5.0) / speed
         if player.headInWater { t *= 3 }
         if !player.onGround && !player.flying && !player.inWater { t *= 2 }
@@ -567,7 +586,14 @@ final class GameSession {
         let use = s.binding(for: .use)
         // Right-clicking a creature (taming, trading, boarding) comes before winding up a weapon.
         let usedOnCreature = input.wasPressed(use) && targetMob.map { interactWithCreature($0) } == true
+        // So does opening an enchanting table (you hold the weapon you want to enchant).
+        let openedTable = !usedOnCreature && input.wasPressed(use) && !player.isSneaking && targetMob == nil
+            && target.map { blocks[$0.id]?.name == Enchanting.table } == true
         if usedOnCreature {
+            useCooldown = 0.22
+        } else if openedTable, let hit = target {
+            swing()
+            onOpenEnchanting?(hit.block)
             useCooldown = 0.22
         } else if handleHeldWeapon(input, use: use, dt: dt) {
             // Bow, spear, crossbow or shield
@@ -601,7 +627,7 @@ final class GameSession {
             return
         }
         let tool = heldTool
-        var damage = Double(tool?.damage ?? 1)
+        var damage = Double(tool?.damage ?? 1) + heldEnchantLevel(.sharpness) * 1.25
         if player.gameMode == .creative { damage *= 6 }
         let critical = !player.onGround && !player.inWater && player.velocity.y < -1
         if critical { damage *= 1.5 }
@@ -610,9 +636,10 @@ final class GameSession {
         if !(network?.attackMob(mob, damage: damage, knockback: flat) ?? false) {
             mobs.hurt(mob, amount: damage, knockback: flat, session: self)
             mobs.alertGuardians(against: mob, near: player.position)
-            if mob.health <= 0 {
+            if mob.health <= 0 && !mob.rewarded {
                 advancements.record("kill", mob.species.kind.rawValue)
                 if mob.species.hostile { advancements.record("kill", "hostile") }
+                rewardKill(mob)
             }
         }
         combatCooldown = 0.35
@@ -641,7 +668,7 @@ final class GameSession {
         }
         let dir = player.lookDirection
         arrows.fire(from: player.eyePosition + dir * 0.5 - DVec3(0, 0.08, 0), velocity: dir * (12 + 38 * power),
-                    damage: (1.5 + 7.5 * power).rounded(), pickup: survival)
+                    damage: ((1.5 + 7.5 * power) * (1 + 0.25 * heldEnchantLevel(.power))).rounded(), pickup: survival)
         swing()
         onSound?("bow_shoot", 0.7, Float(0.85 + power * 0.3))
         advancements.record("shoot")
@@ -654,9 +681,10 @@ final class GameSession {
         let knockback = simd_length(flat) > 0.01 ? simd_normalize(flat) * 0.6 : .zero
         if !(network?.attackMob(mob, damage: arrow.damage, knockback: knockback) ?? false) {
             mobs.hurt(mob, amount: arrow.damage, knockback: knockback, session: self)
-            if mob.health <= 0 {
+            if mob.health <= 0 && !mob.rewarded {
                 advancements.record("kill", mob.species.kind.rawValue)
                 if mob.species.hostile { advancements.record("kill", "hostile") }
+                rewardKill(mob)
             }
         }
         let distance = simd_distance(arrow.origin, mob.position)
@@ -719,6 +747,7 @@ final class GameSession {
 
         if harvest && player.gameMode == .survival {
             if canHarvest(info) && !isRemote { giveDrops(info, at: pos) }
+            if canHarvest(info) { spawnXP(Experience.points(forMining: info.name), at: DVec3(Double(pos.x) + 0.5, Double(pos.y) + 0.5, Double(pos.z) + 0.5)) }
             if info.hardness > 0, heldTool != nil, inventory.damageSelectedTool() {
                 onSound?("tool_break", 0.8, 1)
                 onToast?("Your tool broke!")
@@ -736,7 +765,12 @@ final class GameSession {
         for drop in info.drops {
             if let chance = drop.chance, Float.random(in: 0..<1) >= chance { continue }
             let lo = drop.min ?? 1, hi = max(lo, drop.max ?? lo)
-            let count = Int.random(in: lo...hi)
+            var count = Int.random(in: lo...hi)
+            // Fortune: ores sometimes give extra.
+            if info.name.hasSuffix("_ore"), drop.item != info.name, let held = inventory.selectedStack {
+                let fortune = Enchantments.level(.fortune, in: held.enchant)
+                if fortune > 0 { count += Int.random(in: 0...fortune) }
+            }
             guard count > 0, let item = items.id(named: drop.item) else { continue }
             let velocity = DVec3(Double.random(in: -1.4...1.4), Double.random(in: 3...4.5), Double.random(in: -1.4...1.4))
             entities.spawnItem(ItemStack(item: item, count: count), at: center, velocity: velocity, pickupDelay: 0.3)
@@ -1337,11 +1371,12 @@ final class GameSession {
         }
     }
 
-    func receiveItem(name: String, count: Int, damage: Int) {
+    func receiveItem(name: String, count: Int, damage: Int, enchant: Int = 0) {
         guard let id = items.id(named: name) else { return }
         advancements.record("pickup", name, amount: count)
-        let left = inventory.add(ItemStack(item: id, count: count, damage: damage))
-        if left > 0 { dropStack(ItemStack(item: id, count: left, damage: damage), thrown: false) }
+        let stack = ItemStack(item: id, count: count, damage: damage, enchant: UInt16(clamping: enchant))
+        let left = inventory.add(stack)
+        if left > 0 { dropStack(stack.with(count: left), thrown: false) }
         onSound?("pickup", 0.35, Float.random(in: 0.9...1.35))
     }
 
@@ -1392,7 +1427,7 @@ final class GameSession {
 
     private func attackRemotePlayer(_ target: RemotePlayer) {
         let tool = heldTool
-        var damage = Double(tool?.damage ?? 1)
+        var damage = Double(tool?.damage ?? 1) + heldEnchantLevel(.sharpness) * 1.25
         if !player.onGround && !player.inWater && player.velocity.y < -1 { damage *= 1.5 }
         let look = player.lookDirection
         let flat = simd_length(DVec3(look.x, 0, look.z)) > 0.01 ? simd_normalize(DVec3(look.x, 0, look.z)) : DVec3(0, 0, -1)
@@ -1521,8 +1556,12 @@ final class GameSession {
     private func absorbArmor(_ amount: Double) -> Double {
         let points = armorPoints
         guard points > 0, amount < 1000, !godMode else { return amount }
+        var protection = 0
         for i in armor.indices {
             guard var piece = armor[i], let info = items[piece.item], let spec = info.armor else { continue }
+            protection += Enchantments.level(.protection, in: piece.enchant)
+            let unbreaking = Enchantments.level(.unbreaking, in: piece.enchant)
+            if unbreaking > 0 && Int.random(in: 0...unbreaking) != 0 { continue }
             piece.damage += 1
             if piece.damage >= spec.durability {
                 armor[i] = nil
@@ -1532,7 +1571,7 @@ final class GameSession {
                 armor[i] = piece
             }
         }
-        return amount * (1 - min(0.8, Double(points) * 0.04))
+        return amount * (1 - min(0.85, Double(points) * 0.04 + Double(protection) * 0.04))
     }
 
     // MARK: Beds
@@ -1576,6 +1615,13 @@ final class GameSession {
         deathSpot = DeathSpot(position: player.position, dimension: dimension)
         deathMessage = cause
         advancements.record("die")
+        // Some of your experience spills out as orbs; the rest is lost.
+        if !meta.rule("keepInventory") {
+            let dropped = min(xpLevel * 7, 100)
+            xpPoints = 0
+            orbs.removeAll()
+            if !isRemote { spawnXP(dropped, at: player.position + DVec3(0, 0.5, 0)) }
+        }
         breakingPos = nil
         breakProgress = 0
         onSound?("death", 0.8, 1)
@@ -1702,7 +1748,7 @@ final class GameSession {
         var stacks: [SavedStack] = []
         for (i, slot) in inventory.slots.enumerated() {
             guard let s = slot, let info = items[s.item] else { continue }
-            stacks.append(SavedStack(slot: i, item: info.name, count: s.count, damage: s.damage > 0 ? s.damage : nil))
+            stacks.append(SavedStack(slot: i, item: info.name, count: s.count, damage: s.damage > 0 ? s.damage : nil, enchant: s.enchant))
         }
         var save = PlayerSave(x: player.position.x, y: player.position.y, z: player.position.z, yaw: player.yaw, pitch: player.pitch,
                               health: isDead ? 20 : health, hunger: isDead ? 20 : hunger, saturation: saturation, air: air,
@@ -1710,9 +1756,11 @@ final class GameSession {
                               dimension: dimension == .overworld ? nil : dimension.rawValue)
         let worn = armor.enumerated().compactMap { i, slot -> SavedStack? in
             guard let s = slot, let info = items[s.item] else { return nil }
-            return SavedStack(slot: i, item: info.name, count: 1, damage: s.damage > 0 ? s.damage : nil)
+            return SavedStack(slot: i, item: info.name, count: 1, damage: s.damage > 0 ? s.damage : nil, enchant: s.enchant)
         }
         save.armor = worn.isEmpty ? nil : worn
+        save.xp = xpPoints > 0 ? xpPoints : nil
+        save.quests = quests.isEmpty ? nil : try? JSONEncoder().encode(quests)
         return save
     }
 

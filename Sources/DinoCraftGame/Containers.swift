@@ -174,7 +174,7 @@ final class ContainerManager {
                 let c = Container(kind: kind)
                 for st in s.slots where (0..<kind.slotCount).contains(st.slot) {
                     if let id = items.id(named: st.item) {
-                        c.slots[st.slot] = ItemStack(item: id, count: max(1, st.count), damage: st.damage ?? 0)
+                        c.slots[st.slot] = ItemStack(item: id, count: max(1, st.count), damage: st.damage ?? 0, enchant: UInt16(clamping: st.enchant ?? 0))
                     }
                 }
                 c.burnLeft = s.burnLeft ?? 0
@@ -192,7 +192,7 @@ final class ContainerManager {
         let saved: [SavedContainer] = containers.map { pos, c in
             let stacks = c.slots.enumerated().compactMap { i, s -> SavedStack? in
                 guard let s, let info = items[s.item] else { return nil }
-                return SavedStack(slot: i, item: info.name, count: s.count, damage: s.damage > 0 ? s.damage : nil)
+                return SavedStack(slot: i, item: info.name, count: s.count, damage: s.damage > 0 ? s.damage : nil, enchant: s.enchant)
             }
             return SavedContainer(x: pos.x, y: pos.y, z: pos.z, kind: c.kind.rawValue, slots: stacks,
                                   burnLeft: c.burnLeft > 0 ? c.burnLeft : nil, burnTotal: c.burnTotal > 0 ? c.burnTotal : nil,
@@ -230,13 +230,13 @@ final class ContainerManager {
     }
 
     static func netSlots(_ slots: [ItemStack?], items: ItemRegistry) -> [NetStack?] {
-        slots.map { s in s.flatMap { st in items[st.item].map { NetStack(item: $0.name, count: st.count, damage: st.damage > 0 ? st.damage : nil) } } }
+        slots.map { s in s.flatMap { st in items[st.item].map { NetStack(item: $0.name, count: st.count, damage: st.damage > 0 ? st.damage : nil, enchant: st.enchant > 0 ? Int(st.enchant) : nil) } } }
     }
 
     static func stacks(_ net: [NetStack?], count: Int, items: ItemRegistry) -> [ItemStack?] {
         var out = [ItemStack?](repeating: nil, count: count)
         for (i, s) in net.prefix(count).enumerated() {
-            if let s, let id = items.id(named: s.item) { out[i] = ItemStack(item: id, count: max(1, min(64, s.count)), damage: s.damage ?? 0) }
+            if let s, let id = items.id(named: s.item) { out[i] = ItemStack(item: id, count: max(1, min(64, s.count)), damage: s.damage ?? 0, enchant: UInt16(clamping: s.enchant ?? 0)) }
         }
         return out
     }

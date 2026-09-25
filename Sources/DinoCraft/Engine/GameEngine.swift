@@ -273,6 +273,8 @@ final class GameEngine: NSObject, MTKViewDelegate {
         s.smelting = smelting
         s.onOpenContainer = { [weak self] pos, kind in self?.openScreen(ContainerScreen(pos: pos, kind: kind)) }
         s.onOpenTrade = { [weak self] mob in self?.openScreen(TradeScreen(mob: mob)) }
+        s.onOpenEnchanting = { [weak self] pos in self?.openScreen(EnchantScreen(pos: pos)) }
+        s.onOpenQuestBook = { [weak self] in self?.openScreen(QuestBookScreen()) }
         s.onBlockBroken = { [weak self] pos, id in
             guard let self else { return }
             self.particles.blockBroken(pos, id: id, blocks: self.blocks)
@@ -556,6 +558,8 @@ final class GameEngine: NSObject, MTKViewDelegate {
         s.smelting = smelting
         s.onOpenContainer = { [weak self] pos, kind in self?.openScreen(ContainerScreen(pos: pos, kind: kind)) }
         s.onOpenTrade = { [weak self] mob in self?.openScreen(TradeScreen(mob: mob)) }
+        s.onOpenEnchanting = { [weak self] pos in self?.openScreen(EnchantScreen(pos: pos)) }
+        s.onOpenQuestBook = { [weak self] in self?.openScreen(QuestBookScreen()) }
         s.onBlockBroken = { [weak self] pos, id in
             guard let self else { return }
             self.particles.blockBroken(pos, id: id, blocks: self.blocks)

@@ -32,6 +32,10 @@ extension GameSession {
     func handleHeldWeapon(_ input: GameInput, use: InputBinding, dt: Double) -> Bool {
         guard let name = selectedItemName else { blocking = false; return false }
         switch name {
+        case Quests.book:
+            blocking = false
+            if input.wasPressed(use) { onOpenQuestBook?() }
+            return true
         case "bow", Weapons.spear:
             blocking = false
             // Hold to draw (full power after a second), release to shoot or throw.
@@ -106,7 +110,7 @@ extension GameSession {
         bowCharge = 0
         let dir = player.lookDirection
         arrows.fire(from: player.eyePosition + dir * 0.5 - DVec3(0, 0.08, 0), velocity: dir * 62,
-                    damage: 10, pickup: player.gameMode == .survival, kind: .bolt)
+                    damage: 10 * (1 + 0.25 * heldEnchantLevel(.power)), pickup: player.gameMode == .survival, kind: .bolt)
         swing()
         onSound?("bow_shoot", 0.8, 0.7)
         advancements.record("shoot", "crossbow")
@@ -122,7 +126,7 @@ extension GameSession {
         }
         let dir = player.lookDirection
         arrows.fire(from: player.eyePosition + dir * 0.6 - DVec3(0, 0.05, 0), velocity: dir * (10 + 22 * power),
-                    damage: (3 + 9 * power).rounded(), pickup: survival, kind: .spear, carried: survival ? st : nil)
+                    damage: ((3 + 9 * power) * (1 + 0.25 * heldEnchantLevel(.power))).rounded(), pickup: survival, kind: .spear, carried: survival ? st : nil)
         swing()
         onSound?("bow_shoot", 0.7, 0.55)
         advancements.record("shoot", "spear")

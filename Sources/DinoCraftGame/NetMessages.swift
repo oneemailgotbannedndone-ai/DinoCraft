@@ -151,12 +151,14 @@ struct DropItemMessage: Codable {
     var damage: Int
     var x: Double, y: Double, z: Double
     var vx: Double, vy: Double, vz: Double
+    var enchant: Int? = nil
 }
 
 struct GiveItemMessage: Codable {
     var item: String
     var count: Int
     var damage: Int
+    var enchant: Int? = nil
 }
 
 struct DamageMessage: Codable {
@@ -174,6 +176,7 @@ struct NetStack: Codable {
     var item: String
     var count: Int
     var damage: Int?
+    var enchant: Int?
 }
 
 struct ContainerPosMessage: Codable { var x: Int32, y: Int32, z: Int32 }

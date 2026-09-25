@@ -112,7 +112,7 @@ final class WinSessionClient: SessionNetwork {
             if m.cause.hasPrefix("Slain by ") { session?.noteCombat(with: String(m.cause.dropFirst(9))) }
         case .giveItem:
             guard let m = decode(GiveItemMessage.self, data) else { return }
-            session?.receiveItem(name: m.item, count: m.count, damage: m.damage)
+            session?.receiveItem(name: m.item, count: m.count, damage: m.damage, enchant: m.enchant ?? 0)
         case .worldTime:
             guard let m = decode(WorldTimeMessage.self, data) else { return }
             session?.debugSetTime(m.time)
@@ -163,7 +163,8 @@ final class WinSessionClient: SessionNetwork {
     func dropItem(_ stack: ItemStack, at position: DVec3, velocity: DVec3) -> Bool {
         guard let name = session?.items[stack.item]?.name else { return true }
         connection.send(.dropItem, DropItemMessage(item: name, count: stack.count, damage: stack.damage,
-                                                   x: position.x, y: position.y, z: position.z, vx: velocity.x, vy: velocity.y, vz: velocity.z))
+                                                   x: position.x, y: position.y, z: position.z, vx: velocity.x, vy: velocity.y, vz: velocity.z,
+                                                   enchant: stack.enchant > 0 ? Int(stack.enchant) : nil))
         return true
     }
 

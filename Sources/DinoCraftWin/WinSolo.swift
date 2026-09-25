@@ -12,6 +12,8 @@ final class WinSolo: CommandHost {
         case closed, pause, settings, inventory, crafting, creative, advancements
         case container(BlockPos, ContainerKind)
         case trade(Mob)
+        case enchanting(BlockPos)
+        case questBook
         case sleep(started: Double)
     }
 
@@ -136,6 +138,8 @@ final class WinSolo: CommandHost {
         s.onOpenCrafting = { [weak self] in self?.openScreen(.crafting) }
         s.onOpenContainer = { [weak self] pos, kind in self?.openScreen(.container(pos, kind)) }
         s.onOpenTrade = { [weak self] mob in self?.openScreen(.trade(mob)) }
+        s.onOpenEnchanting = { [weak self] pos in self?.openScreen(.enchanting(pos)) }
+        s.onOpenQuestBook = { [weak self] in self?.openScreen(.questBook) }
         s.onSleep = { [weak self] in
             guard let self else { return }
             self.openScreen(.sleep(started: self.clock))
@@ -580,6 +584,10 @@ final class WinSolo: CommandHost {
         if case .trade(let mob) = screen, mob.isDying || mob.removed || simd_distance(mob.position, s.player.position) > 8 {
             closeScreen()
         }
+        if case .enchanting(let pos) = screen,
+           blocks[s.world.block(pos)]?.name != Enchanting.table || simd_distance(DVec3(Double(pos.x) + 0.5, Double(pos.y), Double(pos.z) + 0.5), s.player.position) > 8 {
+            closeScreen()
+        }
         if s.isDead && mouseCaptured { setMouseCaptured(false) }
 
         updateAmbience(dt: dt)
@@ -759,6 +767,15 @@ final class WinSolo: CommandHost {
                 CreatureModels.appendBox(&v, m, SIMD3(-0.04, -0.04, 0.1), SIMD3(0.04, 0.04, 0.35), CreatureModels.c(0x5A3A1E), glow: false, tint: none)
             }
         }
+        for o in s.orbs where !o.removed {
+            // Experience orbs: small glowing gems that bob and pulse between green and yellow.
+            guard let r = rel(o.position + DVec3(0, 0.12 + sin(o.age * 4) * 0.05, 0)) else { continue }
+            let size = Float(0.035 + 0.015 * log2(Double(o.value) + 1))
+            let pulse = Float(0.5 + 0.5 * sin(o.age * 6 + Double(r.x)))
+            let m = MathUtil.translation(r) * MathUtil.rotationY(Float(o.age * 2))
+            CreatureModels.appendBox(&v, m, SIMD3(repeating: -size), SIMD3(repeating: size),
+                                     SIMD4(0.25 + 0.5 * pulse, 0.9, 0.08, 1), glow: true, tint: none)
+        }
         if let b = s.bobber, let r = rel(b.position) {
             // The fishing float (red over white) and the line sagging back to the rod.
             let spin = MathUtil.translation(r) * MathUtil.rotationY(Float(b.age * 0.7))
@@ -930,6 +947,48 @@ final class WinSolo: CommandHost {
             s.mount(mount)
             s.followMount()
             s.player.pitch = -0.25
+            return
+        }
+        if options.demoScreen == "enchanting" || options.demoScreen == "quests" || options.demoScreen == "questbook" || options.demoScreen == "xp" {
+            demoPlaced = true
+            let look = s.player.lookDirection
+            let forward = simd_normalize(DVec3(look.x, 0, look.z))
+            s.xpPoints = Experience.total(forLevel: 23) + 30
+            if let amber = items.id(named: "amber") { s.inventory.slots[8] = ItemStack(item: amber, count: 12) }
+            if let pick = items.id(named: "diamond_pickaxe") {
+                s.inventory.slots[0] = ItemStack(item: pick, count: 1, enchant: Enchantments.setting(.unbreaking, to: 1, in: 0))
+                s.inventory.selected = 0
+            }
+            if let sword = items.id(named: "iron_sword") {
+                s.inventory.slots[1] = ItemStack(item: sword, count: 1, enchant: Enchantments.setting(.sharpness, to: 2, in: 0))
+            }
+            switch options.demoScreen {
+            case "enchanting":
+                let p = s.player.position + forward * 2
+                let pos = BlockPos(Int32(floor(p.x)), Int32(floor(s.player.position.y)), Int32(floor(p.z)))
+                if let table = blocks.id(named: Enchanting.table) { _ = s.world.setBlock(pos, table) }
+                openScreen(.enchanting(pos))
+            case "quests", "questbook":
+                let villager = s.mobs.spawn(.villager, at: s.player.position + forward * 2.5)
+                villager.variant = 3
+                if let offer = Quests.offer(from: villager, day: s.day) {
+                    s.quests = [offer]
+                    s.quests[0].id = "demo-1"
+                }
+                let other = Quest(id: "demo-2", giver: "Toolsmith", kind: .mine, target: "iron_ore", count: 8, progress: 5, emeralds: 4, xp: 24)
+                s.quests.append(other)
+                if let bones = items.id(named: "dino_bone") { s.inventory.slots[2] = ItemStack(item: bones, count: 12) }
+                openScreen(options.demoScreen == "quests" ? .trade(villager) : .questBook)
+            default:
+                s.xpPoints = Experience.total(forLevel: 7) + 9
+                for i in 0..<6 {
+                    let a = Double(i) / 6 * 2 * .pi
+                    let orb = XPOrb(position: s.player.position + forward * 2.5 + DVec3(cos(a) * 0.8, 1.2 + sin(a) * 0.5, sin(a) * 0.3), velocity: .zero, value: [1, 3, 5, 10, 3, 1][i])
+                    orb.age = -1000   // stays put for the picture
+                    s.orbs.append(orb)
+                }
+                s.player.pitch = -0.3
+            }
             return
         }
         if options.demoScreen == "nursery" || options.demoScreen == "armory" || options.demoScreen == "sky" {

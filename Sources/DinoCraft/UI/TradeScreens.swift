@@ -27,7 +27,10 @@ final class TradeScreen: Screen {
         ui.dim(0.5)
         let rowH: Float = 64, gap: Float = 10
         let pw: Float = 600
-        let ph: Float = 150 + Float(profession.trades.count) * (rowH + gap) + 30
+        var questRows: [(quest: Quest, offer: Bool)] = []
+        if let offer = s.questOffer(from: mob) { questRows.append((offer, true)) }
+        for q in s.quests { questRows.append((q, false)) }
+        let ph: Float = 150 + Float(profession.trades.count + questRows.count) * (rowH + gap) + (questRows.isEmpty ? 0 : 34) + 30
         let a = appear(0, duration: 0.22)
         let panel = Rect(W / 2 - pw / 2, H / 2 - ph / 2 + (1 - a) * 12, pw, ph)
         d.opacity = a
@@ -46,6 +49,27 @@ final class TradeScreen: Screen {
             d.text("×\(t.resultCount)  \(result.displayName)", x: row.x + 204, y: row.y + 21, size: 15, color: Theme.text, maxWidth: row.w - 340)
             if ui.button("trade.\(i)", "Trade", Rect(row.maxX - 124, row.y + 10, 112, rowH - 20), enabled: ok) {
                 perform(i, e)
+            }
+        }
+        // Quests: today's request from this villager, then yours to hand in (any villager takes them).
+        var qy = panel.y + 104 + Float(profession.trades.count) * (rowH + gap)
+        if !questRows.isEmpty {
+            d.text("Quests", x: panel.x + 34, y: qy + 4, size: 15, color: Theme.amber, face: .display)
+            qy += 34
+        }
+        for (i, row) in questRows.enumerated() {
+            let q = row.quest
+            let r = Rect(panel.x + 30, qy + Float(i) * (rowH + gap), pw - 60, rowH)
+            d.fill(r, Color(hex: 0x2E4A1E, alpha: 0.35), radius: 12)
+            d.text(s.questTitle(q), x: r.x + 16, y: r.y + 10, size: 16, color: Theme.text, face: .display, maxWidth: r.w - 170)
+            let detail = "\(q.emeralds) emeralds + \(q.xp) XP" + (row.offer ? "" : "  ·  \(s.questProgress(q))/\(q.count)")
+            d.text(detail, x: r.x + 16, y: r.y + 36, size: 13, color: Theme.textMuted)
+            if row.offer {
+                if ui.button("quest.accept", "Accept", Rect(r.maxX - 124, r.y + 10, 112, rowH - 20), enabled: s.quests.count < Quests.maxActive) {
+                    s.acceptQuest(q)
+                }
+            } else if ui.button("quest.turnin.\(i)", "Hand in", Rect(r.maxX - 124, r.y + 10, 112, rowH - 20), enabled: s.questComplete(q)) {
+                if s.turnInQuest(q) { e.audio.play("craft", volume: 0.6) }
             }
         }
         let emeralds = e.items.id(named: "emerald").map { s.inventory.count(of: $0) } ?? 0

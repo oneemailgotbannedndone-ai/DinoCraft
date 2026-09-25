@@ -882,6 +882,30 @@ section("PNG") {
     #endif
 }
 
+section("Enchantments") {
+    var packed: UInt16 = 0
+    packed = Enchantments.setting(.efficiency, to: 2, in: packed)
+    packed = Enchantments.setting(.unbreaking, to: 3, in: packed)
+    packed = Enchantments.setting(.fortune, to: 9, in: packed)
+    check(Enchantments.level(.efficiency, in: packed) == 2 && Enchantments.level(.unbreaking, in: packed) == 3, "enchantment levels pack and unpack")
+    check(Enchantments.level(.fortune, in: packed) == 3 && Enchantments.level(.sharpness, in: packed) == 0, "levels clamp to 3 and others stay 0")
+    check(Enchantments.describe(Enchantments.setting(.sharpness, to: 1, in: 0)) == "Sharpness I", "enchantments describe themselves")
+    let pick = items.id(named: "iron_pickaxe")!, dirt = items.id(named: "dirt")!
+    let plain = ItemStack(item: dirt, count: 3), magic = ItemStack(item: dirt, count: 3, enchant: 5)
+    check(!plain.canStack(with: magic) && plain.canStack(with: plain), "enchanted stacks don't merge with plain ones")
+    let inv = Inventory(registry: items)
+    _ = inv.add(ItemStack(item: pick, count: 1, enchant: packed))
+    check(inv.slots[0]?.enchant == packed, "adding keeps enchantments")
+    _ = inv.add(ItemStack(item: dirt, count: 70))
+    check(inv.remove(item: dirt, count: 66) == 66 && inv.count(of: dirt) == 4, "remove takes across stacks")
+    let saved = SavedStack(slot: 0, item: "iron_pickaxe", count: 1, damage: nil, enchant: packed)
+    let round = try JSONDecoder().decode(SavedStack.self, from: JSONEncoder().encode(saved))
+    check(round.enchant == Int(packed), "saved stacks keep enchantments")
+    let old = try JSONDecoder().decode(SavedStack.self, from: Data(#"{"slot":1,"item":"dirt","count":2}"#.utf8))
+    check(old.enchant == nil, "older saves load without enchantments")
+    check(blocks.id(named: "enchanting_table").map { $0 > 255 } == true, "the enchanting table uses a two-byte block id")
+}
+
 section("Multiplayer wire protocol") {
     let frame = Wire.frame(.chat, Data("{}".utf8))
     check(frame.count == 7 && frame[0] == 3 && frame[4] == 10, "frames match the Mac host's layout (length, kind, payload)")

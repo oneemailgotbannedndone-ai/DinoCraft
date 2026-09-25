@@ -63,6 +63,10 @@ extension WinSolo {
                 buildAdvancements(&ui, width: W, height: H, scale: sc)
             case .trade(let mob):
                 buildTrade(&ui, mob: mob, width: W, height: H, scale: sc)
+            case .enchanting:
+                buildEnchanting(&ui, width: W, height: H, scale: sc)
+            case .questBook:
+                buildQuestBook(&ui, width: W, height: H, scale: sc)
             case .inventory, .crafting, .container, .creative:
                 buildSlotScreen(&ui, width: W, height: H, scale: sc)
             }
@@ -244,17 +248,24 @@ extension WinSolo {
             if let stack = s.inventory.slots[i] { drawStack(&ui, stack, x: x, y: y0, size: slot, scale: sc) }
         }
         if s.zooming {
-            ui.centeredText(String(format: "Zoom %.1fx - scroll to adjust", s.zoomFactor), centerX: W / 2, y: y0 - (survival ? 64 : 44) * sc - 7 * small,
+            ui.centeredText(String(format: "Zoom %.1fx - scroll to adjust", s.zoomFactor), centerX: W / 2, y: y0 - (survival ? 74 : 44) * sc - 7 * small,
                             scale: small, color: SIMD4(1, 1, 1, 0.9))
         }
         if s.hotbarNameTimer > 0, let stack = s.inventory.selectedStack, let info = items[stack.item] {
             let alpha = Float(min(1, s.hotbarNameTimer / 0.5))
-            ui.centeredText(info.displayName, centerX: W / 2, y: y0 - (survival ? 44 : 24) * sc - 7 * small, scale: small,
+            ui.centeredText(info.displayName, centerX: W / 2, y: y0 - (survival ? 54 : 24) * sc - 7 * small, scale: small,
                             color: SIMD4(1, 1, 1, alpha))
         }
 
         if survival {
-            let rowY = y0 - 12 * sc - 7 * small
+            // Experience: a green bar above the hotbar with your level in the middle.
+            let barY = y0 - 16 * sc
+            ui.rect(x0, barY, total, 5 * sc, SIMD4(0.05, 0.04, 0.02, 0.8))
+            ui.rect(x0, barY, total * Float(s.xpProgress), 5 * sc, SIMD4(0.45, 0.95, 0.25, 1))
+            if s.xpLevel > 0 {
+                ui.centeredText("\(s.xpLevel)", centerX: W / 2, y: barY - 3 * sc - 7 * small, scale: small, color: SIMD4(0.55, 1, 0.35, 1))
+            }
+            let rowY = y0 - 22 * sc - 7 * small
             // Hearts
             let pulse: Float = s.health <= 4 ? Float(0.75 + 0.25 * sin(Date.timeIntervalSinceReferenceDate * 10)) : 1
             for i in 0..<10 {
@@ -451,6 +462,13 @@ extension WinSolo {
         let small = max(1, (2 * sc).rounded())
         let inset = size * 0.17
         ui.icon(x + inset, y + inset, size - 2 * inset, layer: renderer.iconLayer(stack.item, items: items, blocks: blocks))
+        if stack.enchant != 0 {
+            // Enchanted: a soft purple shimmer that sweeps across the icon.
+            let t = Float(Date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 2.4) / 2.4)
+            let band = (size - 2 * inset) * 0.3
+            ui.rect(x + inset + (size - 2 * inset - band) * t, y + inset, band, size - 2 * inset, SIMD4(0.85, 0.7, 1, 0.22))
+            ui.rect(x + size - inset - 5 * sc, y + inset, 4 * sc, 4 * sc, SIMD4(0.8, 0.55, 1, 0.9))
+        }
         if stack.count > 1 {
             let count = "\(stack.count)"
             ui.text(count, x: x + size - 3 * sc - UIBuilder.textWidth(count, scale: small), y: y + size - 3 * sc - 7 * small, scale: small, color: white)
@@ -603,7 +621,8 @@ extension WinSolo {
         let inv = game.inventory
         let rowH = 52 * sc, gap = 8 * sc
         let pw = 620 * sc
-        let ph = 90 * sc + Float(profession.trades.count) * (rowH + gap) + 40 * sc
+        let questRows = questRows(for: mob)
+        let ph = 90 * sc + Float(profession.trades.count + questRows.count) * (rowH + gap) + (questRows.isEmpty ? 0 : 30 * sc) + 40 * sc
         let px = W / 2 - pw / 2, py = H / 2 - ph / 2
         ui.rect(0, 0, W, H, SIMD4(0, 0, 0, 0.45))
         ui.woodPanel(px, py, pw, ph, scale: sc)
@@ -622,6 +641,28 @@ extension WinSolo {
             if ui.button("Trade", x: px + pw - 130 * sc, y: y + 8 * sc, w: 100 * sc, h: rowH - 16 * sc, scale: sc, input: input,
                          enabled: affordable, primary: true) {
                 performTrade(t)
+            }
+            y += rowH + gap
+        }
+        if !questRows.isEmpty {
+            ui.text("Quests", x: px + 20 * sc, y: y + 6 * sc, scale: small, color: amber)
+            y += 30 * sc
+        }
+        for row in questRows {
+            let q = row.quest
+            let progress = game.questProgress(q)
+            ui.rect(px + 20 * sc, y, pw - 40 * sc, rowH, SIMD4(0.06, 0.07, 0.03, 0.9))
+            ui.text(game.questTitle(q), x: px + 32 * sc, y: y + 8 * sc, scale: small, color: white)
+            let reward = "\(q.emeralds) emeralds + \(q.xp) XP" + (row.offer ? "" : "  -  \(progress)/\(q.count)")
+            ui.text(reward, x: px + 32 * sc, y: y + rowH - 8 * sc - 7 * small, scale: small, color: dim)
+            if row.offer {
+                if ui.button("Accept", x: px + pw - 130 * sc, y: y + 8 * sc, w: 100 * sc, h: rowH - 16 * sc, scale: sc, input: input,
+                             enabled: game.quests.count < Quests.maxActive, primary: true) {
+                    game.acceptQuest(q)
+                }
+            } else if ui.button("Hand in", x: px + pw - 130 * sc, y: y + 8 * sc, w: 100 * sc, h: rowH - 16 * sc, scale: sc, input: input,
+                                enabled: game.questComplete(q), primary: true) {
+                game.turnInQuest(q)
             }
             y += rowH + gap
         }
@@ -647,6 +688,95 @@ extension WinSolo {
         if overflow > 0 { s.dropStack(ItemStack(item: result, count: overflow), thrown: false) }
         audio?.play("craft", volume: 0.6)
         s.advancements.record("trade", t.result)
+    }
+
+    /// Quest rows on a villager's screen: today's offer, then your finished quests (any villager takes them).
+    private func questRows(for mob: Mob) -> [(quest: Quest, offer: Bool)] {
+        var rows: [(Quest, Bool)] = []
+        if let offer = game.questOffer(from: mob) { rows.append((offer, true)) }
+        for q in game.quests { rows.append((q, false)) }
+        return rows
+    }
+
+    /// The enchanting table: three offers for the item in your hand, paid for with levels and amber.
+    private func buildEnchanting(_ ui: inout UIBuilder, width W: Float, height H: Float, scale sc: Float) {
+        let s = game
+        let input = menuInput()
+        let small = max(1, (2 * sc).rounded())
+        let rowH = 56 * sc, gap = 8 * sc
+        let pw = 620 * sc, ph = 150 * sc + 3 * (rowH + gap) + 50 * sc
+        let px = W / 2 - pw / 2, py = H / 2 - ph / 2
+        ui.rect(0, 0, W, H, SIMD4(0, 0, 0, 0.45))
+        ui.woodPanel(px, py, pw, ph, scale: sc)
+        ui.text("Enchanting Table", x: px + 20 * sc, y: py + 18 * sc, scale: max(1, (3 * sc).rounded()), color: amber)
+        ui.text("Spend levels and amber on the item in your hand.", x: px + 20 * sc, y: py + 44 * sc, scale: small, color: dim)
+        // The held item
+        let itemY = py + 70 * sc
+        ui.rect(px + 20 * sc, itemY, pw - 40 * sc, 60 * sc, SIMD4(0.072, 0.04, 0.018, 0.9))
+        let held = s.inventory.selectedStack
+        if let held, let info = items[held.item] {
+            drawStack(&ui, held, x: px + 26 * sc, y: itemY + 4 * sc, size: 52 * sc, scale: sc)
+            ui.text(info.displayName, x: px + 90 * sc, y: itemY + 12 * sc, scale: small, color: white)
+            let current = Enchantments.describe(held.enchant)
+            ui.text(current.isEmpty ? "Not enchanted yet" : current, x: px + 90 * sc, y: itemY + 36 * sc, scale: small,
+                    color: current.isEmpty ? dim : SIMD4(0.78, 0.6, 1, 1))
+        } else {
+            ui.text("Hold a tool, weapon or piece of armour", x: px + 32 * sc, y: itemY + 24 * sc, scale: small, color: dim)
+        }
+        var y = itemY + 60 * sc + 14 * sc
+        let offers = s.enchantOffers
+        if held != nil && offers.isEmpty {
+            ui.text("This can't be enchanted (or it's already as strong as it gets).", x: px + 32 * sc, y: y + 8 * sc, scale: small, color: dim)
+        }
+        for offer in offers {
+            let problem = s.enchantProblem(offer)
+            ui.rect(px + 20 * sc, y, pw - 40 * sc, rowH, SIMD4(0.1, 0.05, 0.14, 0.9))
+            ui.text("\(offer.enchantment.displayName) \(Enchantments.roman(offer.level))", x: px + 32 * sc, y: y + 10 * sc,
+                    scale: max(1, (2.5 * sc).rounded()), color: problem == nil ? SIMD4(0.85, 0.7, 1, 1) : dim)
+            ui.text(problem ?? "\(offer.cost) level\(offer.cost == 1 ? "" : "s") + \(offer.cost) amber", x: px + 32 * sc,
+                    y: y + rowH - 10 * sc - 7 * small, scale: small, color: problem == nil ? white : SIMD4(0.9, 0.45, 0.35, 1))
+            if ui.button("Enchant", x: px + pw - 140 * sc, y: y + 8 * sc, w: 110 * sc, h: rowH - 16 * sc, scale: sc, input: input,
+                         enabled: problem == nil, primary: true) {
+                if s.enchantHeld(offer) { audio?.play("craft", volume: 0.6) }
+            }
+            y += rowH + gap
+        }
+        let footer = "Level \(s.xpLevel)  -  \(s.amberCount) amber  -  Esc to close"
+        ui.text(footer, x: px + 20 * sc, y: py + ph - 28 * sc, scale: small, color: dim)
+    }
+
+    /// The Quest Book: what you've promised the villagers, and how far along you are.
+    private func buildQuestBook(_ ui: inout UIBuilder, width W: Float, height H: Float, scale sc: Float) {
+        let s = game
+        let input = menuInput()
+        let small = max(1, (2 * sc).rounded())
+        let rowH = 72 * sc, gap = 8 * sc
+        let count = max(1, s.quests.count)
+        let pw = 620 * sc, ph = 100 * sc + Float(count) * (rowH + gap) + 40 * sc
+        let px = W / 2 - pw / 2, py = H / 2 - ph / 2
+        ui.rect(0, 0, W, H, SIMD4(0, 0, 0, 0.45))
+        ui.woodPanel(px, py, pw, ph, scale: sc)
+        ui.text("Quest Book", x: px + 20 * sc, y: py + 18 * sc, scale: max(1, (3 * sc).rounded()), color: amber)
+        ui.text("Villagers ask for help. Hand finished quests in to any villager.", x: px + 20 * sc, y: py + 44 * sc, scale: small, color: dim)
+        var y = py + 80 * sc
+        if s.quests.isEmpty {
+            ui.text("No quests yet: right-click a villager to see what they need.", x: px + 32 * sc, y: y + 20 * sc, scale: small, color: white)
+        }
+        for q in s.quests {
+            let progress = s.questProgress(q)
+            ui.rect(px + 20 * sc, y, pw - 40 * sc, rowH, SIMD4(0.072, 0.04, 0.018, 0.9))
+            ui.text(s.questTitle(q), x: px + 32 * sc, y: y + 8 * sc, scale: small, color: s.questComplete(q) ? SIMD4(0.55, 1, 0.5, 1) : white)
+            ui.text("\(q.giver): \(q.emeralds) emeralds, \(q.xp) XP", x: px + 32 * sc, y: y + 8 * sc + 10 * small, scale: small, color: dim)
+            let barW = pw - 240 * sc, barY = y + rowH - 16 * sc
+            ui.rect(px + 32 * sc, barY, barW, 6 * sc, SIMD4(0, 0, 0, 0.6))
+            ui.rect(px + 32 * sc, barY, barW * Float(progress) / Float(max(1, q.count)), 6 * sc, SIMD4(0.35, 0.85, 0.3, 1))
+            ui.text("\(progress)/\(q.count)", x: px + 42 * sc + barW, y: barY + 3 * sc - 3.5 * small, scale: small, color: white)
+            if ui.button("Abandon", x: px + pw - 130 * sc, y: y + rowH / 2 - 15 * sc, w: 100 * sc, h: 30 * sc, scale: sc, input: input) {
+                s.abandonQuest(q)
+            }
+            y += rowH + gap
+        }
+        ui.text("Esc to close", x: px + 20 * sc, y: py + ph - 28 * sc, scale: small, color: dim)
     }
 
     // MARK: Inventory, crafting, containers and the creative palette
@@ -1147,6 +1277,7 @@ extension WinSolo {
             drawStack(&ui, cursor, x: mouse.x - slot / 2, y: mouse.y - slot / 2, size: slot, scale: sc)
         } else if let st = hoveredStack, let info = items[st.item] {
             var lines = [info.displayName]
+            for (e, level) in Enchantments.list(st.enchant) { lines.append("\(e.displayName) \(Enchantments.roman(level))") }
             if let armor = info.armor { lines.append("+\(armor.protection) armor") }
             if let damage = info.tool?.damage, damage > 1 { lines.append("\(Int(damage)) attack damage") }
             if let food = info.food { lines.append("Restores \(food.hunger) hunger") }

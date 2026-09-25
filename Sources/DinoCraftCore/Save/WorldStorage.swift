@@ -72,9 +72,11 @@ public struct SavedStack: Codable, Sendable {
     public var item: String
     public var count: Int
     public var damage: Int?
+    public var enchant: Int?
 
-    public init(slot: Int, item: String, count: Int, damage: Int?) {
+    public init(slot: Int, item: String, count: Int, damage: Int?, enchant: UInt16 = 0) {
         self.slot = slot; self.item = item; self.count = count; self.damage = damage
+        self.enchant = enchant == 0 ? nil : Int(enchant)
     }
 }
 
@@ -92,6 +94,10 @@ public struct PlayerSave: Codable, Sendable {
     public var dimension: String?
     /// Worn armor; `slot` is 0 head … 3 feet.
     public var armor: [SavedStack]?
+    /// Experience points collected in total (see `Experience`).
+    public var xp: Int?
+    /// Villager quests in progress, as JSON written by the game.
+    public var quests: Data?
 
     public init(x: Double, y: Double, z: Double, yaw: Double, pitch: Double, health: Double, hunger: Double,
                 saturation: Double, air: Double?, flying: Bool, selectedSlot: Int, inventory: [SavedStack], dimension: String? = nil) {

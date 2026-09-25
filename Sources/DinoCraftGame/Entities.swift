@@ -35,6 +35,7 @@ private struct SavedItemEntity: Codable {
     var item: String
     var count: Int
     var damage: Int?
+    var enchant: Int?
     var x: Double, y: Double, z: Double
     var age: Double
 }
@@ -213,7 +214,7 @@ final class EntityManager {
     func save(to url: URL, items registry: ItemRegistry) {
         let saved = items.filter { !$0.removed }.compactMap { e -> SavedItemEntity? in
             guard let name = registry[e.stack.item]?.name else { return nil }
-            return SavedItemEntity(item: name, count: e.stack.count, damage: e.stack.damage > 0 ? e.stack.damage : nil,
+            return SavedItemEntity(item: name, count: e.stack.count, damage: e.stack.damage > 0 ? e.stack.damage : nil, enchant: e.stack.enchant > 0 ? Int(e.stack.enchant) : nil,
                                    x: e.position.x, y: e.position.y, z: e.position.z, age: e.age)
         }
         do {
@@ -229,7 +230,7 @@ final class EntityManager {
             let saved = try JSONDecoder().decode([SavedItemEntity].self, from: data)
             for s in saved {
                 guard let id = registry.id(named: s.item) else { continue }
-                let e = ItemEntity(stack: ItemStack(item: id, count: s.count, damage: s.damage ?? 0),
+                let e = ItemEntity(stack: ItemStack(item: id, count: s.count, damage: s.damage ?? 0, enchant: UInt16(clamping: s.enchant ?? 0)),
                                    position: DVec3(s.x, s.y, s.z), velocity: .zero, pickupDelay: 0)
                 e.age = s.age
                 items.append(e)

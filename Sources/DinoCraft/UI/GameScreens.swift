@@ -537,6 +537,7 @@ enum HUD {
             d.fill(r, Color(hex: 0x1A0E06, alpha: 0.55), radius: 10)
             if let stack = s.inventory.slots[i], let info = e.items[stack.item] {
                 d.itemIcon(info, r.inset(8))
+                if stack.enchant != 0 { HUD.enchantGlint(d, r.inset(8), time: ui.time) }
                 if stack.count > 1 {
                     d.text("\(stack.count)", x: r.maxX - 6, y: r.maxY - 22, size: 14, color: .white, face: .display, align: .right,
                            shadow: Color(linear: 0, 0, 0, 0.9))
@@ -556,7 +557,7 @@ enum HUD {
 
         // Zoom level while holding the zoom key
         if s.zooming {
-            d.text(String(format: "Zoom %.1f×  ·  scroll to adjust", s.zoomFactor), x: W / 2, y: hy - 96, size: 15, color: Theme.text.alpha(0.9),
+            d.text(String(format: "Zoom %.1f×  ·  scroll to adjust", s.zoomFactor), x: W / 2, y: hy - 104, size: 15, color: Theme.text.alpha(0.9),
                    face: .display, align: .center, shadow: Color(linear: 0, 0, 0, 0.8))
         }
 
@@ -564,13 +565,21 @@ enum HUD {
         if s.hotbarNameTimer > 0, let stack = s.inventory.selectedStack, let info = e.items[stack.item] {
             let a = Float(min(1, s.hotbarNameTimer / 0.4))
             let lift: Float = s.player.gameMode == .survival && s.armorPoints > 0 ? 24 : 0
-            d.text(info.displayName, x: W / 2, y: hy - 58 - lift, size: 17, color: Theme.text.alpha(a), face: .display, align: .center,
+            d.text(info.displayName, x: W / 2, y: hy - 66 - lift, size: 17, color: Theme.text.alpha(a), face: .display, align: .center,
                    shadow: Color(linear: 0, 0, 0, 0.8 * a))
         }
 
         // Survival stats
         if s.player.gameMode == .survival && !s.spectator {
-            let rowY = hy - 34
+            // Experience: a green bar just above the hotbar with your level in the middle.
+            let xpBar = Rect(hx, hy - 17, total, 5)
+            d.fill(xpBar, Color(hex: 0x0E0A04, alpha: 0.75), radius: 2.5)
+            d.fill(Rect(xpBar.x, xpBar.y, xpBar.w * Float(s.xpProgress), xpBar.h), Color(hex: 0x7CF03A), radius: 2.5)
+            if s.xpLevel > 0 {
+                d.text("\(s.xpLevel)", x: W / 2, y: hy - 38, size: 15, color: Color(hex: 0x8CFF4A), face: .display, align: .center,
+                       shadow: Color(linear: 0, 0, 0, 0.9))
+            }
+            let rowY = hy - 42
             for i in 0..<10 {
                 let x = hx + Float(i) * 22
                 let value = s.health / 2 - Double(i)
@@ -629,6 +638,16 @@ enum HUD {
             d.opacity = 1
         }
         AdvancementToast.draw(ui, engine: e)
+    }
+}
+
+extension HUD {
+    /// Enchanted items shimmer: a soft purple wash and a band of light sweeping across the icon.
+    static func enchantGlint(_ d: UIRenderer, _ r: Rect, time: Double) {
+        let t = Float((time.truncatingRemainder(dividingBy: 2.4)) / 2.4)
+        let band = r.w * 0.3
+        d.fill(r, Color(hex: 0x9A5CFF, alpha: 0.12), radius: 6)
+        d.fill(Rect(r.x + (r.w - band) * t, r.y, band, r.h), Color(hex: 0xD8B8FF, alpha: 0.22), radius: 4)
     }
 }
 

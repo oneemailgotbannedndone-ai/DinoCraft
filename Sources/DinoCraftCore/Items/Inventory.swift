@@ -5,13 +5,22 @@ public struct ItemStack: Equatable, Sendable {
     public var count: Int
     /// Uses consumed so far (tools only).
     public var damage: Int
+    /// Enchantments, packed two bits per `Enchantment` (see `Enchantments`).
+    public var enchant: UInt16
 
-    public init(item: ItemID, count: Int = 1, damage: Int = 0) {
-        self.item = item; self.count = count; self.damage = damage
+    public init(item: ItemID, count: Int = 1, damage: Int = 0, enchant: UInt16 = 0) {
+        self.item = item; self.count = count; self.damage = damage; self.enchant = enchant
     }
 
     public func canStack(with other: ItemStack) -> Bool {
-        item == other.item && damage == 0 && other.damage == 0
+        item == other.item && damage == 0 && other.damage == 0 && enchant == 0 && other.enchant == 0
+    }
+
+    /// The same item (damage and enchantments too) with a different count.
+    public func with(count: Int) -> ItemStack {
+        var copy = self
+        copy.count = count
+        return copy
     }
 }
 
@@ -59,11 +68,26 @@ public final class Inventory {
         }
         for i in 0..<Inventory.size where remaining > 0 && slots[i] == nil {
             let moved = min(limit, remaining)
-            slots[i] = ItemStack(item: stack.item, count: moved, damage: stack.damage)
+            slots[i] = stack.with(count: moved)
             remaining -= moved
         }
         if remaining != stack.count { markChanged() }
         return remaining
+    }
+
+    /// Takes up to `count` of an item out of the inventory; returns how many were removed.
+    @discardableResult
+    public func remove(item: ItemID, count: Int) -> Int {
+        var left = count
+        for i in slots.indices where left > 0 {
+            guard var st = slots[i], st.item == item else { continue }
+            let take = min(left, st.count)
+            st.count -= take
+            left -= take
+            slots[i] = st.count > 0 ? st : nil
+        }
+        if left != count { markChanged() }
+        return count - left
     }
 
     public func count(of item: ItemID) -> Int {
@@ -82,7 +106,11 @@ public final class Inventory {
     @discardableResult
     public func damageSelectedTool(_ amount: Int = 1) -> Bool {
         guard var s = slots[selected], let tool = registry[s.item]?.tool else { return false }
-        s.damage += amount
+        // Unbreaking: each level gives another chance to skip the wear.
+        let unbreaking = Enchantments.level(.unbreaking, in: s.enchant)
+        let worn = unbreaking == 0 ? amount : (0..<amount).filter { _ in Int.random(in: 0...unbreaking) == 0 }.count
+        guard worn > 0 else { return false }
+        s.damage += worn
         if s.damage >= tool.durability {
             slots[selected] = nil
             markChanged()
@@ -127,13 +155,13 @@ public enum SlotInteraction {
             cursor = s; slot = nil
         case (var s?, nil, .right):
             let take = (s.count + 1) / 2
-            cursor = ItemStack(item: s.item, count: take, damage: s.damage)
+            cursor = s.with(count: take)
             s.count -= take
             slot = s.count > 0 ? s : nil
         case (nil, var c?, .left):
             slot = c; c.count = 0; cursor = nil
         case (nil, var c?, .right):
-            slot = ItemStack(item: c.item, count: 1, damage: c.damage)
+            slot = c.with(count: 1)
             c.count -= 1
             cursor = c.count > 0 ? c : nil
         case (var s?, var c?, .left):
@@ -167,7 +195,7 @@ public enum SlotInteraction {
         }
         for i in indices where remaining.count > 0 && slots[i] == nil {
             let moved = min(limit, remaining.count)
-            slots[i] = ItemStack(item: remaining.item, count: moved, damage: remaining.damage)
+            slots[i] = remaining.with(count: moved)
             remaining.count -= moved
         }
         return remaining.count > 0 ? remaining : nil

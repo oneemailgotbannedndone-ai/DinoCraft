@@ -269,7 +269,7 @@ final class GameServer: SessionNetwork {
 
         case .dropItem:
             guard peer.joined, let m = NetConnection.decode(DropItemMessage.self, data), let id = s.items.id(named: m.item) else { return }
-            s.entities.spawnItem(ItemStack(item: id, count: max(1, min(64, m.count)), damage: m.damage), at: DVec3(m.x, m.y, m.z),
+            s.entities.spawnItem(ItemStack(item: id, count: max(1, min(64, m.count)), damage: m.damage, enchant: UInt16(clamping: m.enchant ?? 0)), at: DVec3(m.x, m.y, m.z),
                                  velocity: DVec3(m.vx, m.vy, m.vz), pickupDelay: 1.5)
 
         case .containerOpen:
@@ -343,7 +343,8 @@ final class GameServer: SessionNetwork {
                 guard let p = peer.player, !p.dead else { continue }
                 for stack in s.entities.collect(near: p.position + DVec3(0, 0.8, 0), radius: 1.4) {
                     guard let name = s.items[stack.item]?.name else { continue }
-                    peer.connection.send(.giveItem, GiveItemMessage(item: name, count: stack.count, damage: stack.damage))
+                    peer.connection.send(.giveItem, GiveItemMessage(item: name, count: stack.count, damage: stack.damage,
+                                                                                  enchant: stack.enchant > 0 ? Int(stack.enchant) : nil))
                 }
             }
             broadcast(.itemSnapshot, s.entities.snapshot(items: s.items))

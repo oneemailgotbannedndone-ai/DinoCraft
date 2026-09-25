@@ -148,6 +148,18 @@ final class ParticleRenderer {
             }
         }
 
+        // Experience orbs: small glowing gems that bob and pulse between green and yellow.
+        for o in s.orbs where !o.removed {
+            let p = o.position + DVec3(0, 0.12 + sin(o.age * 4) * 0.05, 0)
+            let r = SIMD3<Float>(Float(p.x - camera.position.x), Float(p.y - camera.position.y), Float(p.z - camera.position.z))
+            let size = Float(0.05 + 0.02 * log2(Double(o.value) + 1))
+            let pulse = Float(0.5 + 0.5 * sin(o.age * 6 + p.x))
+            quad(r, right * size, up * size, uv: .zero, uvSize: 1, color: SIMD4(0.25 + 0.5 * pulse, 0.9, 0.08, 1), layer: -2,
+                 sky: 1, block: 1, emissive: true)
+            quad(r, right * size * 0.45, up * size * 0.45, uv: .zero, uvSize: 1, color: SIMD4(0.95, 1, 0.6, 1), layer: -2,
+                 sky: 1, block: 1, emissive: true)
+        }
+
         // The fishing float (red over white) and the line sagging back to the rod.
         if let b = s.bobber {
             func toCamera(_ p: DVec3) -> SIMD3<Float> {

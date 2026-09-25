@@ -35,6 +35,8 @@
     {"id": "string_from_wool", "type": "shapeless", "ingredients": ["#wool"], "result": "string", "count": 3},
     {"id": "spear", "type": "shaped", "pattern": ["  F", " S ", "S  "], "key": {"F": "flint", "S": "stick"}, "result": "spear"},
     {"id": "crossbow", "type": "shaped", "pattern": ["SIS", "L L", " S "], "key": {"S": "stick", "I": "iron_ingot", "L": "string"}, "result": "crossbow"},
+    {"id": "enchanting_table", "type": "shaped", "pattern": [" A ", "DOD", "OOO"], "key": {"A": "amber", "D": "diamond", "O": "obsidian"}, "result": "enchanting_table"},
+    {"id": "quest_book", "type": "shapeless", "ingredients": ["dino_hide", "emerald"], "result": "quest_book"},
     {"id": "shield", "type": "shaped", "pattern": ["PIP", "PPP", " P "], "key": {"P": "#all_planks", "I": "iron_ingot"}, "result": "shield"},
     {"id": "bones_from_block", "type": "shapeless", "ingredients": ["bone_block"], "result": "dino_bone", "count": 9},
     {"id": "iron_ingot_fieldsmelt", "type": "shapeless", "ingredients": ["iron_ore", "#fuel"], "result": "iron_ingot"},

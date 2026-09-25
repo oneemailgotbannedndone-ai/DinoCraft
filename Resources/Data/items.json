@@ -138,6 +138,7 @@
     {"name": "string", "displayName": "String"},
     {"name": "spear", "displayName": "Spear", "tool": {"kind": "spear", "level": 1, "speed": 1.0, "durability": 180, "damage": 5}},
     {"name": "crossbow", "displayName": "Crossbow", "maxStack": 1},
+    {"name": "quest_book", "displayName": "Quest Book", "maxStack": 1},
     {"name": "shield", "displayName": "Shield", "tool": {"kind": "shield", "level": 1, "speed": 1.0, "durability": 336, "damage": 1}}
   ]
 }

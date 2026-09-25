@@ -255,6 +255,7 @@
     {"id": 252, "name": "seagrass", "displayName": "Seagrass", "shape": "cross", "solid": false, "lightFilter": 2, "hardness": 0, "sound": "grass", "waving": true, "needsSupport": true, "submerged": true, "drops": []},
     {"id": 253, "name": "coral_block", "displayName": "Coral Block", "variants": ["coral_red", "coral_pink", "coral_yellow", "coral_blue", "coral_purple"], "hardness": 1.5, "tool": "pickaxe", "sound": "stone"},
     {"id": 254, "name": "coral", "displayName": "Coral", "shape": "cross", "solid": false, "lightFilter": 2, "hardness": 0, "sound": "grass", "needsSupport": true, "submerged": true, "variants": ["coral_fan_red", "coral_fan_pink", "coral_fan_yellow", "coral_fan_blue", "coral_fan_purple"]},
-    {"id": 255, "name": "sea_lantern", "displayName": "Sea Lantern", "emission": 15, "hardness": 0.3, "sound": "glass", "drops": [{"item": "sea_lantern"}]}
+    {"id": 255, "name": "sea_lantern", "displayName": "Sea Lantern", "emission": 15, "hardness": 0.3, "sound": "glass", "drops": [{"item": "sea_lantern"}]},
+    {"id": 256, "name": "enchanting_table", "displayName": "Enchanting Table", "textures": {"top": "enchanting_table_top", "bottom": "enchanting_table_bottom", "side": "enchanting_table_side"}, "emission": 7, "hardness": 5, "tool": "pickaxe", "toolLevel": 1, "sound": "stone"}
   ]
 }

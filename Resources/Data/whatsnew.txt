@@ -1,5 +1,17 @@
 DinoCraft - the Toonland update
 
+Experience, enchanting and villager quests
+- Defeating creatures, mining ore and taking smelted items out of a furnace now give glowing experience orbs.
+  Walk near them to collect them. The green bar above your hotbar shows your level. When you die, some of it
+  spills out as orbs.
+- Enchanting Table (amber on top, then diamond, obsidian, diamond, then three obsidian): right-click it while
+  holding a tool, weapon or piece of armour. It offers three enchantments, paid for with levels and amber:
+  Efficiency, Sharpness, Unbreaking, Power, Protection and Fortune, each up to level III.
+  Enchanted items shimmer, and their tooltip lists what they have.
+- Villagers now ask for help: each one offers a quest a day on its trading screen, such as bringing items,
+  defeating creatures or mining ore, for emeralds and experience. You can take up to three at a time.
+  Your Quest Book tracks them (right-click it). Hand finished quests in to any villager.
+
 Spears, crossbows, shields and flying Pteranodons
 - Spear (flint over two sticks, diagonal): hold right-click and let go to throw it. It sticks where it lands;
   walk over it to pick it back up.
