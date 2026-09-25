@@ -59,7 +59,8 @@ jobs:
 
       - name: Build DinoCraft for Windows
         shell: pwsh
-        run: swift build -c release --product DinoCraftWin -Xcc "-I$env:SDL3_DIR/include" -Xlinker "-L$env:SDL3_DIR/lib/x64"
+        # An 8 MB main-thread stack (Windows' default is 1 MB).
+        run: swift build -c release --product DinoCraftWin -Xcc "-I$env:SDL3_DIR/include" -Xlinker "-L$env:SDL3_DIR/lib/x64" -Xlinker "/STACK:8388608"
 
       - name: Package
         shell: pwsh
@@ -89,7 +90,7 @@ jobs:
 
       - name: Automated check with software OpenGL
         shell: pwsh
-        timeout-minutes: 10
+        timeout-minutes: 15
         run: |
           gh release download --repo pal1000/mesa-dist-win --pattern "mesa3d-*-release-msvc.7z" --dir mesa
           $archive = Get-ChildItem mesa -Filter *.7z | Select-Object -First 1
@@ -115,12 +116,23 @@ jobs:
           $p4 = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--screenshot `"$shot4`" --demo-screen worlds --hide-console" -PassThru -Wait -NoNewWindow
           Write-Host "World list check exit code: $($p4.ExitCode)"
           if (-not (Test-Path $shot4)) { throw "The game did not produce the world list screenshot" }
-          foreach ($screen in @("creative", "furnace", "pause", "settings")) {
+          foreach ($screen in @("creative", "furnace", "pause", "settings", "crafting", "double-chest")) {
             $shotN = "$PWD/screenshot-$screen.png"
             $pN = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--screenshot `"$shotN`" --frames 5 --render-distance 4 --seed dino --demo-entities --demo-screen $screen" -PassThru -Wait -NoNewWindow
             Write-Host "$screen check exit code: $($pN.ExitCode)"
             if (-not (Test-Path $shotN)) { throw "The game did not produce the $screen screenshot" }
           }
+          # The launcher's online work (updates, reviews, friends, sharing stats) and the leaderboard, for real.
+          # The leaderboard address is changed so nothing is posted to the real board.
+          $env:DINOCRAFT_LEADERBOARD_URL = "http://dreamlo.com/lb/automated-check"
+          '{"playSeconds":120,"deaths":1,"kills":2,"bossesBeaten":0,"blocksMined":5,"blocksPlaced":3,"itemsCrafted":1,"metresWalked":40,"foodEaten":0}' | Out-File -FilePath smoke-home/stats.json -Encoding ascii
+          foreach ($screen in @("menu", "leaderboard")) {
+            $shotO = "$PWD/screenshot-online-$screen.png"
+            $pO = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--screenshot `"$shotO`" --demo-screen $screen --online --frames 400" -PassThru -Wait -NoNewWindow
+            Write-Host "Online $screen check exit code: $($pO.ExitCode)"
+            if (-not (Test-Path $shotO)) { throw "The game did not produce the online $screen screenshot" }
+          }
+          Remove-Item Env:DINOCRAFT_LEADERBOARD_URL
           $shotC = "$PWD/screenshot-create.png"
           $pC = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--screenshot `"$shotC`" --demo-screen create --hide-console" -PassThru -Wait -NoNewWindow
           Write-Host "Create world check exit code: $($pC.ExitCode)"
@@ -142,6 +154,11 @@ jobs:
             screenshot-pause.png
             screenshot-settings.png
             screenshot-create.png
+            screenshot-crafting.png
+            screenshot-double-chest.png
+            screenshot-online-menu.png
+            screenshot-online-leaderboard.png
+            .build/release/*.pdb
             smoke-home/logs/
           if-no-files-found: ignore
 

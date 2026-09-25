@@ -39,6 +39,8 @@ struct Options {
     var launcherOnly = false
     /// Started by DinoCraft Launcher: go straight to the title screen.
     var skipLauncher = false
+    /// Automated check: still do the launcher's online work (updates, reviews, friends, stats) while taking a screenshot.
+    var online = false
 
     static func parse(_ args: [String]) -> Options {
         var o = Options()
@@ -60,6 +62,7 @@ struct Options {
             case "--hide-console": o.hideConsole = true
             case "--launcher": o.launcherOnly = true
             case "--skip-launcher": o.skipLauncher = true
+            case "--online": o.online = true
             default: break
             }
             i += 1
@@ -127,6 +130,8 @@ if options.hideConsole || (options.screenshotPath == nil && !options.console) {
     }
 }
 #endif
+// Keep crash details (in a file next to the log when there's no console to show them).
+WinCrash.install(redirectErrors: !Log.shared.echoToConsole)
 
 guard SDL_Init(SDL_INIT_VIDEO) else { fail("Could not start SDL: \(String(cString: SDL_GetError()))") }
 _ = SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3)
@@ -198,7 +203,7 @@ do {
         if let message = join(joined).message {
             Log.info(message, category: "Net")
         }
-    } else if options.hostName != nil || (options.screenshotPath != nil && !["menu", "worlds", "create", "cosmetics", "skin", "skin-arm", "reviews", "friends", "leaderboard"].contains(options.demoScreen ?? "")) {
+    } else if options.hostName != nil || (options.screenshotPath != nil && !["menu", "worlds", "create", "cosmetics", "skin", "skin-arm", "reviews", "friends", "leaderboard", "crash"].contains(options.demoScreen ?? "")) {
         let storage = WorldStorage()
         if let existing = storage.listWorlds().first(where: { $0.name == "Windows World" }) {
             _ = play(existing, isNew: false, hostName: options.hostName.map(cleanName))

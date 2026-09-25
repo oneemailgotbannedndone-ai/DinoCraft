@@ -25,7 +25,9 @@ Recipe book on Windows
 
 Fixes
 - Mac: joining a friend no longer gives up straight away while macOS asks for Local Network permission.
-- If DinoCraft ever crashes, the launcher offers to send the crash report so it can be fixed.
+- If DinoCraft ever crashes, the launcher offers to send the crash report so it can be fixed (now on Windows too,
+  with the exact error and where it happened).
+- Windows: DinoCraft gets 8 times more room for its main thread, which can stop some crashes.
 
 A crafting-table look
 - Menus, inventories and chests are now oak planks in a dark wooden frame with iron nails, on Mac and Windows.

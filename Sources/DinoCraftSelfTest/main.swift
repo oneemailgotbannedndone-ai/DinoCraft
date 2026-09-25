@@ -443,6 +443,16 @@ section("Leaderboard") {
     try? FileManager.default.removeItem(at: statsURL)
 }
 
+section("Crash reports") {
+    let log = URL(fileURLWithPath: "/tmp/logs/dinocraft-20260925-030000.log")
+    check(CrashReport.companion(of: log).lastPathComponent == "dinocraft-20260925-030000.err.txt", "the error file sits beside its log")
+    let lines = (1...400).map { "2026-09-25 03:00:00.000 [INFO ] [Game] (main) line \($0) with some words in it" }
+    let report = CrashReport(log: log, text: (lines + ["*** DinoCraft crashed at DinoCraft.exe+0x1a2b3c"]).joined(separator: "\n"))
+    let short = report.issueURL(repository: "someone/DinoCraft", build: "build 39", platform: "Windows", maxLength: 2000)
+    check(short.map { $0.absoluteString.count <= 2000 } ?? false, "the Windows report link is short enough for the browser")
+    check(short.map { $0.absoluteString.contains("1a2b3c") } ?? false, "the shortened report keeps the crash itself")
+}
+
 section("Double chests") {
     var world: [SIMD3<Int>: BlockID] = [:]
     let north = Blocks.chest[0], east = Blocks.chest[1]

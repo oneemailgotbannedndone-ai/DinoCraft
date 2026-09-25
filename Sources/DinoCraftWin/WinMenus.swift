@@ -100,6 +100,9 @@ final class WinMenus {
     private var reviewStars = 5
     private var reviewWords = ""
     private var friendMessage: String?
+    /// The last run crashed: the launcher offers to send the report.
+    private var crashReport: CrashReport?
+    private var crashNote: String?
     private var leaderCategory = Leaderboard.Category.playtime
     private var leaderScroll = 0
     private var launchJoin: String?
@@ -145,8 +148,12 @@ final class WinMenus {
         if !launched {
             launched = true
             page = options.skipLauncher ? .title : .launcher
-            if store.settings.checkForUpdates && options.screenshotPath == nil { updater.check() }
-            if options.screenshotPath == nil && !options.skipLauncher {
+            if page == .launcher && (options.screenshotPath == nil || options.demoScreen == "crash") {
+                crashReport = CrashReport.fromLastRun()
+            }
+            let online = options.screenshotPath == nil || options.online
+            if store.settings.checkForUpdates && online { updater.check() }
+            if online && !options.skipLauncher {
                 GameLinks.reviews.load()
                 FriendList.shared.refreshStatuses()
                 PlayerStats.shared.submitNow()
@@ -218,7 +225,8 @@ final class WinMenus {
             }
             renderer.renderMenu(width: w, height: h, time: now - startTime, ui: ui.vertices, models: previewModels)
             frames += 1
-            if let path = options.screenshotPath, frames >= 40 {
+            // With --online, wait a few seconds so the answers from the internet arrive and are shown.
+            if let path = options.screenshotPath, frames >= (options.online ? max(40, options.frames) : 40) {
                 let image = renderer.capture(width: w, height: h)
                 try? PNG.encode(width: image.width, height: image.height, rgba: image.rgba).write(to: URL(fileURLWithPath: path))
                 Log.info("Saved menu screenshot \(path)", category: "Game")
@@ -598,11 +606,60 @@ extension WinMenus {
     private var amber: SIMD4<Float> { SIMD4(1, 0.85, 0.55, 1) }
     private var muted: SIMD4<Float> { SIMD4(0.866, 0.772, 0.63, 0.9) }
 
+    /// "DinoCraft closed unexpectedly": send the report on GitHub, copy it, or not now.
+    private func buildCrashReport(_ ui: inout UIBuilder, _ report: CrashReport, input: MenuInput, width W: Float, height H: Float, scale s: Float) {
+        let small = max(1, (2 * s).rounded())
+        let pw = min(W - 40 * s, 660 * s), ph = 260 * s
+        let px = W / 2 - pw / 2, py = H / 2 - ph / 2
+        ui.woodPanel(px, py, pw, ph, scale: s)
+        ui.text("Sorry, DinoCraft crashed", x: px + 26 * s, y: py + 24 * s, scale: max(1, (3 * s).rounded()), color: amber)
+        var ty = py + 74 * s
+        let maxChars = max(10, Int((pw - 52 * s) / (6 * small)))
+        for part in WinMenus.wrap("DinoCraft closed unexpectedly last time. Sending the crash report helps get it fixed.", width: maxChars) {
+            ui.text(part, x: px + 26 * s, y: ty, scale: small, color: SIMD4(1, 0.96, 0.86, 1), shadow: false)
+            ty += 11 * small
+        }
+        if let crashNote {
+            for part in WinMenus.wrap(crashNote, width: maxChars) {
+                ui.text(part, x: px + 26 * s, y: ty + 8 * s, scale: small, color: amber, shadow: false)
+                ty += 11 * small
+            }
+        }
+        let gap = 12 * s, bh = 46 * s, by = py + ph - bh - 24 * s
+        let bw = (pw - 52 * s - 2 * gap) / 3
+        if ui.button("Send Report", x: px + 26 * s, y: by, w: bw, h: bh, scale: s, input: input, primary: true) {
+            click()
+            // The browser gets a short address, so the full report also goes on the clipboard.
+            let copied = SDL_SetClipboardText(report.text)
+            if let url = report.issueURL(repository: GameLinks.reviewsRepo, build: BuildInfo.current.displayName, platform: "Windows", maxLength: 2000),
+               SDL_OpenURL(url.absoluteString) {
+                report.dismiss()
+                crashReport = nil
+                message = copied ? "Thanks! The full report is on your clipboard too - paste it into the GitHub page." : nil
+            } else {
+                crashNote = copied ? "Couldn't open your browser. The report is copied - paste it into a message." : "Couldn't open your browser."
+            }
+        }
+        if ui.button("Copy Report", x: px + 26 * s + bw + gap, y: by, w: bw, h: bh, scale: s, input: input) {
+            click()
+            crashNote = SDL_SetClipboardText(report.text) ? "Copied! Paste it into a message." : "Couldn't copy the report."
+        }
+        if ui.button("Not Now", x: px + 26 * s + 2 * (bw + gap), y: by, w: bw, h: bh, scale: s, input: input) {
+            click()
+            report.dismiss()
+            crashReport = nil
+        }
+    }
+
     /// The pre-launcher: news about the newest build, the update button, cosmetics, settings and Play.
     fileprivate func buildLauncher(_ ui: inout UIBuilder, input: MenuInput, width W: Float, height H: Float, scale s: Float, now: Double) -> Choice? {
         let small = max(1, (2 * s).rounded())
         let cx = W / 2
         ui.rect(0, 0, W, H, SIMD4(0.03, 0.017, 0.007, 0.45))
+        if let report = crashReport {
+            buildCrashReport(&ui, report, input: input, width: W, height: H, scale: s)
+            return nil
+        }
 
         // Title in the texture pack's colours
         let big = max(1, (8 * s).rounded())
