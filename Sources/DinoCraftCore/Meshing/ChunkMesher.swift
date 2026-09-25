@@ -477,10 +477,13 @@ public final class ChunkMesher {
                     let key = maskKey[mi]
                     if key == ChunkMesher.emptyKey { u += 1; continue }
                     let light = maskLight[mi]
+                    // Water surfaces ripple per vertex, so they stay one quad per block: a merged quad's long
+                    // edge wouldn't follow its smaller neighbours' corners and would open cracks.
+                    let rippling = face == 2 && (key >> 16) & UInt32(VertexFlags.liquid) != 0
                     var w = 1
-                    while u + w < uCount && maskKey[mi + w] == key && maskLight[mi + w] == light { w += 1 }
+                    while !rippling && u + w < uCount && maskKey[mi + w] == key && maskLight[mi + w] == light { w += 1 }
                     var h = 1
-                    extend: while v + h < vCount {
+                    extend: while !rippling && v + h < vCount {
                         let row = (v + h) * uCount + u
                         for k in 0..<w where maskKey[row + k] != key || maskLight[row + k] != light {
                             break extend

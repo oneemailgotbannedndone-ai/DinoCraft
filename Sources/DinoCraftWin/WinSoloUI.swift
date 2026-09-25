@@ -165,6 +165,8 @@ extension WinSolo {
             ui.centeredText("Sneak to get off", centerX: W / 2, y: H - 110 * sc, scale: small, color: SIMD4(1, 1, 1, 0.7))
         }
 
+        let mapBottom = buildMinimap(&ui, width: W, scale: sc, small: small)
+
         // Crosshair, mining progress and bow draw
         if !screenIsOpen && cameraView != .front {
             let color: SIMD4<Float> = s.targetMob != nil ? SIMD4(1, 0.55, 0.45, 0.95) : SIMD4(0.9, 0.9, 0.9, 0.85)
@@ -292,7 +294,7 @@ extension WinSolo {
             ui.rect(W / 2 - width / 2 - 10 * sc, H * 0.14 - 6 * sc, width + 20 * sc, 7 * small + 12 * sc, SIMD4(0.05, 0.03, 0.1, 0.8 * alpha))
             ui.text(toast.text, x: W / 2 - width / 2, y: H * 0.14, scale: small, color: SIMD4(1, 1, 1, alpha))
         }
-        var ty = 16 * sc
+        var ty = max(16 * sc, mapBottom + 10 * sc)
         for entry in advancementToasts where now - entry.time < 6 {
             let alpha = Float(min(1, (6 - (now - entry.time)) / 0.6))
             let w = max(UIBuilder.textWidth(entry.def.title, scale: small), UIBuilder.textWidth("Advancement made!", scale: small)) + 24 * sc
@@ -324,6 +326,84 @@ extension WinSolo {
                 dy += 12 * small
             }
         }
+    }
+
+    private static let srgbToLinear: [Float] = (0..<256).map { pow(Float($0) / 255, 2.2) }
+
+    /// An sRGB hex colour as the linear colour the UI draws with.
+    private func linear(_ hex: UInt32, _ alpha: Float = 1) -> SIMD4<Float> {
+        let t = WinSolo.srgbToLinear
+        return SIMD4(t[Int((hex >> 16) & 255)], t[Int((hex >> 8) & 255)], t[Int(hex & 255)], alpha)
+    }
+
+    /// The minimap in the top-right corner (M makes it big or hides it). Returns the y just below it.
+    private func buildMinimap(_ ui: inout UIBuilder, width W: Float, scale sc: Float, small: Float) -> Float {
+        let mode = settings.minimapMode
+        guard mode > 0, !showDebug else { return 0 }
+        let s = game
+        let map = s.minimap
+        map.refresh(s)
+        let view = mode == 1 ? 32 : Minimap.radius
+        let cells = 2 * view + 1
+        let size = ((mode == 1 ? 176 : 300) * sc).rounded()
+        let cell = size / Float(cells)
+        let x0 = W - size - 16 * sc, y0 = 16 * sc
+        ui.woodPanel(x0 - 7 * sc, y0 - 7 * sc, size + 14 * sc, size + 14 * sc, scale: sc)
+        ui.rect(x0, y0, size, size, SIMD4(0.02, 0.02, 0.02, 1))
+        let n = Minimap.size, offset = Minimap.radius - view
+        // Terrain, merging runs of the same colour along each row.
+        for j in 0..<cells {
+            let row = (offset + j) * n + offset
+            var i = 0
+            while i < cells {
+                let color = map.cells[row + i]
+                var run = 1
+                while i + run < cells && map.cells[row + i + run] == color { run += 1 }
+                if color != 0 {
+                    ui.rect(x0 + Float(i) * cell, y0 + Float(j) * cell, Float(run) * cell + 0.5, cell + 0.5, linear(color))
+                }
+                i += run
+            }
+        }
+        let cx = x0 + size / 2, cy = y0 + size / 2
+        for m in map.markers(for: s, radius: view) {
+            let mx = cx + m.dx * cell, my = cy + m.dz * cell
+            switch m.kind {
+            case .you:
+                // An arrow of three dots pointing the way you face.
+                let look = s.player.lookDirection
+                let flat = SIMD2<Float>(Float(look.x), Float(look.z))
+                let dir = simd_length(flat) > 0.01 ? simd_normalize(flat) : SIMD2(0, -1)
+                let u = max(2, 2 * sc)
+                for k in 0..<3 {
+                    let px = mx + dir.x * Float(k) * u * 1.4, py = my + dir.y * Float(k) * u * 1.4
+                    let half = u * (k == 0 ? 1.4 : 1)
+                    ui.rect(px - half - 1, py - half - 1, half * 2 + 2, half * 2 + 2, SIMD4(0, 0, 0, 0.8))
+                    ui.rect(px - half, py - half, half * 2, half * 2, k == 2 ? SIMD4(1, 0.3, 0.2, 1) : SIMD4(1, 1, 1, 1))
+                }
+            case .death:
+                ui.text("X", x: mx - 3 * small, y: my - 3.5 * small, scale: small, color: linear(m.color))
+            case .player, .pet:
+                let half = (m.kind == .pet ? 2 : 3) * max(1, sc)
+                ui.rect(mx - half - 1, my - half - 1, half * 2 + 2, half * 2 + 2, SIMD4(0, 0, 0, 0.85))
+                ui.rect(mx - half, my - half, half * 2, half * 2, linear(m.color))
+                if mode == 2 && m.kind != .pet {
+                    let tw = UIBuilder.textWidth(m.label, scale: small)
+                    let lx = max(x0, min(x0 + size - tw, mx - tw / 2)), ly = m.dz > 0 ? my - 12 * small : my + 5 * small
+                    ui.rect(lx - small, ly - small, tw + 2 * small, 9 * small, SIMD4(0, 0, 0, 0.5))
+                    ui.text(m.label, x: lx, y: ly, scale: small, color: linear(m.color), shadow: false)
+                }
+            }
+        }
+        // North marker and your position under the map.
+        ui.text("N", x: cx - 3 * small, y: y0 + 2 * small, scale: small, color: SIMD4(1, 1, 1, 0.9))
+        let p = s.player.position
+        let coords = "\(Int(floor(p.x))), \(Int(floor(p.y)) - s.world.generator.depthOffset), \(Int(floor(p.z)))" + (map.caveMode ? "  (cave)" : "")
+        let tw = UIBuilder.textWidth(coords, scale: small)
+        let ty = y0 + size + 10 * sc
+        ui.rect(cx - tw / 2 - 4 * small, ty - 2 * small, tw + 8 * small, 11 * small, SIMD4(0, 0, 0, 0.45))
+        ui.text(coords, x: cx - tw / 2, y: ty, scale: small, color: SIMD4(1, 1, 1, 0.9), shadow: false)
+        return ty + 10 * small
     }
 
     func drawStack(_ ui: inout UIBuilder, _ stack: ItemStack, x: Float, y: Float, size: Float, scale sc: Float) {

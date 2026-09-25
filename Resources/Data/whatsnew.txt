@@ -1,5 +1,16 @@
 DinoCraft - the Toonland update
 
+Boats, fishing and a map
+- Craft a Boat from 5 planks (a U shape), right-click water to put it in, right-click it to climb aboard.
+  It goes where you look, sprint to row faster, sneak to get off; hit it once to pick it back up.
+- Craft a Fishing Rod (3 sticks and 2 string). Cast into water, wait for the float to dip under with a splash,
+  then reel in quickly: mostly fish, some junk, and now and then treasure (luckier at night and in the rain).
+- String drops from Cave Crawlers and Sand Scorpions, or craft 3 from any wool.
+- A minimap in the top-right corner, coloured from the real blocks, with your pets, friends and a red X where
+  you last died. Press M for a big map or to hide it (change the key in Controls). Underground it maps the cave.
+- New advancements: Ahoy!, Gone Fishing and Sunken Treasure.
+- Fixed thin cracks that showed across big stretches of water.
+
 Taming, riding and pets
 - Tame creatures by feeding them their favourite food (it can take a few tries):
   Trikey, Parasaurolophus, Iguanodon, Stegosaurus, Longneck, Pachycephalosaurus and Gallimimus eat berries or wheat;

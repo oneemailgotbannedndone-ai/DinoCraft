@@ -386,6 +386,74 @@ enum LoadingView {
 // MARK: - HUD
 
 enum HUD {
+    /// The minimap in the top-right corner (M makes it big or hides it). Returns the y just below it.
+    static func minimap(_ ui: UIContext, session s: GameSession, engine e: GameEngine) -> Float {
+        let mode = e.settings.minimapMode
+        guard mode > 0, !e.showDebug else { return 0 }
+        let d = ui.draw
+        let W = ui.size.x
+        let map = s.minimap
+        map.refresh(s)
+        let view = mode == 1 ? 32 : Minimap.radius
+        let cells = 2 * view + 1
+        let size: Float = mode == 1 ? 176 : 300
+        let cell = size / Float(cells)
+        let box = Rect(W - size - 18, 18, size, size)
+        d.shadow(box.inset(-6), radius: 10, blur: 10, color: Color(linear: 0, 0, 0, 0.45), offset: 3)
+        d.fill(box.inset(-6), Color(hex: 0x5A3A1C), radius: 8)
+        d.fill(box.inset(-2), Color(hex: 0x2A1A0C), radius: 3)
+        d.fill(box, Color(hex: 0x050505))
+        let n = Minimap.size, offset = Minimap.radius - view
+        // Terrain, merging runs of the same colour along each row.
+        for j in 0..<cells {
+            let row = (offset + j) * n + offset
+            var i = 0
+            while i < cells {
+                let color = map.cells[row + i]
+                var run = 1
+                while i + run < cells && map.cells[row + i + run] == color { run += 1 }
+                if color != 0 {
+                    d.fill(Rect(box.x + Float(i) * cell, box.y + Float(j) * cell, Float(run) * cell + 0.4, cell + 0.4), Color(hex: color))
+                }
+                i += run
+            }
+        }
+        let cx = box.x + size / 2, cy = box.y + size / 2
+        for m in map.markers(for: s, radius: view) {
+            let mx = cx + m.dx * cell, my = cy + m.dz * cell
+            switch m.kind {
+            case .you:
+                // An arrow of three dots pointing the way you face.
+                let look = s.player.lookDirection
+                let flat = SIMD2<Float>(Float(look.x), Float(look.z))
+                let dir = simd_length(flat) > 0.01 ? simd_normalize(flat) : SIMD2(0, -1)
+                for k in 0..<3 {
+                    let px = mx + dir.x * Float(k) * 3, py = my + dir.y * Float(k) * 3
+                    let half: Float = k == 0 ? 3 : 2.2
+                    d.fill(Rect(px - half - 1, py - half - 1, half * 2 + 2, half * 2 + 2), Color(linear: 0, 0, 0, 0.8), radius: half + 1)
+                    d.fill(Rect(px - half, py - half, half * 2, half * 2), k == 2 ? Color(hex: 0xFF5A3C) : .white, radius: half)
+                }
+            case .death:
+                d.text("X", x: mx, y: my - 8, size: 14, color: Color(hex: m.color), face: .display, align: .center,
+                       shadow: Color(linear: 0, 0, 0, 0.9))
+            case .player, .pet:
+                let half: Float = m.kind == .pet ? 2.5 : 3.5
+                d.fill(Rect(mx - half - 1, my - half - 1, half * 2 + 2, half * 2 + 2), Color(linear: 0, 0, 0, 0.85))
+                d.fill(Rect(mx - half, my - half, half * 2, half * 2), Color(hex: m.color))
+                if mode == 2 && m.kind == .player {
+                    d.text(m.label, x: mx, y: m.dz > 0 ? my - 20 : my + 6, size: 11, color: .white, face: .display, align: .center,
+                           shadow: Color(linear: 0, 0, 0, 0.9))
+                }
+            }
+        }
+        // North marker and your position under the map.
+        d.text("N", x: cx, y: box.y + 3, size: 12, color: .white, face: .display, align: .center, shadow: Color(linear: 0, 0, 0, 0.9))
+        let p = s.player.position
+        let coords = "\(Int(floor(p.x))), \(Int(floor(p.y)) - s.world.generator.depthOffset), \(Int(floor(p.z)))" + (map.caveMode ? "  (cave)" : "")
+        d.text(coords, x: cx, y: box.maxY + 10, size: 13, color: Theme.text, face: .display, align: .center, shadow: Color(linear: 0, 0, 0, 0.85))
+        return box.maxY + 32
+    }
+
     static func draw(_ ui: UIContext, session s: GameSession, engine e: GameEngine) {
         let d = ui.draw
         let W = ui.size.x, H = ui.size.y
@@ -459,6 +527,7 @@ enum HUD {
                    shadow: Color(linear: 0, 0, 0, 0.85))
         }
 
+        e.minimapBottom = minimap(ui, session: s, engine: e)
         MultiplayerHUD.draw(ui, engine: e)
 
         // Hotbar

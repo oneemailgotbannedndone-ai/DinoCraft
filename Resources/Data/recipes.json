@@ -3,7 +3,7 @@
     "wool": ["wool_white", "wool_black", "wool_red", "wool_orange", "wool_yellow", "wool_green", "wool_cyan", "wool_blue", "wool_purple", "wool_pink"],
     "logs": ["log", "redwood_log", "silver_log"],
     "stone_material": ["cobblestone", "mossy_cobblestone"],
-    "fuel": ["coal", "charcoal", "amber", "ember_shard"]
+    "all_planks": ["planks", "palm_planks"], "fuel": ["coal", "charcoal", "amber", "ember_shard"]
   },
   "recipes": [
     {"id": "planks_from_logs", "type": "shapeless", "ingredients": ["#logs"], "result": "planks", "count": 4},
@@ -30,6 +30,9 @@
     {"id": "bone_block", "type": "shaped", "pattern": ["BBB", "BBB", "BBB"], "key": {"B": "dino_bone"}, "result": "bone_block"},
     {"id": "sea_lantern", "type": "shaped", "pattern": ["CGC", "GTG", "CGC"], "key": {"C": "coral", "G": "glass", "T": "torch"}, "result": "sea_lantern", "count": 2},
     {"id": "saddle", "type": "shaped", "pattern": ["HHH", "HIH"], "key": {"H": "dino_hide", "I": "iron_ingot"}, "result": "saddle"},
+    {"id": "boat", "type": "shaped", "pattern": ["P P", "PPP"], "key": {"P": "#all_planks"}, "result": "boat"},
+    {"id": "fishing_rod", "type": "shaped", "pattern": ["  S", " SL", "S L"], "key": {"S": "stick", "L": "string"}, "result": "fishing_rod"},
+    {"id": "string_from_wool", "type": "shapeless", "ingredients": ["#wool"], "result": "string", "count": 3},
     {"id": "bones_from_block", "type": "shapeless", "ingredients": ["bone_block"], "result": "dino_bone", "count": 9},
     {"id": "iron_ingot_fieldsmelt", "type": "shapeless", "ingredients": ["iron_ore", "#fuel"], "result": "iron_ingot"},
     {"id": "gold_ingot_fieldsmelt", "type": "shapeless", "ingredients": ["gold_ore", "#fuel"], "result": "gold_ingot"},

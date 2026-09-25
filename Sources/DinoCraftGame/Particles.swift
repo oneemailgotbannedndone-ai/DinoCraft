@@ -157,6 +157,16 @@ final class ParticleSystem {
                 p.gravity = 12
                 emit(p)
             }
+        case .splash:
+            for _ in 0..<18 {
+                var p = Particle(center + DVec3(Double.random(in: -0.15...0.15), 0, Double.random(in: -0.15...0.15)),
+                                 DVec3(Double.random(in: -1.4...1.4), Double.random(in: 2...4.5), Double.random(in: -1.4...1.4)),
+                                 life: Float.random(in: 0.4...0.8), size: 0.05, color: SIMD4(0.75, 0.88, 1, 0.9))
+                p.layer = -2
+                p.gravity = 14
+                p.fade = true
+                emit(p)
+            }
         case .ink:
             for _ in 0..<80 {
                 var p = Particle(center + DVec3(Double.random(in: -1...1), Double.random(in: 0...3), Double.random(in: -1...1)),

@@ -78,7 +78,7 @@ enum AdvancementToast {
     static func draw(_ ui: UIContext, engine e: GameEngine) {
         let d = ui.draw
         let W = ui.size.x
-        var y: Float = 84
+        var y: Float = max(84, e.minimapBottom + 8)
         for toast in e.advancementToasts.suffix(3) {
             let age = e.time - toast.time
             guard age >= 0, age < 5 else { continue }

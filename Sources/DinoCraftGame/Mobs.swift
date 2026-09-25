@@ -9,11 +9,12 @@ enum MobKind: String, CaseIterable, Codable {
          pig, cow, sheep, chicken, pookpook, carnotaurus, allosaurus, baryonyx, troodon, spinosaurus,
          grumblesaurus, grinasaurus,
          cod, salmon, clownfish, blueTang,
-         pachy, iguanodon, therizino, gallimimus, oviraptor, microraptor
+         pachy, iguanodon, therizino, gallimimus, oviraptor, microraptor,
+         boat
 }
 
 /// Kinds of particle burst the game can ask for.
-enum EffectBurst { case dust, confetti, ink, crumbs }
+enum EffectBurst { case dust, confetti, ink, crumbs, splash }
 
 struct MobDrop {
     let item: String
@@ -66,7 +67,8 @@ struct MobSpecies {
                              callPitch: 1.1, deepCall: false),
         .crawler: MobSpecies(kind: .crawler, displayName: "Cave Crawler", hostile: true, maxHealth: 12, width: 0.9, height: 0.5,
                              walkSpeed: 1.4, runSpeed: 3.6, damage: 2, attackReach: 1.0, attackCooldown: 0.8, ranged: false, fireproof: false,
-                             detectRange: 14, drops: [MobDrop(item: "dino_hide", min: 0, max: 1, chance: 1), MobDrop(item: "amber", min: 0, max: 1, chance: 0.3)],
+                             detectRange: 14, drops: [MobDrop(item: "dino_hide", min: 0, max: 1, chance: 1), MobDrop(item: "amber", min: 0, max: 1, chance: 0.3),
+                                                     MobDrop(item: "string", min: 0, max: 2, chance: 1)],
                              callPitch: 2.8, deepCall: false),
         .magmaRaptor: MobSpecies(kind: .magmaRaptor, displayName: "Magma Raptor", hostile: true, maxHealth: 24, width: 0.7, height: 1.3,
                                  walkSpeed: 2.0, runSpeed: 6.0, damage: 5, attackReach: 1.3, attackCooldown: 1.0, ranged: false, fireproof: true,
@@ -112,7 +114,8 @@ struct MobSpecies {
                                 callPitch: 0.7, deepCall: false),
         .scorpion: MobSpecies(kind: .scorpion, displayName: "Sand Scorpion", hostile: true, maxHealth: 12, width: 0.9, height: 0.55,
                               walkSpeed: 1.6, runSpeed: 4.8, damage: 2.5, attackReach: 0.9, attackCooldown: 0.9, ranged: false, fireproof: false,
-                              detectRange: 16, drops: [MobDrop(item: "raptor_claw", min: 0, max: 1, chance: 0.3), MobDrop(item: "dino_hide", min: 0, max: 1, chance: 1)],
+                              detectRange: 16, drops: [MobDrop(item: "raptor_claw", min: 0, max: 1, chance: 0.3), MobDrop(item: "dino_hide", min: 0, max: 1, chance: 1),
+                                                      MobDrop(item: "string", min: 0, max: 1, chance: 0.6)],
                               callPitch: 2.2, deepCall: false),
         .pig: MobSpecies(kind: .pig, displayName: "Pig", hostile: false, maxHealth: 10, width: 0.8, height: 0.9,
                    walkSpeed: 1.2, runSpeed: 3.6, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: false,
@@ -199,6 +202,9 @@ struct MobSpecies {
                    walkSpeed: 2.6, runSpeed: 5.0, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: false,
                    detectRange: 0, drops: [MobDrop(item: "feather", min: 1, max: 3, chance: 1)],
                    callPitch: 2.8, deepCall: false),
+        .boat: MobSpecies(kind: .boat, displayName: "Boat", hostile: false, maxHealth: 4, width: 1.2, height: 0.6,
+                   walkSpeed: 0, runSpeed: 7.5, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: false,
+                   detectRange: 0, drops: [], callPitch: 1, deepCall: false),
         .grinasaurus: MobSpecies(kind: .grinasaurus, displayName: "Happy Grumblesaurus", hostile: false, maxHealth: 320, width: 2.2, height: 4.4,
                    walkSpeed: 1.2, runSpeed: 2.0, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: true,
                    detectRange: 0, drops: [], callPitch: 0.6, deepCall: true),
@@ -210,6 +216,9 @@ struct MobSpecies {
 
     /// Fish: they swim anywhere in the water and flop about on land.
     var aquatic: Bool { [.cod, .salmon, .clownfish, .blueTang].contains(kind) }
+
+    /// Boats: ridden, not alive (see `Boats`).
+    var isVehicle: Bool { kind == .boat }
 
     /// Neutral creatures leave you alone until you hit them, then fight back.
     var neutral: Bool { [.trikey, .longneck, .stego, .ankylo, .parasaur, .pookpook, .pachy, .iguanodon, .therizino].contains(kind) }
@@ -409,6 +418,10 @@ final class MobManager {
                 updateBoss(m, target: chosen, dt: dt, session: s)
                 continue
             }
+            if m.species.isVehicle {
+                boatPhysics(m, dt: dt, session: s)
+                continue
+            }
             if m.isTamed {
                 updateTamed(m, dt: dt, session: s)
                 continue
@@ -600,7 +613,7 @@ final class MobManager {
     }
 
     /// Returns true if horizontal movement was blocked.
-    private func move(_ m: Mob, _ d: DVec3, _ world: World) -> Bool {
+    func move(_ m: Mob, _ d: DVec3, _ world: World) -> Bool {
         var box = m.box
         var dx = d.x, dy = d.y, dz = d.z
         let sweep = box.expanded(d)
@@ -807,6 +820,10 @@ final class MobManager {
 
     func hurt(_ m: Mob, amount: Double, knockback: DVec3, session s: GameSession) {
         guard !m.isDying else { return }
+        if m.species.isVehicle {
+            breakBoat(m, session: s)
+            return
+        }
         m.health -= amount
         m.hurtTimer = 0.35
         let strength = m.species.width > 1.2 ? 2.0 : 6.5
@@ -916,7 +933,7 @@ final class MobManager {
         if difficulty == .peaceful { mobs.removeAll { $0.species.hostile && !$0.isTamed } }
         if s.dimension == .overworld { trySpawnFish(s) }
         let hostiles = mobs.filter { $0.species.hostile }.count
-        let friendlies = mobs.filter { !$0.species.hostile && $0.species.kind != .villager && !$0.species.aquatic }.count
+        let friendlies = mobs.filter { !$0.species.hostile && $0.species.kind != .villager && !$0.species.aquatic && !$0.species.isVehicle && !$0.isTamed }.count
         let allowHostile = hostiles < hostileCap
         let allowFriendly = friendlies < 10 && Double.random(in: 0..<1) < 0.25
         guard allowHostile || allowFriendly else { return }

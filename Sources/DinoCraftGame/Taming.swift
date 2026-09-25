@@ -57,6 +57,17 @@ extension GameSession {
     /// Right-clicking a creature: feed it to tame it, heal it, saddle it, ride it or tell it to sit.
     /// Returns true when the click was used.
     func interactWithCreature(_ mob: Mob) -> Bool {
+        if mob.species.isVehicle {
+            guard !mob.removed, riding == nil else { return false }
+            if isRemote {
+                onToast?("Boats work in your own worlds (or ones you host) for now.")
+            } else if !player.isSneaking {
+                mount(mob)
+            } else {
+                return false
+            }
+            return true
+        }
         guard let rule = Taming.rule(mob.species.kind), !mob.isDying else { return false }
         let held = inventory.selectedStack.flatMap { items[$0.item]?.name }
         let isFood = held.map { rule.foods.contains($0) } ?? false
@@ -120,7 +131,8 @@ extension GameSession {
         mob.sitting = false
         if player.flying { player.setFlying(false) }
         onSound?(mob.species.callSound, 0.5, mob.species.callPitch)
-        onToast?("Riding the \(mob.petName ?? mob.species.displayName). Sneak to get off.")
+        onToast?(mob.species.isVehicle ? "All aboard! Steer where you look; sneak to get off."
+                 : "Riding the \(mob.petName ?? mob.species.displayName). Sneak to get off.")
         advancements.record("ride", mob.species.kind.rawValue)
     }
 
@@ -137,7 +149,7 @@ extension GameSession {
     /// While riding, your movement keys steer the creature instead of you.
     func steerMount(_ move: MovementInput) {
         guard let mob = riding else { return }
-        if move.sneak || mob.isDying || mob.removed || !mob.isTamed {
+        if move.sneak || mob.isDying || mob.removed || !(mob.isTamed || mob.species.isVehicle) {
             dismount()
             return
         }
@@ -153,8 +165,10 @@ extension GameSession {
 
     /// Keeps you in the saddle after the creature has moved.
     func followMount() {
-        guard let mob = riding, let rule = Taming.rule(mob.species.kind) else { return }
-        player.teleport(to: mob.position + DVec3(0, rule.seat, 0))
+        guard let mob = riding else { return }
+        let seat = mob.species.isVehicle ? Boats.seat : (Taming.rule(mob.species.kind)?.seat ?? mob.species.height)
+        player.teleport(to: mob.position + DVec3(0, seat, 0))
+        player.refreshSurroundings(world)
     }
 }
 
@@ -219,7 +233,7 @@ extension MobManager {
 
     /// Your guardians turn on whatever you're fighting (or whatever is fighting you).
     func alertGuardians(against enemy: Mob, near p: DVec3) {
-        guard !enemy.isTamed else { return }
+        guard !enemy.isTamed, !enemy.species.isVehicle else { return }
         for m in mobs where m.isTamed && !m.sitting && simd_distance(m.position, p) < 24 {
             if Taming.rule(m.species.kind)?.guardian == true { m.guardTarget = enemy }
         }

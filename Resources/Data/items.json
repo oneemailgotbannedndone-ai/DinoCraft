@@ -132,6 +132,9 @@
     { "name": "spawn_egg_gallimimus", "displayName": "Gallimimus Spawn Egg" },
     { "name": "spawn_egg_oviraptor", "displayName": "Oviraptor Spawn Egg" },
     { "name": "spawn_egg_microraptor", "displayName": "Microraptor Spawn Egg" },
-    { "name": "saddle", "displayName": "Saddle", "maxStack": 1 }
+    { "name": "saddle", "displayName": "Saddle", "maxStack": 1 },
+    {"name": "boat", "displayName": "Boat", "maxStack": 1},
+    {"name": "fishing_rod", "displayName": "Fishing Rod", "maxStack": 1},
+    {"name": "string", "displayName": "String"}
   ]
 }

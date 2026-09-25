@@ -37,6 +37,7 @@ enum CreatureShapes {
         case .gallimimus: return gallimimus()
         case .oviraptor: return oviraptor()
         case .microraptor: return microraptor()
+        case .boat: return boat()
         default: return nil
         }
     }
@@ -246,6 +247,43 @@ enum CreatureShapes {
         m.add(.wing(-1), SIMD3(-0.1, 0.3, -0.06), [b(-0.7, -0.02, -0.15, 0, 0.02, 0.14, shine), b(-0.7, -0.021, -0.16, -0.5, 0.021, 0.16, tip)])
         m.add(.wing(1), SIMD3(0.1, 0.3, -0.06), [b(0, -0.02, -0.15, 0.7, 0.02, 0.14, shine), b(0.5, -0.021, -0.16, 0.7, 0.021, 0.16, tip)])
         m.add(.tail, SIMD3(0, 0.25, 0.2), [b(-0.03, -0.02, 0, 0.03, 0.02, 0.4, body), b(-0.13, -0.01, 0.32, 0.13, 0.02, 0.5, shine)])
+        return m.parts
+    }
+
+    // MARK: Boats
+
+    /// A wooden rowing boat: plank hull with a pointed bow, a bench, and oars that row as it moves.
+    static func boat() -> [ShapePart] {
+        var m = Model()
+        let plank: UInt32 = 0xA8783E, dark: UInt32 = 0x7E5528, rim: UInt32 = 0x5E3C1C, seat: UInt32 = 0x8E6232
+        var hull = [
+            b(-0.5, 0, -0.8, 0.5, 0.1, 0.9, dark),                  // bottom
+            b(-0.58, 0.02, -0.72, -0.48, 0.46, 0.92, plank),        // port side
+            b(0.48, 0.02, -0.72, 0.58, 0.46, 0.92, plank),          // starboard side
+            b(-0.58, 0.02, 0.86, 0.58, 0.46, 0.96, plank),          // stern
+            b(-0.4, 0.02, -0.9, 0.4, 0.44, -0.78, plank),           // bow, narrowing
+            b(-0.22, 0.04, -1.02, 0.22, 0.42, -0.88, plank),
+            b(-0.08, 0.08, -1.1, 0.08, 0.5, -1.0, rim),             // stem post
+            b(-0.6, 0.44, -0.72, -0.46, 0.5, 0.96, rim),            // gunwales
+            b(0.46, 0.44, -0.72, 0.6, 0.5, 0.96, rim),
+            b(-0.6, 0.44, 0.88, 0.6, 0.5, 0.98, rim),
+            b(-0.44, 0.4, -0.92, 0.44, 0.47, -0.78, rim),
+            b(-0.48, 0.3, -0.06, 0.48, 0.36, 0.18, seat),           // bench
+            b(-0.48, 0.3, 0.62, 0.48, 0.36, 0.86, seat),            // stern seat
+        ]
+        // Plank seams along the sides.
+        for y: Float in [0.17, 0.31] {
+            hull.append(b(-0.585, y, -0.72, -0.575, y + 0.02, 0.92, dark))
+            hull.append(b(0.575, y, -0.72, 0.585, y + 0.02, 0.92, dark))
+        }
+        m.add(.body, .zero, hull)
+        // Oars: shafts out over the sides from the oarlocks, blades down in the water.
+        for (side, phase) in [(Float(-1), Float(0)), (Float(1), Float(0))] {
+            let shaft = side < 0 ? b(-0.9, -0.03, -0.03, 0.2, 0.03, 0.03, seat) : b(-0.2, -0.03, -0.03, 0.9, 0.03, 0.03, seat)
+            let blade = side < 0 ? b(-1.12, -0.28, -0.1, -0.86, -0.02, 0.1, plank) : b(0.86, -0.28, -0.1, 1.12, -0.02, 0.1, plank)
+            let lock = b(-0.04, -0.04, -0.04, 0.04, 0.06, 0.04, rim)
+            m.add(.leg(phase), SIMD3(side * 0.56, 0.5, 0.05), [shaft, blade, lock])
+        }
         return m.parts
     }
 }

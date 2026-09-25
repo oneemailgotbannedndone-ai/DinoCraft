@@ -52,8 +52,13 @@ final class GameSession {
     // Interaction
     private(set) var target: RaycastHit?
     private(set) var targetMob: Mob?
-    /// The creature you're riding (see `Taming`).
+    /// The creature (or boat) you're riding (see `Taming`, `Boats`).
     var riding: Mob?
+    /// Your fishing float, while the line is out (see `Fishing`).
+    var bobber: Bobber?
+    /// Where you last died (see `Navigation`), and the minimap.
+    var deathSpot: DeathSpot?
+    let minimap = Minimap()
     private(set) var breakingPos: BlockPos?
     private(set) var breakProgress: Double = 0
     private var hitSoundTimer = 0.0, attackCooldown = 0.0, useCooldown = 0.0, combatCooldown = 0.0
@@ -387,6 +392,8 @@ final class GameSession {
         }
         arrows.update(dt: dt, session: self)
         collectArrows()
+        updateFishing(dt)
+        updateNavigation(dt)
         updateHandAnimation(dt)
         survival(dt)
         environment(dt)
@@ -583,6 +590,12 @@ final class GameSession {
     }
 
     private func attackMob(_ mob: Mob) {
+        if mob.species.isVehicle {
+            // One hit breaks a boat back into the item.
+            if !(network?.attackMob(mob, damage: 1, knockback: .zero) ?? false) { mobs.breakBoat(mob, session: self) }
+            combatCooldown = 0.35
+            return
+        }
         let tool = heldTool
         var damage = Double(tool?.damage ?? 1)
         if player.gameMode == .creative { damage *= 6 }
@@ -802,6 +815,15 @@ final class GameSession {
             }
         }
         guard let stack = inventory.selectedStack, let info = items[stack.item] else { return false }
+
+        if info.name == Boats.item {
+            guard pressed else { return false }
+            return placeBoat()
+        }
+        if info.name == Fishing.rod {
+            guard pressed else { return false }
+            return useFishingRod()
+        }
 
         if let kind = MobKind.forEgg(named: info.name) {
             guard pressed, let hit = target else { return false }
@@ -1057,6 +1079,7 @@ final class GameSession {
     func changeDimension(to target: WorldDimension, portal: BlockID?, arrival: DVec3?) {
         riding?.rideInput = nil
         riding = nil
+        bobber = nil
         guard target != dimension || arrival != nil else { return }
         save()
         world.shutdown()
@@ -1540,6 +1563,8 @@ final class GameSession {
         isDead = true
         riding?.rideInput = nil
         riding = nil
+        bobber = nil
+        deathSpot = DeathSpot(position: player.position, dimension: dimension)
         deathMessage = cause
         advancements.record("die")
         breakingPos = nil

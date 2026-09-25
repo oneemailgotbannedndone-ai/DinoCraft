@@ -136,6 +136,32 @@ final class ParticleRenderer {
             }
         }
 
+        // The fishing float (red over white) and the line sagging back to the rod.
+        if let b = s.bobber {
+            func toCamera(_ p: DVec3) -> SIMD3<Float> {
+                SIMD3(Float(p.x - camera.position.x), Float(p.y - camera.position.y), Float(p.z - camera.position.z))
+            }
+            let light = world.light(at: b.position)
+            let r = toCamera(b.position)
+            quad(r + up * 0.045, right * 0.07, up * 0.045, uv: .zero, uvSize: 1, color: SIMD4(0.78, 0.05, 0.04, 1), layer: -2,
+                 sky: light.sky, block: light.block, emissive: false)
+            quad(r - up * 0.04, right * 0.07, up * 0.04, uv: .zero, uvSize: 1, color: SIMD4(0.9, 0.9, 0.9, 1), layer: -2,
+                 sky: light.sky, block: light.block, emissive: false)
+            let firstPerson = simd_distance(camera.position, s.player.eyePosition) < 0.3
+            let tip = s.rodTip(firstPerson: firstPerson)
+            let end = b.position + DVec3(0, 0.1, 0)
+            let sag = min(1.2, simd_distance(tip, end) * 0.06) * (b.inWater ? 1 : 0.3)
+            func point(_ t: Double) -> DVec3 { tip + (end - tip) * t - DVec3(0, sag * 4 * t * (1 - t), 0) }
+            for k in 0..<12 {
+                let a = toCamera(point(Double(k) / 12)), c = toCamera(point(Double(k + 1) / 12))
+                let along = (c - a) / 2
+                let side = simd_cross(simd_normalize(along + SIMD3(0, 1e-5, 0)), simd_normalize((a + c) / 2 + SIMD3(0, 1e-5, 0)))
+                guard simd_length(side) > 0.001 else { continue }
+                quad((a + c) / 2, simd_normalize(side) * 0.008, along, uv: .zero, uvSize: 1, color: SIMD4(0.75, 0.75, 0.75, 1), layer: -2,
+                     sky: light.sky, block: light.block, emissive: false)
+            }
+        }
+
         // Weather around the camera (overworld only).
         let strength = s.weather.intensity
         let precipitation = WeatherSystem.precipitation(for: s.biome)

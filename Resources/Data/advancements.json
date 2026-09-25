@@ -33,6 +33,9 @@
     { "id": "best_friends", "category": "Adventure", "title": "Best Friends", "description": "Tame a creature with its favourite food", "icon": "berries", "type": "tame" },
     { "id": "dino_rider", "category": "Adventure", "title": "Dino Rider", "description": "Saddle up and ride a dinosaur", "icon": "saddle", "type": "ride" },
     { "id": "raptor_squad", "category": "Adventure", "title": "Clever Girls", "description": "Tame a Raptor to guard you", "icon": "raw_dino_meat", "type": "tame", "target": "raptor" },
+    {"id": "ahoy", "category": "Adventure", "title": "Ahoy!", "description": "Row a boat", "icon": "boat", "type": "ride", "target": "boat"},
+    {"id": "gone_fishing", "category": "Adventure", "title": "Gone Fishing", "description": "Catch something with a fishing rod", "icon": "fishing_rod", "type": "fish"},
+    {"id": "sunken_treasure", "category": "Adventure", "title": "Sunken Treasure", "description": "Fish up treasure", "icon": "emerald", "type": "fish", "target": "treasure"},
     { "id": "big_game", "category": "Adventure", "title": "Big Game", "description": "Stand next to a Longneck", "icon": "dino_hide", "type": "near", "target": "longneck" },
 
     { "id": "farmer", "category": "Farming", "title": "Barnyard", "description": "Meet a pig, a cow, a sheep and a chicken", "icon": "hay_bale", "type": "near", "target": "pig|cow|sheep|chicken", "count": 4, "distinct": true },

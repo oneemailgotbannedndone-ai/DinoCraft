@@ -358,6 +358,8 @@ final class GameEngine: NSObject, MTKViewDelegate {
     // MARK: Advancements
 
     private(set) var advancementToasts: [(def: AdvancementDef, time: Double)] = []
+    /// Where the minimap ends on screen (0 when hidden), so cards in the corner go below it.
+    var minimapBottom: Float = 0
 
     func announceAdvancement(_ def: AdvancementDef) {
         advancementToasts.removeAll { time - $0.time > 10 }
@@ -674,6 +676,10 @@ final class GameEngine: NSObject, MTKViewDelegate {
         if input.keyPressed(settings.binding(for: .toggleDebug).code) { showDebug.toggle() }
         if input.keyPressed(settings.binding(for: .toggleHUD).code) { hudHidden.toggle() }
         if session != nil && screens.isEmpty && input.keyPressed(96) { cameraView = cameraView.next }   // F5
+        if session != nil && screens.isEmpty && input.wasPressed(settings.binding(for: .minimap)) {
+            settingsStore.update { $0.minimapMode = ($0.minimapMode + 1) % 3 }
+            showToast(["Map hidden (M to show)", "Map in the corner", "Big map (M to hide)"][settings.minimapMode])
+        }
         if session != nil && screens.isEmpty && input.keyPressed(5) {   // G: show or hide the guide
             settingsStore.update { $0.showGuide.toggle() }
             showToast(settings.showGuide ? "Guide shown (G to hide)" : "Guide hidden (G to show)")

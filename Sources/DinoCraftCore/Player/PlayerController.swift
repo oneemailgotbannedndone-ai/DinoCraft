@@ -118,6 +118,18 @@ public final class PlayerController {
         fallStartY = nil
     }
 
+    /// Updates whether you're in water without moving you (while riding, when physics doesn't run).
+    public func refreshSurroundings(_ world: BlockSource) {
+        let reg = world.registry
+        let hw = width / 2
+        let body = DBox(min: DVec3(position.x - hw, position.y + 0.1, position.z - hw),
+                        max: DVec3(position.x + hw, position.y + 0.9, position.z + hw))
+        inWater = VoxelPhysics.anyBlock(world, in: body) { reg.isWet[Int($0)] }
+        let eye = eyePosition
+        headInWater = world.blockIfLoaded(Int(floor(eye.x)), Int(floor(eye.y)), Int(floor(eye.z))).map { reg.isWet[Int($0)] } ?? false
+        onGround = true
+    }
+
     /// Advances physics by `dt` seconds, sub-stepping for stable collisions.
     public func update(dt: Double, input: MovementInput, world: BlockSource) {
         let total = min(dt, 0.1)

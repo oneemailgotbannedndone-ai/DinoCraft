@@ -27,7 +27,7 @@ public struct InputBinding: Codable, Hashable, Sendable {
 
 public enum GameAction: String, Codable, CaseIterable, Sendable {
     case forward, backward, left, right, jump, sprint, crouch, inventory, attack, use, pause
-    case drop, pickBlock, toggleDebug, screenshot, toggleHUD, advancements, zoom
+    case drop, pickBlock, toggleDebug, screenshot, toggleHUD, advancements, zoom, minimap
 
     public var displayName: String {
         switch self {
@@ -49,6 +49,7 @@ public enum GameAction: String, Codable, CaseIterable, Sendable {
         case .toggleHUD: return "Hide HUD"
         case .advancements: return "Advancements"
         case .zoom: return "Zoom (hold, scroll to adjust)"
+        case .minimap: return "Map (small, big, hidden)"
         }
     }
 
@@ -72,6 +73,7 @@ public enum GameAction: String, Codable, CaseIterable, Sendable {
             .toggleHUD: .key(99),     // F3
             .advancements: .key(37),  // L
             .zoom: .key(6),           // Z
+            .minimap: .key(46),       // M
         ]
     }
 }
@@ -103,6 +105,8 @@ public struct GameSettings: Codable, Equatable, Sendable {
     public var showFPS = false
     /// The step-by-step guide to beating DinoCraft, shown in the corner (G toggles it).
     public var showGuide = true
+    /// The minimap: 0 hidden, 1 in the corner, 2 big (M cycles it).
+    public var minimapMode = 1
 
     // Profile & multiplayer
     public var username = ""
@@ -171,6 +175,7 @@ public struct GameSettings: Codable, Equatable, Sendable {
         clouds = v(.clouds, clouds)
         showFPS = v(.showFPS, showFPS)
         showGuide = v(.showGuide, showGuide)
+        minimapMode = v(.minimapMode, minimapMode)
         username = v(.username, username)
         playerID = v(.playerID, playerID)
         lastServerAddress = v(.lastServerAddress, lastServerAddress)
@@ -199,6 +204,7 @@ public struct GameSettings: Codable, Equatable, Sendable {
         renderDistance = max(2, min(GameSettings.maxRenderDistance, renderDistance))
         maxFPS = max(0, min(500, maxFPS))
         fov = max(50, min(110, fov))
+        minimapMode = max(0, min(2, minimapMode))
         brightness = max(0, min(1, brightness))
         renderScale = max(0.5, min(1, renderScale))
         guiScale = max(0.75, min(1.5, guiScale))

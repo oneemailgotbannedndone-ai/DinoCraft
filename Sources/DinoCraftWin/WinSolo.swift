@@ -412,6 +412,9 @@ final class WinSolo: CommandHost {
             hudHidden.toggle()
         } else if bound(.advancements) {
             openScreen(.advancements)
+        } else if bound(.minimap) {
+            store.update { $0.minimapMode = ($0.minimapMode + 1) % 3 }
+            showToast(["Map hidden (M to show)", "Map in the corner", "Big map (M to hide)"][settings.minimapMode])
         } else {
             input.keyDown(code, isRepeat: false)
         }
@@ -666,6 +669,27 @@ final class WinSolo: CommandHost {
             CreatureModels.appendBox(&v, m, SIMD3(-0.025, -0.025, -0.3), SIMD3(0.025, 0.025, 0.3), CreatureModels.c(0x8A6A44), glow: false, tint: none)
             CreatureModels.appendBox(&v, m, SIMD3(-0.05, -0.05, 0.22), SIMD3(0.05, 0.05, 0.3), CreatureModels.c(0xE8E2D6), glow: false, tint: none)
         }
+        if let b = s.bobber, let r = rel(b.position) {
+            // The fishing float (red over white) and the line sagging back to the rod.
+            let spin = MathUtil.translation(r) * MathUtil.rotationY(Float(b.age * 0.7))
+            CreatureModels.appendBox(&v, spin, SIMD3(-0.07, 0, -0.07), SIMD3(0.07, 0.09, 0.07), CreatureModels.c(0xE53935), glow: false, tint: none)
+            CreatureModels.appendBox(&v, spin, SIMD3(-0.07, -0.08, -0.07), SIMD3(0.07, 0, 0.07), CreatureModels.c(0xF2F2F2), glow: false, tint: none)
+            CreatureModels.appendBox(&v, spin, SIMD3(-0.015, 0.09, -0.015), SIMD3(0.015, 0.16, 0.015), CreatureModels.c(0xE53935), glow: false, tint: none)
+            let tip = s.rodTip(firstPerson: cameraView == .firstPerson)
+            let end = b.position + DVec3(0, 0.16, 0)
+            let sag = min(1.2, simd_distance(tip, end) * 0.06) * (b.inWater ? 1 : 0.3)
+            func point(_ t: Double) -> DVec3 { tip + (end - tip) * t - DVec3(0, sag * 4 * t * (1 - t), 0) }
+            for k in 0..<12 {
+                let a = point(Double(k) / 12), c = point(Double(k + 1) / 12)
+                guard let ra = rel(a) else { continue }
+                let d = c - a
+                let length = Float(simd_length(d))
+                guard length > 0.001 else { continue }
+                let n = simd_normalize(d)
+                let m = MathUtil.translation(ra) * MathUtil.rotationY(Float(atan2(-n.x, -n.z))) * MathUtil.rotationX(Float(asin(max(-1, min(1, n.y)))))
+                CreatureModels.appendBox(&v, m, SIMD3(-0.008, -0.008, -length), SIMD3(0.008, 0.008, 0), CreatureModels.c(0xDADADA), glow: false, tint: none)
+            }
+        }
         if cameraView != .firstPerson && !s.isDead, let r = rel(s.player.position) {
             // You, wearing your cosmetics and skin.
             let p = s.player
@@ -689,6 +713,7 @@ final class WinSolo: CommandHost {
         guard let generator = s.world.generator as? TerrainGenerator else { return }
         let sea = generator.seaLevel
         let reef = options.demoScreen == "reef"
+        let boat = options.demoScreen == "boat" || options.demoScreen == "fishing"
         let start = s.player.position
         search: for ring in 0..<80 {
             let r = ring * 12
@@ -698,7 +723,7 @@ final class WinSolo: CommandHost {
                 let info = generator.columnInfo(x: x, z: z)
                 guard info.biome == .ocean else { continue }
                 let ok = reef ? sea - info.height >= 6 && [(0, 0), (8, 0), (-8, 0), (0, 8), (0, -8)].allSatisfy { generator.isReef(x: x + $0.0, z: z + $0.1) }
-                              : info.temperature < 0.3 && sea - info.height >= 9
+                              : (boat ? sea - info.height >= 3 : info.temperature < 0.3 && sea - info.height >= 9)
                 guard ok else { continue }
                 s.player.gameMode = .creative
                 s.player.setFlying(true)
@@ -717,6 +742,42 @@ final class WinSolo: CommandHost {
             // Automated check: travel to Toonland first, then take the picture there.
             s.changeDimension(to: .toonland, portal: nil, arrival: DVec3(24.5, 70, 0.5))
             framesSinceReady = 0
+            return
+        }
+        if options.demoScreen == "boat" || options.demoScreen == "fishing" {
+            guard seaDemoMoved else { moveToSeaDemo(s); return }
+            // Automated check: in a boat at sea with a line out, another boat alongside, the map in the corner.
+            demoPlaced = true
+            s.player.setFlying(false)
+            s.player.gameMode = .survival
+            let look = s.player.lookDirection
+            let forward = simd_normalize(DVec3(look.x, 0, look.z)), right = DVec3(-forward.z, 0, forward.x)
+            let sea = Double((s.world.generator as? TerrainGenerator)?.seaLevel ?? 64)
+            let boat = s.mobs.spawn(.boat, at: DVec3(s.player.position.x, sea, s.player.position.z))
+            boat.yaw = atan2(forward.x, forward.z) + .pi
+            let other = s.mobs.spawn(.boat, at: DVec3(s.player.position.x, sea, s.player.position.z) + forward * 3 + right * 2.5)
+            other.yaw = boat.yaw + 0.8
+            s.mount(boat)
+            s.followMount()
+            s.player.pitch = -0.3
+            if let rod = items.id(named: Fishing.rod) {
+                s.inventory.slots[0] = ItemStack(item: rod, count: 1)
+                s.inventory.selected = 0
+            }
+            // Cast toward open water.
+            for k in 0..<16 {
+                let a = Double(k) / 16 * 2 * .pi
+                let dir = forward * cos(a) + right * sin(a)
+                let spot = DVec3(s.player.position.x, sea - 0.1, s.player.position.z) + dir * 6
+                guard s.world.registry.isWet[Int(s.world.block(Int(floor(spot.x)), Int(sea) - 1, Int(floor(spot.z))))] else { continue }
+                let float = Bobber(position: spot, velocity: .zero)
+                float.inWater = true
+                s.bobber = float
+                s.player.yaw = atan2(-dir.x, -dir.z) + 0.25
+                break
+            }
+            s.deathSpot = DeathSpot(position: DVec3(s.player.position.x - 20, sea, s.player.position.z + 14), dimension: s.dimension)
+            if options.demoScreen == "boat" { cameraView = .behind }
             return
         }
         if options.demoScreen == "reef" || options.demoScreen == "kelp" {

@@ -1,12 +1,21 @@
 import Foundation
 import DinoCraftCore
 
-/// Items for tamed creatures.
+/// Items for tamed creatures, boats and fishing.
 enum PetTextures {
     static let S = TexturePainter.S
 
     static func item(_ name: String) -> Canvas? {
-        guard name == "saddle" else { return nil }
+        switch name {
+        case "boat": return boat()
+        case "fishing_rod": return fishingRod()
+        case "string": return string()
+        case "saddle": return saddle()
+        default: return nil
+        }
+    }
+
+    private static func saddle() -> Canvas {
         // A leather saddle seen from the side: seat, raised front and back, flap, girth strap and a stirrup.
         let c = Canvas(S)
         let leather = Palette([0x4A2A16, 0x6A3E22, 0x86522E, 0xA0683C, 0xBA804E])
@@ -22,6 +31,61 @@ enum PetTextures {
         c.line(15, 22, 15, 27, width: 1.5) { _ in leather.colors[0] }                       // stirrup leather
         c.rect(12, 27, 7, 2, RGBA(hex: 0x9A9AA4)); c.plot(12, 26, RGBA(hex: 0x9A9AA4)); c.plot(18, 26, RGBA(hex: 0x9A9AA4))
         c.plot(8, 10, RGBA(hex: 0xD8B040)); c.plot(24, 9, RGBA(hex: 0xD8B040))              // brass studs
+        c.outline()
+        return c
+    }
+
+    /// A rowing boat from the side: planked hull with a raised bow, gunwale, and an oar resting across it.
+    private static func boat() -> Canvas {
+        let c = Canvas(S)
+        let wood = Palette([0x4E3018, 0x6E4822, 0x8E6230, 0xAA7A40, 0xC49256])
+        for y in 14..<25 {
+            let t = Double(y - 14) / 10
+            let left = 3 + Int(t * t * 5), right = 28 - Int(t * 3)
+            for x in left...right {
+                let seam = (y - 14) % 4 == 3
+                c.plot(x, y, seam ? wood.colors[1] : wood.step(0.75 - t * 0.45 + TexturePainter.hash01(41, x / 3, y) * 0.12))
+            }
+        }
+        // Bow rising at the right, gunwale along the top.
+        for (i, x) in (26...29).enumerated() { c.rect(x, 12 - i, 1, 3 + i, wood.colors[2]) }
+        c.rect(3, 13, 25, 2, wood.colors[0].lighten(0.1))
+        // Oar across the boat, blade down on the left.
+        c.line(8, 6, 22, 20, width: 1.4) { _ in RGBA(hex: 0xC8A26A) }
+        c.line(4, 2, 9, 8, width: 3.2) { _ in RGBA(hex: 0xB08850) }
+        c.outline()
+        return c
+    }
+
+    /// A bamboo-coloured rod bending to a fine tip, a reel by the handle, and line down to a red and white float.
+    private static func fishingRod() -> Canvas {
+        let c = Canvas(S)
+        // Line from the tip down to the float.
+        for y in 4...20 { c.plot(27, y, RGBA(hex: 0xE4E4E4)) }
+        c.line(4, 28, 16, 15, width: 2.4) { _ in RGBA(hex: 0x6A4424) }                 // cork handle
+        c.line(16, 15, 23, 7, width: 1.8) { t in RGBA(hex: 0x9A6A38).mix(RGBA(hex: 0xB88A50), t) }
+        c.line(23, 7, 27, 3, width: 1.1) { _ in RGBA(hex: 0xB88A50) }
+        c.disc(10.5, 22.5, 2.2, RGBA(hex: 0x8A8A94))                                     // reel
+        c.plot(10, 22, RGBA(hex: 0xC8C8D0))
+        c.rect(26, 21, 3, 2, RGBA(hex: 0xE53935))                                      // float
+        c.rect(26, 23, 3, 2, RGBA(hex: 0xF4F4F4))
+        c.outline()
+        return c
+    }
+
+    /// A loose coil of string.
+    private static func string() -> Canvas {
+        let c = Canvas(S)
+        let white = RGBA(hex: 0xF2EEE4), shadow = RGBA(hex: 0xB8B2A6)
+        for k in 0..<3 {
+            let r = 8.0 - Double(k) * 1.6, cx = 15.0 + Double(k) * 1.2, cy = 15.0 - Double(k) * 0.8
+            var a = 0.0
+            while a < 2 * .pi {
+                c.disc(cx + cos(a) * r, cy + sin(a) * r * 0.8, 0.8, sin(a) > 0.2 ? shadow : white)
+                a += 0.05
+            }
+        }
+        c.line(21, 20, 27, 27, width: 1) { _ in white }
         c.outline()
         return c
     }
