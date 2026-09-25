@@ -110,31 +110,17 @@ final class DeathScreen: Screen {
 final class CreditsScreen: Screen {
     override var scene: GameActivityState.Scene { .credits }
 
-    private let lines: [(String, Float, Bool)] = [
-        ("DinoCraft", 44, true),
-        ("A prehistoric voxel adventure", 18, false),
-        ("", 20, false),
-        ("DESIGN & ENGINEERING", 14, true),
-        ("Built for you, from scratch, in Swift", 18, false),
-        ("", 16, false),
-        ("TECHNOLOGY", 14, true),
-        ("Native AppKit · Metal · AVAudioEngine", 18, false),
-        ("Multithreaded chunk streaming on Apple Silicon", 18, false),
-        ("Greedy meshing with smooth lighting & ambient occlusion", 18, false),
-        ("", 16, false),
-        ("ART & AUDIO", 14, true),
-        ("All textures painted procedurally by AssetForge", 18, false),
-        ("All sounds and music synthesized from scratch", 18, false),
-        ("", 16, false),
-        ("SOUNDTRACK", 14, true),
-        ("Where Giants Roamed · Fernlight · Amber Dusk", 18, false),
-        ("Deep Strata · Titan Valley", 18, false),
-        ("", 16, false),
-        ("SPECIAL THANKS", 14, true),
-        ("Every dinosaur that ever roamed the Earth", 18, false),
-        ("", 30, false),
-        ("Thank you for playing.", 22, true),
-    ]
+    private let lines: [(String, Float, Bool)] = GameCredits.lines(technology: [
+        "Native AppKit · Metal · AVAudioEngine", "Tuned for Apple Silicon",
+    ]).map { line -> (String, Float, Bool) in
+        switch line.style {
+        case .title: return (line.text, 44, true)
+        case .heading: return (line.text, 14, true)
+        case .line: return (line.text, 18, false)
+        case .spacer: return ("", 16, false)
+        case .thanks: return (line.text, 22, true)
+        }
+    }
 
     override func draw(_ ui: UIContext, _ e: GameEngine) {
         MenuBackdrop.draw(ui)
@@ -244,9 +230,16 @@ final class SettingsScreen: Screen {
             ui.toggle("set.bob", "View Bobbing", next(), &s.viewBobbing)
             ui.toggle("set.clouds", "Clouds", next(), &s.clouds)
             ui.toggle("set.fps", "Show FPS Counter", next(), &s.showFPS)
+            let mr = next()
+            d.text("Map (M)", in: Rect(mr.x + 16, mr.y, 200, mr.h), size: 16, color: Theme.text, align: .left)
+            var mapMode = max(0, min(2, s.minimapMode))
+            if ui.segmented("set.map", Rect(mr.maxX - 360, mr.y + 7, 344, mr.h - 14), options: ["Hidden", "Corner", "Big"], selected: &mapMode) {
+                s.minimapMode = mapMode
+            }
             ui.slider("set.gui", "Interface Scale", next(), &s.guiScale, range: 0.75...1.5, step: 0.05, format: { "\(Int($0 * 100))%" })
             var fps = Double(s.maxFPS)
-            if ui.slider("set.maxfps", "Max FPS (VSync off)", next(), &fps, range: 30...240, step: 10, format: { "\(Int($0))" }) { s.maxFPS = Int(fps) }
+            if ui.slider("set.maxfps", "Max FPS (VSync off)", next(), &fps, range: 0...360, step: 10,
+                         format: { $0 < 5 ? "Unlimited" : "\(Int($0))" }) { s.maxFPS = fps < 5 ? 0 : Int(fps) }
         case 1:
             ui.slider("set.master", "Master Volume", next(), &s.masterVolume, range: 0...1, step: 0.01, format: { "\(Int($0 * 100))%" })
             ui.slider("set.music", "Music", next(), &s.musicVolume, range: 0...1, step: 0.01, format: { "\(Int($0 * 100))%" })

@@ -73,6 +73,9 @@ final class WinSolo: CommandHost {
     var chatLines: [(text: String, time: Double)] = []
     var chatOpen = false
     var chatInput = ""
+    /// Which command suggestion is picked (Up/Down), and the text it was for.
+    var chatSuggestion = 0
+    var chatSuggestionFor = ""
     var swallowText: String?
     var toast: (text: String, time: Double)?
     var advancementToasts: [(def: AdvancementDef, time: Double)] = []
@@ -93,6 +96,10 @@ final class WinSolo: CommandHost {
 
     // Hosting: friends on Mac and Windows join through the wire protocol
     var host: WireHost?
+    /// Set when playing on a friend's world (see `WinSessionClient`).
+    let client: WinSessionClient?
+    /// Why a friend's game ended, if it wasn't the player's choice.
+    private(set) var disconnectReason: String?
     let hostName: String
     var hostEntities: [Int: RemoteEntity] = [:]
     var applyingRemoteEdit = false
@@ -104,7 +111,8 @@ final class WinSolo: CommandHost {
     var mappingClosed = false
 
     init(gl: GL, window: OpaquePointer, content: GameContent, audio: WinAudio?, settings: SettingsStore, options: Options,
-         world meta: WorldMetadata, isNew: Bool, hostName requestedHost: String?) {
+         world meta: WorldMetadata, isNew: Bool, hostName requestedHost: String?, join client: WinSessionClient? = nil) {
+        self.client = client
         self.gl = gl
         self.window = window
         self.options = options
@@ -118,9 +126,9 @@ final class WinSolo: CommandHost {
         let savedName = settings.settings.username
         hostName = cleanName(requestedHost ?? (savedName.isEmpty ? "Host" : savedName))
 
-        let s = GameSession(meta: meta, isNew: isNew, storage: storage, blocks: blocks, items: items,
+        let s = GameSession(meta: meta, isNew: client == nil && isNew, storage: storage, blocks: blocks, items: items,
                             meshFactory: GLChunkMeshFactory(renderer: renderer), jobs: jobs,
-                            renderDistance: WinSolo.gameSettings(settings.settings, options).renderDistance)
+                            renderDistance: WinSolo.gameSettings(settings.settings, options).renderDistance, remote: client != nil)
         s.smelting = content.smelting
         session = s
         s.onSound = { [weak self] name, volume, pitch in self?.audio?.play(name, volume: volume, pitch: pitch) }
@@ -150,7 +158,18 @@ final class WinSolo: CommandHost {
             host.broadcastBlock(pos, id)
         }
         audio?.apply(settings.settings)
-        if requestedHost != nil { startHosting() }
+        if let client {
+            // A friend's world: the host sends the world and runs the creatures; this game plays it in full.
+            s.network = client
+            client.session = s
+            s.remoteChunkRequester = { [weak client] list in client?.requestChunks(list) }
+            client.onChat = { [weak self] from, text in self?.addChat(from: from, text: text) }
+            if let dim = WorldDimension(rawValue: client.welcome.dimension), dim != .overworld {
+                s.followDimension(dim, position: DVec3(client.welcome.x, client.welcome.y, client.welcome.z))
+            }
+        } else if requestedHost != nil {
+            startHosting()
+        }
     }
 
     /// The saved settings with any command-line override. The world needs at least 4 chunks around
@@ -166,12 +185,13 @@ final class WinSolo: CommandHost {
     var settings: GameSettings { store.settings }
     /// The players connected to your hosted world (for /list, /msg and /tp).
     var remotePlayers: [RemotePlayer] {
-        (host?.players ?? []).map { p in
+        if let client { return client.remotePlayers }
+        return (host?.players ?? []).map { p in
             RemotePlayer(id: p.id, name: p.name, position: p.state.map { DVec3($0.x, $0.y, $0.z) } ?? game.player.position)
         }
     }
-    var isMultiplayer: Bool { host != nil }
-    var isClient: Bool { false }
+    var isMultiplayer: Bool { host != nil || client != nil }
+    var isClient: Bool { client != nil }
 
     func addChat(from: String, text: String) {
         let line = from.isEmpty ? text : "<\(from)> \(text)"
@@ -184,6 +204,11 @@ final class WinSolo: CommandHost {
 
     func whisper(to name: String, text: String) -> String? {
         guard !text.isEmpty else { return "Type a message after the name." }
+        if let client {
+            client.sendChat(text, to: name)
+            addChat(from: "", text: "You whisper to \(name): \(text)")
+            return nil
+        }
         guard let host else { return "Private messages need other players in the game." }
         guard host.whisper(from: hostName, to: name, text: text) else { return "No player called \(name) is here." }
         addChat(from: "", text: "You whisper to \(name): \(text)")
@@ -191,7 +216,9 @@ final class WinSolo: CommandHost {
     }
 
     func sendChat(_ text: String) {
-        if let host {
+        if let client {
+            client.sendChat(text)
+        } else if let host {
             host.broadcastChat(from: hostName, text: text)
             addChat(from: hostName, text: text)
         } else {
@@ -371,6 +398,19 @@ final class WinSolo: CommandHost {
             if `is`(SDL_SCANCODE_ESCAPE) { closeChat() }
             else if `is`(SDL_SCANCODE_RETURN) || `is`(SDL_SCANCODE_KP_ENTER) { submitChat() }
             else if `is`(SDL_SCANCODE_BACKSPACE), !chatInput.isEmpty { chatInput.removeLast() }
+            else if `is`(SDL_SCANCODE_TAB) || `is`(SDL_SCANCODE_UP) || `is`(SDL_SCANCODE_DOWN) {
+                // Command suggestions, like on the Mac: Up/Down choose, Tab completes.
+                let suggestions = Commands.suggestions(for: chatInput, engine: self)
+                guard !suggestions.isEmpty else { return }
+                if chatSuggestionFor != chatInput { chatSuggestion = 0; chatSuggestionFor = chatInput }
+                if `is`(SDL_SCANCODE_DOWN) { chatSuggestion = (chatSuggestion + 1) % suggestions.count }
+                if `is`(SDL_SCANCODE_UP) { chatSuggestion = (chatSuggestion + suggestions.count - 1) % suggestions.count }
+                if `is`(SDL_SCANCODE_TAB) {
+                    chatInput = String(suggestions[min(chatSuggestion, suggestions.count - 1)].completion.prefix(120))
+                    chatSuggestion = 0
+                    chatSuggestionFor = chatInput
+                }
+            }
             return
         }
         if `is`(SDL_SCANCODE_BACKSPACE) { menuBackspace = true }
@@ -386,6 +426,13 @@ final class WinSolo: CommandHost {
                 if ControlsEditor.shared.open { ControlsEditor.shared.open = false; return }
                 screen = .pause
                 return
+            }
+            if !typing {
+                let digits: [SDL_Scancode] = [SDL_SCANCODE_1, SDL_SCANCODE_2, SDL_SCANCODE_3, SDL_SCANCODE_4, SDL_SCANCODE_5,
+                                              SDL_SCANCODE_6, SDL_SCANCODE_7, SDL_SCANCODE_8, SDL_SCANCODE_9]
+                let hotbar = digits.firstIndex { `is`($0) }
+                let ctrl = (SDL_GetModState() & SDL_Keymod(SDL_KMOD_CTRL)) != 0
+                if (bound(.drop) || hotbar != nil) && slotKey(drop: bound(.drop), wholeStack: ctrl, hotbar: hotbar) { return }
             }
             if `is`(SDL_SCANCODE_ESCAPE) || (bound(.inventory) && !typing) || (bound(.advancements) && isAdvancements) { closeScreen() }
             return
@@ -487,13 +534,34 @@ final class WinSolo: CommandHost {
             syncHostPlayers(dt: dt)
         }
         let gameSettings = WinSolo.gameSettings(settings, options)
+        if let client {
+            client.tick(dt: dt)
+            if let reason = client.disconnectReason, disconnectReason == nil {
+                disconnectReason = reason
+                running = false
+            }
+        }
         let paused: Bool
         switch screen {
-        case .pause, .settings: paused = host == nil
+        case .pause, .settings: paused = host == nil && client == nil
         default: paused = false
         }
         s.update(dt: dt, input: isPlaying ? input : nil, settings: gameSettings, paused: paused)
         input.endFrame()
+        if options.screenshotPath == nil {
+            WinPresence.shared.setEnabled(settings.discordRichPresence)
+            var activity = GameActivityState.playing(s)
+            switch screen {
+            case .pause: activity.paused = true
+            case .settings: activity.scene = .settings
+            case .inventory, .creative: activity.inventoryOpen = true
+            case .crafting: activity.crafting = true
+            default: break
+            }
+            if let host { activity.multiplayer = "Playing with friends (\(host.playerCount + 1) players)" }
+            if let client { activity.multiplayer = "Playing with friends (\(client.remotePlayers.count + 1) players)" }
+            WinPresence.shared.update(activity, showWorldName: settings.showWorldNameInDiscord)
+        }
         if !s.isLoading { particles.update(dt: paused ? 0 : dt, session: s, blocks: blocks) }
 
         if case .sleep(let started) = screen {
@@ -606,6 +674,7 @@ final class WinSolo: CommandHost {
         if let path = options.screenshotPath {
             if !s.isLoading {
                 if !demoPlaced { placeDemo() }
+                if options.demoScreen == "mining" { s.debugAim(breaking: 0.55) }
                 framesSinceReady += 1
             }
             let timedOut = clock > 150
@@ -613,7 +682,15 @@ final class WinSolo: CommandHost {
             if framesSinceReady >= options.frames || timedOut || loadingShot {
                 if timedOut { Log.warning("Screenshot taken before the world finished loading", category: "Game") }
                 saveScreenshot(to: URL(fileURLWithPath: path), width: w, height: h)
-                Log.info("Automated check: \(renderer.visibleChunks) chunks visible, \(s.world.slots.count) loaded, \(s.mobs.mobs.count) creatures", category: "Game")
+                let eye = s.player.eyePosition
+                let here = ChunkPos(Int32(Int(floor(eye.x)) >> 4), Int32(Int(floor(eye.z)) >> 4))
+                var near = 0, meshed = 0
+                for dz: Int32 in -2...2 { for dx: Int32 in -2...2 {
+                    if let slot = s.world.slot(at: ChunkPos(here.x + dx, here.z + dz)) { near += 1; if slot.mesh != nil { meshed += 1 } }
+                } }
+                Log.info("Automated check: \(near) of 25 nearby chunks loaded, \(meshed) meshed", category: "Game")
+                let inside = blocks[s.world.block(Int(floor(eye.x)), Int(floor(eye.y)), Int(floor(eye.z)))]?.name ?? "?"
+                Log.info("Automated check: \(renderer.visibleChunks) chunks visible, \(s.world.slots.count) loaded, \(s.mobs.mobs.count) creatures; eye at \(Int(eye.x)), \(Int(eye.y)), \(Int(eye.z)) in \(inside), loading \(s.isLoading), zoom \(s.zoomAmount), fov \(settings.fov), view \(cameraView)", category: "Game")
                 running = false
             }
         } else if screenshotQueued {
@@ -698,8 +775,15 @@ final class WinSolo: CommandHost {
                                         moving: Float(p.onGround ? min(1, p.horizontalSpeed / 4.3) : 0), sneaking: p.isSneaking,
                                         swing: Float(s.swingProgress), hurt: Float(s.damageFlash > 0.7 ? 0.3 : 0))
         }
+        for p in client?.remotePlayers ?? [] where !p.dead {
+            // Skip a friend standing right where the camera is (you'd see the inside of their model).
+            guard let r = rel(p.position), simd_length(r + SIMD3(0, 0.9, 0)) > 1.0 else { continue }
+            CreatureModels.appendPlayer(&v, name: p.name, look: p.look, at: r, yaw: Float(p.yaw), pitch: Float(p.pitch),
+                                        walk: Float(p.walkPhase), moving: Float(p.moving), sneaking: p.sneaking, swing: Float(p.swing),
+                                        hurt: Float(p.hurtTimer))
+        }
         for p in hostEntities.values where p.dying == 0 {
-            guard let r = rel(p.position) else { continue }
+            guard let r = rel(p.position), simd_length(r + SIMD3(0, 0.9, 0)) > 1.0 else { continue }
             CreatureModels.appendPlayer(&v, name: p.name, look: p.look, at: r, yaw: Float(p.yaw), pitch: p.pitch, walk: p.walk, moving: p.moving,
                                         sneaking: p.sneaking, swing: p.swing, hurt: p.hurt)
         }
@@ -803,6 +887,18 @@ final class WinSolo: CommandHost {
             boss.health = 130
             boss.enraged = true
             Log.info("Automated check: King Grumblesaurus placed on the stage", category: "Game")
+        }
+        if options.demoScreen == "chat" {
+            // Automated check: typing a command shows its help and suggestions.
+            demoPlaced = true
+            openChat(prefix: "/ti")
+            return
+        }
+        if options.demoScreen == "mining" {
+            // Automated check: the aimed-at block's outline and break cracks.
+            demoPlaced = true
+            s.player.pitch = -0.9
+            return
         }
         if options.demoScreen == "pets" {
             // Automated check: riding a saddled Trikey, with a named Raptor guard and a sitting Dodo alongside.
@@ -942,8 +1038,21 @@ final class WinSolo: CommandHost {
 
     /// Opens this world so friends can join: on the same Wi-Fi straight away, and over the internet
     /// if the router accepts an automatic port mapping.
+    /// Closes the world to friends again (they're disconnected), like the Mac's Stop Hosting.
+    func stopHosting() {
+        guard let h = host else { return }
+        h.stop()
+        host = nil
+        hostEntities.removeAll()
+        lanCode = nil
+        internetCode = nil
+        if let mapping { PortMapping.unmap(mapping) }
+        mapping = nil
+        addChat(from: "", text: "Your world is closed to friends again.")
+    }
+
     func startHosting() {
-        guard host == nil, let s = session else { return }
+        guard host == nil, client == nil, let s = session else { return }
         let meta = s.meta
         let generator = WorldDimension.overworld.makeGenerator(seed: meta.numericSeed, deep: meta.isDeep)
         let server: WireHost
@@ -1086,6 +1195,7 @@ final class WinSolo: CommandHost {
         if case .success(let m)? = late { PortMapping.unmap(m) }
         if let mapping { PortMapping.unmap(mapping) }
         host?.stop()
+        client?.leave()
         jobs.shutdown()
     }
 }

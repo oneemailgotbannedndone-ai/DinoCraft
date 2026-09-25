@@ -136,7 +136,7 @@ final class GameEngine: NSObject, MTKViewDelegate {
             return WorkerContext(index: index, mesher: mesher)
         }
         audio = AudioSystem()
-        presence = PresenceManager()
+        presence = PresenceManager { DiscordIPCClient(clientID: $0) }
         super.init()
 
         if let url = try? ResourceLocator.url("Art/icon_1024.png") {

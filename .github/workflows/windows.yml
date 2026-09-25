@@ -116,7 +116,7 @@ jobs:
           $p4 = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--screenshot `"$shot4`" --demo-screen worlds --hide-console" -PassThru -Wait -NoNewWindow
           Write-Host "World list check exit code: $($p4.ExitCode)"
           if (-not (Test-Path $shot4)) { throw "The game did not produce the world list screenshot" }
-          foreach ($screen in @("creative", "furnace", "pause", "settings", "controls", "crafting", "double-chest", "villagers", "dinos", "pets", "boat")) {
+          foreach ($screen in @("creative", "furnace", "pause", "settings", "controls", "crafting", "double-chest", "villagers", "dinos", "pets", "boat", "mining", "chat")) {
             $shotN = "$PWD/screenshot-$screen.png"
             $pN = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--screenshot `"$shotN`" --frames 5 --render-distance 4 --seed dino --demo-entities --demo-screen $screen" -PassThru -Wait -NoNewWindow
             Write-Host "$screen check exit code: $($pN.ExitCode)"
@@ -127,6 +127,14 @@ jobs:
           $pR = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--screenshot `"$shotR`" --frames 120 --render-distance 4 --seed dino --demo-screen reef" -PassThru -Wait -NoNewWindow
           Write-Host "Reef check exit code: $($pR.ExitCode)"
           if (-not (Test-Path $shotR)) { throw "The game did not produce the reef screenshot" }
+          # Multiplayer: host a world, join it from a second copy of the game (the full shared game on both ends).
+          $hostP = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--host Alice --render-distance 4 --seed dino --hide-console" -PassThru -NoNewWindow
+          Start-Sleep -Seconds 30
+          $shotJ = "$PWD/screenshot-join.png"
+          $pJ = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--join 127.0.0.1 --name Bob --screenshot `"$shotJ`" --frames 60 --render-distance 4 --hide-console" -PassThru -Wait -NoNewWindow
+          Write-Host "Join check exit code: $($pJ.ExitCode)"
+          Stop-Process -Id $hostP.Id -Force -ErrorAction SilentlyContinue
+          if (-not (Test-Path $shotJ)) { Write-Host "::warning::Joining a hosted world did not produce a screenshot" }
           # The launcher's online work (updates, reviews, friends, sharing stats) and the leaderboard, for real.
           # The leaderboard address is changed so nothing is posted to the real board.
           $env:DINOCRAFT_LEADERBOARD_URL = "http://dreamlo.com/lb/automated-check"
@@ -167,6 +175,9 @@ jobs:
             screenshot-dinos.png
             screenshot-pets.png
             screenshot-boat.png
+            screenshot-mining.png
+            screenshot-chat.png
+            screenshot-join.png
             screenshot-online-menu.png
             screenshot-online-leaderboard.png
             .build/release/*.pdb

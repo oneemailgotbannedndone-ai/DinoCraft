@@ -1,5 +1,18 @@
 DinoCraft - the Toonland update
 
+One DinoCraft on Mac and Windows
+- Joining a friend's world on Windows now runs the full game, like on the Mac: boats, fishing, taming and riding,
+  the minimap, the guide, advancements, containers and everything else work when you join, not just when you host.
+- Windows gets the Mac's extras: an outline around the block you're aiming at and cracks while you mine it,
+  the name and health bar of whatever creature you're looking at, Tab to see who's playing, command suggestions
+  in chat (Tab completes, Up/Down choose), Q to drop and 1-9 to move items while hovering a slot, Credits,
+  Quit Game, Stop Hosting, Copy Invite Code and a Commands on/off switch in the pause menu, and Discord status.
+- Windows settings gain Master Volume, Clouds, Interface Scale, Shader Strength, Window Size, the three graphics
+  qualities, Discord options, the map and an Open Texture Packs Folder button.
+- The Mac gets Windows' extras: name tags over your tamed creatures, the "Sneak to get off" hint, a Map setting
+  and Unlimited in Max FPS.
+- Both: the Credits are the same everywhere, and you no longer see the inside of a friend standing where you are.
+
 Boats, fishing and a map
 - Craft a Boat from 5 planks (a U shape), right-click water to put it in, right-click it to climb aboard.
   It goes where you look, sprint to row faster, sneak to get off; hit it once to pick it back up.

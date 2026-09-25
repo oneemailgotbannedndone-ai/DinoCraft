@@ -1,17 +1,14 @@
 import Foundation
-import Darwin
 import DinoCraftCore
 @testable import DinoCraftGame
+#if os(Windows)
+import WinSDK
+#endif
 
-/// Minimal native client for Discord's local RPC socket (no SDK, no network).
-///
-/// Runs entirely on its own thread: discovers `discord-ipc-N` sockets, performs
-/// the handshake, answers pings, and pushes the most recent activity. If Discord
-/// is not installed, not running, or disconnects, it quietly retries with
-/// backoff — the game never waits on it.
-final class DiscordIPCClient: PresenceTransport, @unchecked Sendable {
-    typealias Status = PresenceStatus
-
+/// Discord Rich Presence on Windows: the same protocol as the Mac client (`DiscordIPCClient`), over
+/// Discord's local named pipe (`\\.\pipe\discord-ipc-N`) instead of a Unix socket. Runs on its own
+/// thread, retries quietly while Discord isn't running, and never makes the game wait.
+final class WinDiscordIPC: PresenceTransport, @unchecked Sendable {
     private enum Opcode: UInt32 { case handshake = 0, frame = 1, close = 2, ping = 3, pong = 4 }
 
     private let clientID: String
@@ -20,17 +17,17 @@ final class DiscordIPCClient: PresenceTransport, @unchecked Sendable {
     private var desiredVersion = 0
     private var sentVersion = -1
     private var running = true
-    private var clearOnStop = false
     private let stopped = DispatchSemaphore(value: 0)
+    private var statusValue: PresenceStatus = .connecting
 
-    // Thread-confined state
-    private var fd: Int32 = -1
+    #if os(Windows)
+    private var pipe: HANDLE?
+    #endif
     private var ready = false
     private var failures = 0
     private var nextAttempt = Date.distantPast
-    private var statusValue: Status = .connecting
 
-    var status: Status {
+    var status: PresenceStatus {
         lock.lock(); defer { lock.unlock() }
         return statusValue
     }
@@ -39,11 +36,9 @@ final class DiscordIPCClient: PresenceTransport, @unchecked Sendable {
         self.clientID = clientID
         let thread = Thread { [weak self] in self?.run() }
         thread.name = "DinoCraft Discord RPC"
-        thread.qualityOfService = .utility
         thread.start()
     }
 
-    /// Sets (or clears, with nil) the activity. Only the latest value is sent.
     func setActivity(_ activity: [String: Any]?) {
         lock.lock()
         desiredActivity = activity
@@ -51,16 +46,14 @@ final class DiscordIPCClient: PresenceTransport, @unchecked Sendable {
         lock.unlock()
     }
 
-    /// Clears the activity and closes the socket (waits up to 1 s).
     func stop() {
         lock.lock()
-        clearOnStop = true
         running = false
         lock.unlock()
         _ = stopped.wait(timeout: .now() + 1)
     }
 
-    private func setStatus(_ s: Status) {
+    private func setStatus(_ s: PresenceStatus) {
         lock.lock(); statusValue = s; lock.unlock()
     }
 
@@ -69,86 +62,54 @@ final class DiscordIPCClient: PresenceTransport, @unchecked Sendable {
         return running
     }
 
-    // MARK: Loop
-
     private func run() {
+        #if os(Windows)
         while isRunning {
-            if fd < 0 {
+            if pipe == nil {
                 if Date() >= nextAttempt { attemptConnection() }
-                if fd < 0 { Thread.sleep(forTimeInterval: 0.5); continue }
+                if pipe == nil { Thread.sleep(forTimeInterval: 0.5); continue }
             }
-            var pfd = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
-            let result = poll(&pfd, 1, 200)
-            if result > 0 {
-                if pfd.revents & Int16(POLLIN) != 0 {
-                    if !readFrame() { disconnect("Discord closed the connection"); continue }
-                } else if pfd.revents & Int16(POLLHUP | POLLERR | POLLNVAL) != 0 {
-                    disconnect("Discord connection lost")
-                    continue
-                }
-            } else if result < 0 && errno != EINTR {
-                disconnect("poll failed (\(errno))")
+            // Read whatever Discord has sent (the READY event, pings, errors) without blocking.
+            var available: DWORD = 0
+            guard PeekNamedPipe(pipe, nil, 0, nil, &available, nil) else {
+                disconnect("Discord connection lost")
+                continue
+            }
+            if available >= 8 {
+                if !readFrame() { disconnect("Discord closed the connection"); continue }
                 continue
             }
             if ready { flushActivity() }
+            Thread.sleep(forTimeInterval: 0.2)
         }
-        if fd >= 0 {
-            if ready && clearOnStop {
-                _ = writeFrame(.frame, ["cmd": "SET_ACTIVITY", "args": ["pid": Int(getpid()), "activity": NSNull()], "nonce": UUID().uuidString])
+        if pipe != nil {
+            if ready {
+                _ = writeFrame(.frame, ["cmd": "SET_ACTIVITY", "args": ["pid": Int(GetCurrentProcessId()), "activity": NSNull()],
+                                        "nonce": UUID().uuidString])
             }
-            close(fd)
-            fd = -1
+            CloseHandle(pipe)
+            pipe = nil
         }
+        #else
+        setStatus(.unavailable("Discord Rich Presence needs Windows or macOS"))
+        #endif
         stopped.signal()
     }
 
-    // MARK: Connection
-
-    private func socketPaths() -> [String] {
-        var dirs: [String] = []
-        let env = ProcessInfo.processInfo.environment
-        for key in ["XDG_RUNTIME_DIR", "TMPDIR", "TMP", "TEMP"] {
-            if let v = env[key], !v.isEmpty { dirs.append(v) }
-        }
-        var buf = [CChar](repeating: 0, count: 1024)
-        if confstr(_CS_DARWIN_USER_TEMP_DIR, &buf, buf.count) > 0 { dirs.append(String(cString: buf)) }
-        dirs.append(NSTemporaryDirectory())
-        dirs.append("/tmp")
-        var seen = Set<String>(), paths: [String] = []
-        for d in dirs {
-            let base = d.hasSuffix("/") ? String(d.dropLast()) : d
-            guard seen.insert(base).inserted else { continue }
-            for i in 0..<10 { paths.append("\(base)/discord-ipc-\(i)") }
-        }
-        return paths
-    }
-
+    #if os(Windows)
     private func attemptConnection() {
         setStatus(.connecting)
-        for path in socketPaths() where FileManager.default.fileExists(atPath: path) {
-            let s = socket(AF_UNIX, SOCK_STREAM, 0)
-            guard s >= 0 else { continue }
-            var one: Int32 = 1
-            setsockopt(s, SOL_SOCKET, SO_NOSIGPIPE, &one, socklen_t(MemoryLayout<Int32>.size))
-            var addr = sockaddr_un()
-            addr.sun_family = sa_family_t(AF_UNIX)
-            let pathBytes = Array(path.utf8CString)
-            guard pathBytes.count <= MemoryLayout.size(ofValue: addr.sun_path) else { close(s); continue }
-            withUnsafeMutableBytes(of: &addr.sun_path) { raw in
-                for (i, b) in pathBytes.enumerated() { raw[i] = UInt8(bitPattern: b) }
+        for i in 0..<10 {
+            let name = "\\\\.\\pipe\\discord-ipc-\(i)"
+            let handle: HANDLE? = name.withCString(encodedAs: UTF16.self) {
+                CreateFileW($0, DWORD(GENERIC_READ) | DWORD(GENERIC_WRITE), 0, nil, DWORD(OPEN_EXISTING), 0, nil)
             }
-            addr.sun_len = UInt8(MemoryLayout<sockaddr_un>.size)
-            let rc = withUnsafePointer(to: &addr) {
-                $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                    Darwin.connect(s, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
-                }
-            }
-            guard rc == 0 else { close(s); continue }
-            fd = s
+            guard let handle, handle != INVALID_HANDLE_VALUE else { continue }
+            pipe = handle
             ready = false
             sentVersion = -1
             if writeFrame(.handshake, ["v": 1, "client_id": clientID]) {
-                Log.info("Connected to Discord IPC at \(path); handshaking", category: "Discord")
+                Log.info("Connected to Discord at \(name); handshaking", category: "Discord")
                 return
             }
             disconnect("handshake write failed")
@@ -163,18 +124,16 @@ final class DiscordIPCClient: PresenceTransport, @unchecked Sendable {
     }
 
     private func disconnect(_ reason: String, retryAfter: TimeInterval = 10) {
-        if fd >= 0 { close(fd) }
-        fd = -1
+        if let pipe { CloseHandle(pipe) }
+        pipe = nil
         ready = false
         nextAttempt = Date().addingTimeInterval(retryAfter)
         setStatus(.unavailable(reason))
         Log.info("Discord disconnected: \(reason)", category: "Discord")
     }
 
-    // MARK: Framing
-
     private func writeFrame(_ op: Opcode, _ object: [String: Any]) -> Bool {
-        guard fd >= 0, let json = try? JSONSerialization.data(withJSONObject: object) else { return false }
+        guard let pipe, let json = try? JSONSerialization.data(withJSONObject: object) else { return false }
         var data = Data(capacity: json.count + 8)
         withUnsafeBytes(of: op.rawValue.littleEndian) { data.append(contentsOf: $0) }
         withUnsafeBytes(of: UInt32(json.count).littleEndian) { data.append(contentsOf: $0) }
@@ -182,24 +141,23 @@ final class DiscordIPCClient: PresenceTransport, @unchecked Sendable {
         return data.withUnsafeBytes { raw -> Bool in
             var offset = 0
             while offset < raw.count {
-                let n = Darwin.write(fd, raw.baseAddress! + offset, raw.count - offset)
-                if n < 0 && errno == EINTR { continue }
-                if n <= 0 { return false }
-                offset += n
+                var written: DWORD = 0
+                guard WriteFile(pipe, raw.baseAddress! + offset, DWORD(raw.count - offset), &written, nil), written > 0 else { return false }
+                offset += Int(written)
             }
             return true
         }
     }
 
     private func readExactly(_ count: Int) -> Data? {
+        guard let pipe else { return nil }
         var data = Data(count: count)
         let ok = data.withUnsafeMutableBytes { raw -> Bool in
             var offset = 0
             while offset < count {
-                let n = Darwin.read(fd, raw.baseAddress! + offset, count - offset)
-                if n < 0 && errno == EINTR { continue }
-                if n <= 0 { return false }
-                offset += n
+                var got: DWORD = 0
+                guard ReadFile(pipe, raw.baseAddress! + offset, DWORD(count - offset), &got, nil), got > 0 else { return false }
+                offset += Int(got)
             }
             return true
         }
@@ -212,7 +170,6 @@ final class DiscordIPCClient: PresenceTransport, @unchecked Sendable {
         let length = header.withUnsafeBytes { UInt32(littleEndian: $0.loadUnaligned(fromByteOffset: 4, as: UInt32.self)) }
         guard length < 1 << 20, let body = length > 0 ? readExactly(Int(length)) : Data() else { return false }
         let object = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] ?? [:]
-
         switch Opcode(rawValue: op) {
         case .frame:
             let evt = object["evt"] as? String
@@ -231,7 +188,6 @@ final class DiscordIPCClient: PresenceTransport, @unchecked Sendable {
             let code = object["code"] as? Int ?? 0
             Log.warning("Discord refused the connection (\(code)): \(message)", category: "Discord")
             disconnect("Discord refused: \(message)", retryAfter: code == 4000 ? 300 : 30)
-            return true
         case .ping:
             _ = writeFrame(.pong, object)
         default:
@@ -246,10 +202,9 @@ final class DiscordIPCClient: PresenceTransport, @unchecked Sendable {
         let activity = desiredActivity
         lock.unlock()
         guard version != sentVersion else { return }
-        let activityValue: Any = activity ?? NSNull()
         let payload: [String: Any] = [
             "cmd": "SET_ACTIVITY",
-            "args": ["pid": Int(getpid()), "activity": activityValue],
+            "args": ["pid": Int(GetCurrentProcessId()), "activity": activity ?? NSNull()],
             "nonce": UUID().uuidString,
         ]
         if writeFrame(.frame, payload) {
@@ -258,4 +213,10 @@ final class DiscordIPCClient: PresenceTransport, @unchecked Sendable {
             disconnect("failed to send activity")
         }
     }
+    #endif
+}
+
+/// The one Discord presence for the Windows game (menus and play share it).
+enum WinPresence {
+    nonisolated(unsafe) static let shared = PresenceManager { WinDiscordIPC(clientID: $0) }
 }

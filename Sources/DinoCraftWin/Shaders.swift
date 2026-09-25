@@ -167,6 +167,7 @@ enum Shaders {
     uniform vec2 uTanHalfFov;
     uniform vec4 uSunDaylight;
     uniform vec4 uZenithStars;
+    uniform float uClouds;
     uniform vec4 uHorizonGlow;
     uniform vec3 uCamPos;
     uniform float uTime;
@@ -221,7 +222,7 @@ enum Shaders {
             col += vec3(0.9, 0.95, 1.0) * step(0.985, h) * stars * twinkle * clamp(y * 3.0, 0.0, 1.0);
         }
 
-        if (abs(y) > 0.015) {
+        if (uClouds > 0.5 && abs(y) > 0.015) {
             float dist = (270.0 - uCamPos.y) / y;
             if (dist > 0.0) {
                 vec2 p = uCamPos.xz + dir.xz * dist;

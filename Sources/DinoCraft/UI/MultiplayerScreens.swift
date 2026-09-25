@@ -228,6 +228,36 @@ enum MultiplayerHUD {
             d.fill(Rect(tag.x + 4, tag.maxY + 2, (tag.w - 8) * hp, 3), Theme.danger.mix(Theme.jungle, hp), radius: 1.5)
         }
 
+        // Name tags over your tamed creatures (and the name of whatever you're looking at that's yours)
+        if let s = e.session {
+            for m in s.mobs.mobs where m.isTamed && !m.isDying && m !== s.riding {
+                let rel = SIMD3<Float>(Float(m.position.x - e.camera.position.x), Float(m.position.y + m.species.height + 0.45 - e.camera.position.y),
+                                       Float(m.position.z - e.camera.position.z))
+                let distance = simd_length(rel)
+                guard distance < 20 else { continue }
+                let clip = viewProj * SIMD4(rel, 1)
+                guard clip.w > 0.1 else { continue }
+                let ndc = SIMD2(clip.x, clip.y) / clip.w
+                guard abs(ndc.x) < 1.2, abs(ndc.y) < 1.2 else { continue }
+                let text = m === s.targetMob ? m.label : (m.petName ?? (m.sitting ? "\(m.species.displayName) (sitting)" : ""))
+                guard !text.isEmpty else { continue }
+                let sx = (ndc.x * 0.5 + 0.5) * W, sy = (1 - (ndc.y * 0.5 + 0.5)) * H
+                let size = max(11, 15 - distance * 0.15)
+                let tw = d.font.measure(text, size: size, face: .display) + 16
+                let tag = Rect(sx - tw / 2, sy - size - 8, tw, size + 10)
+                d.fill(tag, Color(hex: 0x140A04, alpha: 0.5), radius: 7)
+                d.text(text, in: tag, size: size, color: Color(hex: 0xC0FFB4), face: .display)
+            }
+            if s.riding != nil {
+                d.text("Sneak to get off", x: W / 2, y: H - 132, size: 14, color: Theme.text.alpha(0.75), face: .display, align: .center,
+                       shadow: Color(linear: 0, 0, 0, 0.8))
+            }
+            if s.spectator {
+                d.text("Spectator — your Hardcore adventure is over", x: W / 2, y: H - 110, size: 14, color: Theme.text.alpha(0.75),
+                       face: .display, align: .center, shadow: Color(linear: 0, 0, 0, 0.8))
+            }
+        }
+
         // Chat log
         let chatOpen = e.topScreen is ChatScreen
         let recent = e.chatLog.suffix(chatOpen ? 12 : 7)

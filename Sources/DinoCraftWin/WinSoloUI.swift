@@ -13,7 +13,7 @@ extension WinSolo {
     func buildUI(width W: Float, height H: Float, camera: WinCamera) -> [Float] {
         var ui = UIBuilder()
         guard let s = session else { return [] }
-        let sc = max(1, min(W / 1280, H / 720))
+        let sc = max(1, min(W / 1280, H / 720)) * Float(settings.guiScale)
         let now = clock
 
         if s.isLoading {
@@ -137,7 +137,9 @@ extension WinSolo {
 
         // Name tags over friends
         let viewProj = camera.viewProjection(aspect: W / max(1, H))
-        for p in hostEntities.values where p.dying == 0 {
+        let friends: [(name: String, position: DVec3)] = hostEntities.values.filter { $0.dying == 0 }.map { ($0.name, $0.position) }
+            + (client?.remotePlayers ?? []).filter { !$0.dead }.map { ($0.name, $0.position) }
+        for p in friends {
             let rel = p.position + DVec3(0, 2.25, 0) - camera.position
             guard simd_length(rel) < 48 else { continue }
             let clip = viewProj * SIMD4<Float>(Float(rel.x), Float(rel.y), Float(rel.z), 1)
@@ -181,6 +183,24 @@ extension WinSolo {
             ui.rect(bx - 3 * sc, by - 3 * sc, bw + 6 * sc, bh + 6 * sc, SIMD4(0, 0, 0, 0.7))
             ui.rect(bx, by, bw, bh, SIMD4(0.25, 0.25, 0.25, 1))
             ui.rect(bx, by, bw * frac, bh, boss.enraged ? SIMD4(0.95, 0.3, 0.3, 1) : SIMD4(0.95, 0.95, 0.95, 1))
+        } else if let mob = s.targetMob, !mob.species.isVehicle {
+            // What you're looking at: its name and health
+            let frac = Float(max(0, min(1, mob.health / mob.species.maxHealth)))
+            let bw = 220 * sc, bh = 8 * sc, bx = W / 2 - bw / 2, by = 30 * sc + 9 * small
+            let hostile = mob.species.hostile && !mob.isTamed
+            ui.centeredText(mob.label, centerX: W / 2, y: 22 * sc, scale: small, color: hostile ? SIMD4(1, 0.25, 0.22, 1) : white)
+            ui.rect(bx - 2 * sc, by - 2 * sc, bw + 4 * sc, bh + 4 * sc, SIMD4(0, 0, 0, 0.55))
+            ui.rect(bx, by, bw * frac, bh, mob.species.hostile ? SIMD4(0.85, 0.15, 0.12, 1) : SIMD4(0.3, 0.75, 0.25, 1))
+        }
+        if isMultiplayer, input.isDown(.key(48)) {
+            // Tab: who's playing
+            let names = [settings.username + " (you)"] + remotePlayers.map { $0.name }
+            let pw = 320 * sc, ph = Float(names.count) * 12 * small + 30 * sc
+            ui.woodPanel(W / 2 - pw / 2, 90 * sc, pw, ph + 12 * small, scale: sc)
+            ui.centeredText(host != nil ? "Hosting - \(names.count) players" : "Players - \(names.count)", centerX: W / 2, y: 90 * sc + 12 * sc, scale: small, color: amber)
+            for (i, n) in names.enumerated() {
+                ui.text(n, x: W / 2 - pw / 2 + 24 * sc, y: 90 * sc + 22 * sc + Float(i + 1) * 12 * small, scale: small, color: white)
+            }
         }
         if settings.showGuide, !showDebug, !s.isRemote, let goal = GameGuide.current(s.advancements) {
             // The guide to beating the game, in the top-left corner
@@ -277,6 +297,27 @@ extension WinSolo {
             let text = String(line.text.prefix(90))
             ui.rect(12 * sc, y - 2 * small, UIBuilder.textWidth(text, scale: small) + 8 * small, lineHeight, SIMD4(0, 0, 0, 0.4 * alpha))
             ui.text(text, x: 12 * sc + 4 * small, y: y, scale: small, color: SIMD4(1, 1, 1, alpha))
+        }
+        if chatOpen && chatInput.hasPrefix("/") {
+            // Command help and suggestions above the input line (Tab completes, Up/Down choose)
+            let suggestions = Array(Commands.suggestions(for: chatInput, engine: self).prefix(8))
+            let picked = chatSuggestionFor == chatInput ? chatSuggestion : 0
+            let boxW = min(W - 24 * sc, 820 * sc)
+            var sy = inputY - 6 * sc - Float(suggestions.count) * lineHeight
+            if let usage = Commands.usage(for: chatInput) { sy -= lineHeight + 4 * sc
+                ui.rect(12 * sc, sy - 2 * small, boxW, lineHeight, SIMD4(0.16, 0.09, 0.04, 1))
+                ui.text(String(usage.prefix(90)), x: 12 * sc + 4 * small, y: sy, scale: small, color: amber)
+                sy += lineHeight + 4 * sc
+            }
+            for (i, suggestion) in suggestions.enumerated() {
+                let active = i == picked
+                ui.rect(12 * sc, sy - 2 * small, boxW, lineHeight, active ? SIMD4(0.55, 0.3, 0.06, 1) : SIMD4(0.16, 0.09, 0.04, 1))
+                ui.text(String(suggestion.label.prefix(34)), x: 12 * sc + 4 * small, y: sy, scale: small, color: active ? white : dim, shadow: false)
+                if let detail = suggestion.detail {
+                    ui.text(String(detail.prefix(Int(boxW * 0.56 / (6 * small)))), x: 12 * sc + boxW * 0.42, y: sy, scale: small, color: dim, shadow: false)
+                }
+                sy += lineHeight
+            }
         }
         if chatOpen {
             let text = "> " + chatInput + (Int(now * 2) % 2 == 0 ? "_" : "")
@@ -466,13 +507,30 @@ extension WinSolo {
             return
         }
         y += bh + gap
-        let label = host.map { "Open to Friends - \($0.playerCount) joined" } ?? "Open to Friends"
-        if ui.button(label, x: W / 2 - bw / 2, y: y, w: bw, h: bh, scale: sc, input: input, enabled: host == nil) {
-            audio?.play("ui_click", volume: 0.5)
-            startHosting()
+        if client == nil {
+            let label = host.map { "Stop Hosting - \($0.playerCount) joined" } ?? "Open to Friends"
+            if ui.button(label, x: W / 2 - bw / 2, y: y, w: bw, h: bh, scale: sc, input: input) {
+                audio?.play("ui_click", volume: 0.5)
+                if host == nil { startHosting() } else { stopHosting() }
+            }
+            y += bh + gap
         }
-        y += bh + gap
-        if ui.button("Save & Quit to Title", x: W / 2 - bw / 2, y: y, w: bw, h: bh, scale: sc, input: input) {
+        if let code = internetCode ?? lanCode {
+            if ui.button("Copy Invite Code", x: W / 2 - bw / 2, y: y, w: bw, h: bh, scale: sc, input: input) {
+                audio?.play("ui_click", volume: 0.5)
+                _ = SDL_SetClipboardText(code)
+                showToast("Invite code copied - send it to a friend")
+            }
+            y += bh + gap
+        }
+        if !game.meta.isHardcore && client == nil {
+            if ui.button("Commands: \(game.meta.commandsAllowed ? "On" : "Off")", x: W / 2 - bw / 2, y: y, w: bw, h: bh, scale: sc, input: input) {
+                audio?.play("ui_click", volume: 0.5)
+                game.setCommandsAllowed(!game.meta.commandsAllowed)
+            }
+            y += bh + gap
+        }
+        if ui.button(client != nil ? "Disconnect" : "Save & Quit to Title", x: W / 2 - bw / 2, y: y, w: bw, h: bh, scale: sc, input: input) {
             audio?.play("ui_click", volume: 0.5)
             quitToTitle()
         }
@@ -480,7 +538,8 @@ extension WinSolo {
         var lines: [String] = ["\(game.meta.name) - \(game.modeName) - \(game.meta.difficulty.rawValue.capitalized)"]
         if let lanCode { lines.append("Same Wi-Fi invite code: \(lanCode)") }
         if let internetCode { lines.append("Internet invite code: \(internetCode)") }
-        if host == nil { lines.append("Open to Friends lets Mac and Windows players join this world.") }
+        if let client { lines.append("Playing on \(client.welcome.worldName) with friends") }
+        else if host == nil { lines.append("Open to Friends lets Mac and Windows players join this world.") }
         for line in lines {
             ui.centeredText(line, centerX: W / 2, y: y, scale: small, color: SIMD4(1, 1, 1, 0.9))
             y += 12 * small
@@ -653,6 +712,49 @@ extension WinSolo {
             }
         case .output, .palette: break
         }
+    }
+
+    /// Keys over a slot in an open screen, like on the Mac: Drop throws one item (Ctrl: the whole
+    /// stack), and 1-9 swap it with that hotbar slot. Returns true when the key was used.
+    func slotKey(drop: Bool, wholeStack: Bool, hotbar: Int?) -> Bool {
+        guard let ref = hoveredSlot else { return false }
+        let s = game
+        if drop, case .inventory = ref, var st = stack(at: ref) {
+            var dropped = st
+            dropped.count = wholeStack ? st.count : 1
+            st.count -= dropped.count
+            setStack(ref, st.count > 0 ? st : nil)
+            s.dropStack(dropped, thrown: true)
+            slotsChanged()
+            return true
+        }
+        if drop, case .container = ref, var st = stack(at: ref) {
+            var dropped = st
+            dropped.count = wholeStack ? st.count : 1
+            st.count -= dropped.count
+            setStack(ref, st.count > 0 ? st : nil)
+            s.dropStack(dropped, thrown: true)
+            slotsChanged()
+            return true
+        }
+        guard let slot = hotbar, slot < Inventory.hotbarCount else { return false }
+        switch ref {
+        case .palette:
+            // Creative: put a full stack of it in that hotbar slot.
+            guard var st = stack(at: ref) else { return false }
+            st.count = s.inventory.maxStack(st.item)
+            s.inventory.slots[slot] = st
+        case .output:
+            return false
+        default:
+            let mine = stack(at: ref), other = s.inventory.slots[slot]
+            if case .armor = ref, let other, items[other.item]?.armor == nil { return false }
+            setStack(ref, other)
+            s.inventory.slots[slot] = mine
+        }
+        slotsChanged()
+        audio?.play("ui_click", volume: 0.3)
+        return true
     }
 
     private func slotsChanged() {

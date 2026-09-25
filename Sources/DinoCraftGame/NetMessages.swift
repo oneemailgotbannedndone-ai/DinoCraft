@@ -197,3 +197,9 @@ struct SpawnMobMessage: Codable {
     var kind: String
     var x: Double, y: Double, z: Double
 }
+
+enum ChatlessChunkRequest {
+    static func make(_ list: [ChunkPos]) -> ChunkRequestMessage {
+        ChunkRequestMessage(chunks: list.map { [$0.x, $0.z] })
+    }
+}

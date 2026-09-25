@@ -31,6 +31,8 @@ final class PlayerModelLibrary {
         for p in players where !p.dead {
             let rel = SIMD3<Float>(Float(p.position.x - camera.position.x), Float(p.position.y - camera.position.y),
                                    Float(p.position.z - camera.position.z))
+            // Skip a friend standing right where the camera is (you'd see the inside of their model).
+            if simd_length(rel + SIMD3(0, 0.9, 0)) < 1.0 { continue }
             let light = world.light(at: p.position + DVec3(0, 1.5, 0))
             let tint: SIMD4<Float> = p.hurtTimer > 0 ? SIMD4(0.9, 0.1, 0.1, Float(p.hurtTimer / 0.35) * 0.6) : .zero
             let base = MathUtil.translation(rel - SIMD3(0, p.sneaking ? 0.25 : 0, 0)) * MathUtil.rotationY(Float(p.yaw))

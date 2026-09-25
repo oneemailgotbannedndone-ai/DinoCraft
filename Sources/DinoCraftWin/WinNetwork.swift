@@ -156,6 +156,15 @@ final class WinNetwork {
         throw JoinError.timedOut
     }
 
+    /// Hands over the messages that arrived with the welcome (for `WinSessionClient`, which takes over the connection).
+    func takePendingEvents() -> [WireConnection.Event] {
+        defer { pending.removeAll() }
+        return pending
+    }
+
+    /// This player's `PlayerIdentity` ID.
+    var playerIdentityID: String { myID }
+
     // MARK: Receiving
 
     func poll() -> [Event] {

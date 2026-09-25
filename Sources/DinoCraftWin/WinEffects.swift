@@ -24,6 +24,45 @@ struct EffectBuilder {
              uv: (uv, uv + SIMD2(uvSize, 0), uv + SIMD2(uvSize, uvSize), uv + SIMD2(0, uvSize)), layer: layer, color: color, glow: glow)
     }
 
+    /// The block you're aiming at, like on the Mac: a thin dark outline along its edges, and break
+    /// cracks (texture layer `crackLayer`) on every face while you mine it. `origin` is its camera-relative corner.
+    mutating func blockHighlight(origin: SIMD3<Float>, crackLayer: Float?) {
+        if let crackLayer {
+            let e: Float = 0.003
+            let lo = origin - e, hi = origin + 1 + e
+            let faces: [[SIMD3<Float>]] = [
+                [SIMD3(hi.x, hi.y, hi.z), SIMD3(hi.x, hi.y, lo.z), SIMD3(hi.x, lo.y, lo.z), SIMD3(hi.x, lo.y, hi.z)],
+                [SIMD3(lo.x, hi.y, lo.z), SIMD3(lo.x, hi.y, hi.z), SIMD3(lo.x, lo.y, hi.z), SIMD3(lo.x, lo.y, lo.z)],
+                [SIMD3(lo.x, hi.y, lo.z), SIMD3(hi.x, hi.y, lo.z), SIMD3(hi.x, hi.y, hi.z), SIMD3(lo.x, hi.y, hi.z)],
+                [SIMD3(lo.x, lo.y, hi.z), SIMD3(hi.x, lo.y, hi.z), SIMD3(hi.x, lo.y, lo.z), SIMD3(lo.x, lo.y, lo.z)],
+                [SIMD3(lo.x, hi.y, hi.z), SIMD3(hi.x, hi.y, hi.z), SIMD3(hi.x, lo.y, hi.z), SIMD3(lo.x, lo.y, hi.z)],
+                [SIMD3(hi.x, hi.y, lo.z), SIMD3(lo.x, hi.y, lo.z), SIMD3(lo.x, lo.y, lo.z), SIMD3(hi.x, lo.y, lo.z)],
+            ]
+            let uv = (SIMD2<Float>(0, 0), SIMD2<Float>(1, 0), SIMD2<Float>(1, 1), SIMD2<Float>(0, 1))
+            for f in faces { quad(f[0], f[1], f[2], f[3], uv: uv, layer: crackLayer, color: SIMD4(0.85, 0.85, 0.85, 0.75), glow: 1) }
+        }
+        // Each edge as two thin crossed strips.
+        let e: Float = 0.004, w: Float = 0.009
+        let lo = origin - e, hi = origin + 1 + e
+        let color = SIMD4<Float>(0.02, 0.02, 0.03, 0.62)
+        let uv = (SIMD2<Float>.zero, SIMD2<Float>.zero, SIMD2<Float>.zero, SIMD2<Float>.zero)
+        func strip(_ a: SIMD3<Float>, _ b: SIMD3<Float>, _ c: SIMD3<Float>, _ d: SIMD3<Float>) {
+            quad(a, b, c, d, uv: uv, layer: -1, color: color, glow: 1)
+        }
+        for y in [lo.y, hi.y] { for z in [lo.z, hi.z] {
+            strip(SIMD3(lo.x, y - w, z), SIMD3(hi.x, y - w, z), SIMD3(hi.x, y + w, z), SIMD3(lo.x, y + w, z))
+            strip(SIMD3(lo.x, y, z - w), SIMD3(hi.x, y, z - w), SIMD3(hi.x, y, z + w), SIMD3(lo.x, y, z + w))
+        } }
+        for x in [lo.x, hi.x] { for z in [lo.z, hi.z] {
+            strip(SIMD3(x - w, lo.y, z), SIMD3(x + w, lo.y, z), SIMD3(x + w, hi.y, z), SIMD3(x - w, hi.y, z))
+            strip(SIMD3(x, lo.y, z - w), SIMD3(x, lo.y, z + w), SIMD3(x, hi.y, z + w), SIMD3(x, hi.y, z - w))
+        } }
+        for x in [lo.x, hi.x] { for y in [lo.y, hi.y] {
+            strip(SIMD3(x - w, y, lo.z), SIMD3(x + w, y, lo.z), SIMD3(x + w, y, hi.z), SIMD3(x - w, y, hi.z))
+            strip(SIMD3(x, y - w, lo.z), SIMD3(x, y + w, lo.z), SIMD3(x, y + w, hi.z), SIMD3(x, y - w, hi.z))
+        } }
+    }
+
     /// A textured unit cube (-0.5…0.5) transformed by `m`, with one texture layer per face in `BlockFace` order.
     mutating func cube(_ m: Mat4, faceLayers: [Float], light: Float = 1, glow: Float = 0) {
         func p(_ x: Float, _ y: Float, _ z: Float) -> SIMD3<Float> {
@@ -172,6 +211,13 @@ extension WinSolo {
                 let m = MathUtil.translation(r + SIMD3(0, bob, 0) + offset) * MathUtil.rotationY(spin) * MathUtil.scale(SIMD3(repeating: scale))
                 appendItem(&solid, e.stack.item, m, light: light)
             }
+        }
+
+        // The block you're aiming at
+        if let hit = s.target, !s.spectator, cameraView != .front {
+            let origin = rel(DVec3(Double(hit.block.x), Double(hit.block.y), Double(hit.block.z)))
+            let cracking = s.breakProgress > 0 && s.breakingPos == hit.block
+            blended.blockHighlight(origin: origin, crackLayer: cracking ? renderer.crackLayer(stage: Int(s.breakProgress * 10)) : nil)
         }
 
         // Camera-facing axes for particles.

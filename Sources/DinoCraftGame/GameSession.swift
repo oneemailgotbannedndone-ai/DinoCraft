@@ -1626,6 +1626,12 @@ final class GameSession {
     }
 
     func debugSetTime(_ t: Double) { worldTime = t }
+    /// Automated checks: aim at whatever is under the crosshair, part-way through breaking it.
+    func debugAim(breaking progress: Double) {
+        target = VoxelPhysics.raycast(world, origin: player.eyePosition, direction: player.lookDirection, maxDistance: 6)
+        breakingPos = target?.block
+        breakProgress = progress
+    }
 
     // MARK: Commands
 

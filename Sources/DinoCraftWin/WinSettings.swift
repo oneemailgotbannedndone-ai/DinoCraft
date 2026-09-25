@@ -93,6 +93,21 @@ final class ControlsEditor {
     }
 }
 
+/// Opening things with Windows itself.
+enum WinShell {
+    /// Shows a folder in File Explorer.
+    static func openFolder(_ url: URL) {
+        #if os(Windows)
+        let explorer = Process()
+        explorer.executableURL = URL(fileURLWithPath: "C:\\Windows\\explorer.exe")
+        explorer.arguments = [url.withUnsafeFileSystemRepresentation { $0.map { String(cString: $0) } } ?? url.path]
+        try? explorer.run()
+        #else
+        Log.info("Folder: \(url.path)", category: "App")
+        #endif
+    }
+}
+
 /// The settings panel, shared by the title screen and the in-game pause menu: graphics on the
 /// left, sound and controls on the right. Changes apply and save straight away.
 struct SettingsPanel {
@@ -105,6 +120,7 @@ struct SettingsPanel {
         renderer.brightness = Float(settings.brightness)
         renderer.shaderPack = shaderPacks.firstIndex { $0.id == settings.shaderPack } ?? 0
         renderer.shaderStrength = Float(max(0, min(1, settings.shaderStrength)))
+        renderer.clouds = settings.clouds
     }
 
     let store: SettingsStore
@@ -122,7 +138,7 @@ struct SettingsPanel {
         let small = max(1, (2 * s).rounded())
         let settings = store.settings
         let colW = min((W - 60 * s) / 2, 520 * s), gapX = 20 * s
-        let rowH = 38 * s, rowGap = 8 * s
+        let rowH = 32 * s, rowGap = 5 * s
         let leftX = W / 2 - colW - gapX / 2, rightX = W / 2 + gapX / 2
         var y = [top, top]
 
@@ -154,14 +170,29 @@ struct SettingsPanel {
             plus: { store.update { $0.renderDistance = min(GameSettings.maxRenderDistance, rd + (rd >= 16 ? 4 : 2)) } })
         row(0, "Field of view", "\(Int(settings.fov))\u{00B0}", minus: { step(\.fov, -5, 50, 110) }, plus: { step(\.fov, 5, 50, 110) })
         row(0, "Brightness", percent(settings.brightness), minus: { step(\.brightness, -0.1, 0, 1) }, plus: { step(\.brightness, 0.1, 0, 1) })
+        row(0, "Interface scale", percent(settings.guiScale), minus: { step(\.guiScale, -0.05, 0.75, 1.5) }, plus: { step(\.guiScale, 0.05, 0.75, 1.5) })
         // Leaves change the next time a world opens.
-        toggle(0, "Fancy leaves", settings.graphicsQuality != .fast) {
-            store.update { $0.graphicsQuality = $0.graphicsQuality == .fast ? .fancy : .fast }
-        }
+        let qualities = GraphicsQuality.allCases
+        let quality = qualities.firstIndex(of: settings.graphicsQuality) ?? 2
+        row(0, "Graphics quality", qualities[quality].displayName,
+            minus: { store.update { $0.graphicsQuality = qualities[(quality + qualities.count - 1) % qualities.count] } },
+            plus: { store.update { $0.graphicsQuality = qualities[(quality + 1) % qualities.count] } })
+        toggle(0, "Clouds", settings.clouds) { store.update { $0.clouds.toggle() } }
         toggle(0, "View bobbing", settings.viewBobbing) { store.update { $0.viewBobbing.toggle() } }
         toggle(0, "Fullscreen", settings.fullscreen) {
             store.update { $0.fullscreen.toggle() }
             _ = SDL_SetWindowFullscreen(window, store.settings.fullscreen)
+        }
+        if !settings.fullscreen {
+            let sizes: [(Int32, Int32)] = [(1280, 720), (1600, 900), (1920, 1080), (2560, 1440)]
+            let current = sizes.firstIndex { Int($0.0) == settings.windowWidth && Int($0.1) == settings.windowHeight } ?? -1
+            func choose(_ i: Int) {
+                let size = sizes[(i + sizes.count) % sizes.count]
+                store.update { $0.windowWidth = Int(size.0); $0.windowHeight = Int(size.1) }
+                _ = SDL_SetWindowSize(window, size.0, size.1)
+            }
+            row(0, "Window size", current >= 0 ? "\(sizes[current].0)x\(sizes[current].1)" : "Custom",
+                minus: { choose(current < 0 ? 0 : current - 1) }, plus: { choose(current + 1) })
         }
         toggle(0, "Show FPS", settings.showFPS) { store.update { $0.showFPS.toggle() } }
         toggle(0, "VSync", settings.vsync) {
@@ -180,8 +211,13 @@ struct SettingsPanel {
         row(0, "Shader pack", looks[look].name,
             minus: { store.update { $0.shaderPack = looks[(look + looks.count - 1) % looks.count].id } },
             plus: { store.update { $0.shaderPack = looks[(look + 1) % looks.count].id } })
+        if look != 0 {
+            row(0, "Shader strength", percent(settings.shaderStrength),
+                minus: { step(\.shaderStrength, -0.1, 0, 1) }, plus: { step(\.shaderStrength, 0.1, 0, 1) })
+        }
 
         // Sound, controls and looks
+        row(1, "Master volume", percent(settings.masterVolume), minus: { step(\.masterVolume, -0.1, 0, 1) }, plus: { step(\.masterVolume, 0.1, 0, 1) })
         row(1, "Music", percent(settings.musicVolume), minus: { step(\.musicVolume, -0.1, 0, 1) }, plus: { step(\.musicVolume, 0.1, 0, 1) })
         row(1, "Sounds", percent(settings.soundVolume), minus: { step(\.soundVolume, -0.1, 0, 1) }, plus: { step(\.soundVolume, 0.1, 0, 1) })
         row(1, "Ambience", percent(settings.ambientVolume), minus: { step(\.ambientVolume, -0.1, 0, 1) }, plus: { step(\.ambientVolume, 0.1, 0, 1) })
@@ -195,6 +231,14 @@ struct SettingsPanel {
             ControlsEditor.shared.message = nil
         }
         y[1] += rowH + rowGap
+        row(1, "Map", ["Hidden", "Corner", "Big"][max(0, min(2, settings.minimapMode))],
+            minus: { store.update { $0.minimapMode = ($0.minimapMode + 2) % 3 } }, plus: { store.update { $0.minimapMode = ($0.minimapMode + 1) % 3 } })
+        toggle(1, "Discord status", settings.discordRichPresence) { store.update { $0.discordRichPresence.toggle() } }
+        if settings.discordRichPresence {
+            toggle(1, "Show world name", settings.showWorldNameInDiscord) { store.update { $0.showWorldNameInDiscord.toggle() } }
+            ui.text(WinPresence.shared.statusText, x: rightX + 10 * s, y: y[1], scale: small, color: SIMD4(0.866, 0.772, 0.63, 0.9))
+            y[1] += 10 * small
+        }
         let packs = TexturePackLibrary.all()
         let current = packs.firstIndex { $0.id == renderer.texturePack.id } ?? 0
         func choosePack(_ index: Int) {
@@ -208,6 +252,12 @@ struct SettingsPanel {
         ui.text(about.count > maxChars ? String(about.prefix(maxChars - 1)) + "\u{2026}" : about, x: rightX, y: y[1], scale: small,
                 color: SIMD4(0.866, 0.772, 0.63, 0.9))
         y[1] += 10 * small
+        if ui.button("Open Texture Packs Folder", x: rightX, y: y[1], w: colW, h: rowH, scale: s, input: input) {
+            click()
+            TexturePackLibrary.prepareUserFolder()
+            WinShell.openFolder(TexturePackLibrary.userFolder)
+        }
+        y[1] += rowH + rowGap
 
         audio?.apply(store.settings)
         SettingsPanel.applyLooks(store.settings, to: renderer)

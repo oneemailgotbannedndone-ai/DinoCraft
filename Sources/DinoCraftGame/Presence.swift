@@ -1,6 +1,5 @@
 import Foundation
 import DinoCraftCore
-@testable import DinoCraftGame
 
 /// Facts about what the player is doing, reported by the game every frame.
 /// The presence layer — not gameplay code — decides how to phrase it.
@@ -30,6 +29,33 @@ struct GameActivityState: Equatable {
     var building = false
     var dead = false
     var multiplayer: String?
+}
+
+extension GameActivityState {
+    /// What the player is up to in a world (the menus and screens on top are filled in by each app).
+    static func playing(_ s: GameSession) -> GameActivityState {
+        var st = GameActivityState()
+        st.worldName = s.meta.name
+        st.gameMode = s.player.gameMode
+        st.dimension = s.dimension
+        st.hardcore = s.meta.isHardcore
+        if s.isLoading {
+            st.scene = .loading(newWorld: s.isNewWorld)
+            return st
+        }
+        st.scene = .playing
+        st.crafting = s.clock - s.lastCraftTime < 6
+        st.dead = s.isDead
+        st.swimming = s.player.inWater && !s.player.onGround
+        st.flying = s.player.flying
+        st.underground = s.isUnderground
+        st.mining = s.clock - s.lastMiningTime < 8
+        st.building = s.clock - s.lastBuildingTime < 8
+        st.biome = s.biome.displayName
+        st.spectating = s.spectator
+        st.fighting = s.clock - s.lastCombatTime < 6 ? s.lastCombatMob : nil
+        return st
+    }
 }
 
 struct PresenceActivity: Equatable {
@@ -108,11 +134,28 @@ enum PresenceFormatter {
     }
 }
 
+/// How the connection to Discord is going.
+enum PresenceStatus: Equatable {
+    case connecting
+    case connected(user: String?)
+    case unavailable(String)
+}
+
+/// The local connection to the Discord app: a Unix socket on Mac, a named pipe on Windows.
+protocol PresenceTransport: AnyObject {
+    var status: PresenceStatus { get }
+    /// Sets (or clears, with nil) the activity. Only the latest value is sent.
+    func setActivity(_ activity: [String: Any]?)
+    /// Clears the activity and closes the connection.
+    func stop()
+}
+
 /// The single owner of Discord Rich Presence. Receives game state, formats it,
 /// rate-limits updates (Discord allows ~5 per 20 s) and survives Discord being
 /// absent. Nothing else in the codebase talks to Discord.
 final class PresenceManager {
-    private var client: DiscordIPCClient?
+    private var client: PresenceTransport?
+    private let makeClient: (String) -> PresenceTransport
     private let applicationID: String?
     private let startDate = Date()
     private var enabled = false
@@ -121,7 +164,8 @@ final class PresenceManager {
     private var lastSendTime = Date.distantPast
     private let minInterval: TimeInterval = 4
 
-    init() {
+    init(makeClient: @escaping (String) -> PresenceTransport) {
+        self.makeClient = makeClient
         applicationID = PresenceManager.loadApplicationID()
         if applicationID == nil {
             Log.info("Discord Rich Presence is not configured (no applicationId in discord.json)", category: "Discord")
@@ -146,7 +190,7 @@ final class PresenceManager {
         guard on != enabled else { return }
         enabled = on
         if on, let id = applicationID {
-            client = DiscordIPCClient(clientID: id)
+            client = makeClient(id)
             lastSent = nil
         } else if !on {
             client?.stop()

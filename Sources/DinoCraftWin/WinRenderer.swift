@@ -151,6 +151,8 @@ final class WinRenderer {
     /// Set when the driver can't render offscreen, so post-processing stays off.
     private var postUnavailable = false
     var shaderStrength: Float = 1
+    /// Clouds in the sky (Settings > Clouds).
+    var clouds = true
     private let effectVertexArray: UInt32
     private let effectBuffer: UInt32
     private var blockTexture: UInt32
@@ -190,10 +192,10 @@ final class WinRenderer {
         effectProgram = try gl.makeProgram(vertex: Shaders.effectVertex, fragment: Shaders.effectFragment, label: "effects")
         postProgram = try gl.makeProgram(vertex: Shaders.postVertex, fragment: Shaders.postFragment, label: "shader pack")
 
-        blockNames = blocks.textureNames
+        blockNames = blocks.textureNames + WinRenderer.crackNames
         itemNames = items.textureNames
         texturePack = pack
-        let blockArray = WinRenderer.loadTextureArray(gl: gl, names: blocks.textureNames, folders: ["blocks"], pack: pack)
+        let blockArray = WinRenderer.loadTextureArray(gl: gl, names: blocks.textureNames + WinRenderer.crackNames, folders: ["blocks", "misc"], pack: pack)
         blockTexture = blockArray.texture
         blockLayers = blockArray.layers
         blockLayerColors = blockArray.colors
@@ -257,10 +259,18 @@ final class WinRenderer {
     }
 
     /// Loads 32×32 PNGs into an sRGB texture array (premultiplied alpha), trying each folder in order.
+    /// Break-crack pictures, stage 0 (barely) to 9 (about to break), from Textures/misc.
+    static let crackNames = (0..<10).map { "crack_\($0)" }
+
+    /// The block texture layer for a break-crack stage.
+    func crackLayer(stage: Int) -> Float? {
+        blockLayers["crack_\(max(0, min(9, stage)))"].map { Float($0) }
+    }
+
     /// Switches to another texture pack's art. Layers keep their numbers, so chunk meshes stay valid.
     func applyTexturePack(_ pack: TexturePack) {
         guard pack.id != texturePack.id else { return }
-        let blockArray = WinRenderer.loadTextureArray(gl: gl, names: blockNames, folders: ["blocks"], pack: pack)
+        let blockArray = WinRenderer.loadTextureArray(gl: gl, names: blockNames, folders: ["blocks", "misc"], pack: pack)
         let itemArray = WinRenderer.loadTextureArray(gl: gl, names: itemNames, folders: ["items", "blocks"], pack: pack)
         gl.deleteTexture(blockTexture)
         gl.deleteTexture(itemTexture)
@@ -431,6 +441,7 @@ final class WinRenderer {
         gl.uniform3f(gl.uniform(skyProgram, "uCamPos"), Float(camera.position.x.truncatingRemainder(dividingBy: 65536)),
                      Float(camera.position.y), Float(camera.position.z.truncatingRemainder(dividingBy: 65536)))
         gl.uniform1f(gl.uniform(skyProgram, "uTime"), time)
+        gl.uniform1f(gl.uniform(skyProgram, "uClouds"), clouds ? 1 : 0)
         gl.bindVertexArray(emptyVertexArray)
         gl.drawArrays(GLC.TRIANGLES, 0, 3)
     }

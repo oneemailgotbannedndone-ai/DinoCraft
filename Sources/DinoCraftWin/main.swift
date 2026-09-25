@@ -174,11 +174,16 @@ do {
         var sessionOptions = options
         if sessionOptions.renderDistance == nil { sessionOptions.renderDistance = max(2, min(GameSettings.maxRenderDistance, settingsStore.settings.renderDistance)) }
         SDL_SetWindowTitle(window, "DinoCraft · \(network.welcome.worldName)")
-        let game = WinGame(gl: gl, window: window, content: content, audio: audio, settings: settingsStore, options: sessionOptions,
-                           network: network)
-        let reason = game.run()
+        // The full game, playing the friend's world (the same as on the Mac).
+        guard let client = WinSessionClient(joined: network) else {
+            network.connection.close()
+            return (false, "The host's world couldn't be read. Make sure you both have the latest DinoCraft.")
+        }
+        let game = WinSolo(gl: gl, window: window, content: content, audio: audio, settings: settingsStore, options: sessionOptions,
+                           world: client.meta, isNew: false, hostName: nil, join: client)
+        game.run()
         SDL_SetWindowTitle(window, "DinoCraft")
-        return (game.quitRequested, reason.map { "You left the game: \($0)" })
+        return (game.quitRequested, game.disconnectReason.map { "You left the game: \($0)" })
     }
 
     /// Plays one of your own worlds (optionally opened to friends). Returns whether the player closed the window.
@@ -233,6 +238,7 @@ do {
         }
     }
     audio.shutdown()
+    WinPresence.shared.shutdown()
 } catch {
     fail(String(describing: error), window: window)
 }

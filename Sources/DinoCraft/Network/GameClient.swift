@@ -182,9 +182,3 @@ final class GameClient: SessionNetwork {
     }
     func dimensionChanged(_ dimension: WorldDimension, position: DVec3) {}
 }
-
-enum ChatlessChunkRequest {
-    static func make(_ list: [ChunkPos]) -> ChunkRequestMessage {
-        ChunkRequestMessage(chunks: list.map { [$0.x, $0.z] })
-    }
-}

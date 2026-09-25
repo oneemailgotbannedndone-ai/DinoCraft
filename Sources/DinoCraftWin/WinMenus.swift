@@ -68,7 +68,8 @@ final class WinMenus {
         case launchGame(join: String?)
     }
 
-    private enum Page { case launcher, cosmetics, skin, title, worlds, create, multiplayer, settings, connecting, reviews, friends, leaderboard }
+    private var creditsStart = 0.0
+    private enum Page { case launcher, cosmetics, skin, title, worlds, create, multiplayer, settings, connecting, reviews, friends, leaderboard, credits }
 
     private let window: OpaquePointer
     private let renderer: WinRenderer
@@ -218,6 +219,17 @@ final class WinMenus {
             last = now
             let input = pollInput()
             if input.quit { return .quit }
+            if options.screenshotPath == nil {
+                WinPresence.shared.setEnabled(store.settings.discordRichPresence)
+                var activity = GameActivityState()
+                switch page {
+                case .worlds: activity.scene = .worldSelection
+                case .create: activity.scene = .worldCreation
+                case .settings: activity.scene = .settings
+                default: activity.scene = .mainMenu
+                }
+                WinPresence.shared.update(activity, showWorldName: store.settings.showWorldNameInDiscord)
+            }
             var w: Int32 = 0, h: Int32 = 0
             _ = SDL_GetWindowSizeInPixels(window, &w, &h)
             var ui = UIBuilder()
@@ -304,7 +316,7 @@ final class WinMenus {
     // MARK: Pages
 
     private func build(_ ui: inout UIBuilder, input: MenuInput, width W: Float, height H: Float, now: Double) -> Choice? {
-        let s = max(1, min(W / 1280, H / 720))
+        let s = max(1, min(W / 1280, H / 720)) * Float(store.settings.guiScale)
         let small = max(1, (2 * s).rounded())
         let bw = 360 * s, bh = 46 * s, gap = 12 * s
         let cx = W / 2
@@ -346,8 +358,44 @@ final class WinMenus {
                 click(); message = nil; focus = ""; settingsReturn = .title; page = .settings; ControlsEditor.shared.open = false
             }
             y += bh + gap
+            if ui.button("Credits", x: cx - bw / 2, y: y, w: bw, h: bh, scale: s, input: input) {
+                click(); message = nil; creditsStart = now; page = .credits
+            }
+            y += bh + gap
             if ui.button("Back to Launcher", x: cx - bw / 2, y: y, w: bw, h: bh, scale: s, input: input) || input.escape {
                 click(); message = nil; page = .launcher
+            }
+            y += bh + gap
+            if ui.button("Quit Game", x: cx - bw / 2, y: y, w: bw, h: bh, scale: s, input: input) {
+                click()
+                return .quit
+            }
+
+        case .credits:
+            // Rolling credits, like on the Mac.
+            let lines = GameCredits.lines(technology: ["SDL3 · OpenGL · native Windows audio", "Runs on everyday Windows PCs"])
+            func size(_ style: GameCredits.Style) -> Float {
+                switch style {
+                case .title: return max(1, (7 * s).rounded())
+                case .thanks: return max(1, (3 * s).rounded())
+                case .spacer: return max(1, (2 * s).rounded())
+                default: return small
+                }
+            }
+            var total: Float = 0
+            for l in lines { total += size(l.style) * 7 + 16 * s }
+            let scrolled = Float(now - creditsStart) * 34 * s
+            var y = H * 0.85 - scrolled.truncatingRemainder(dividingBy: total + H * 0.9)
+            for line in lines {
+                let scale = size(line.style)
+                if !line.text.isEmpty && y > 50 * s && y < H - 110 * s {
+                    let color: SIMD4<Float> = line.style == .line ? SIMD4(1, 1, 1, 0.9) : SIMD4(1, 0.8, 0.4, 1)
+                    ui.centeredText(line.text, centerX: cx, y: y, scale: scale, color: color)
+                }
+                y += scale * 7 + 16 * s
+            }
+            if ui.button("Back", x: cx - 120 * s, y: H - 80 * s, w: 240 * s, h: bh, scale: s, input: input) || input.escape {
+                click(); page = .title
             }
 
         case .launcher:
@@ -1248,15 +1296,9 @@ extension WinMenus {
 extension WinMenus {
     /// Opens DinoCraft's data folder (worlds, screenshots, texture packs) in Explorer.
     fileprivate func openGameFolder() {
-        #if os(Windows)
-        let explorer = Process()
-        explorer.executableURL = URL(fileURLWithPath: "C:\\Windows\\explorer.exe")
-        explorer.arguments = [GamePaths.root.withUnsafeFileSystemRepresentation { $0.map { String(cString: $0) } } ?? GamePaths.root.path]
-        try? explorer.run()
-        #else
-        Log.info("Game folder: \(GamePaths.root.path)", category: "App")
-        #endif
+        WinShell.openFolder(GamePaths.root)
     }
+
 
     /// Paint your own face and shirt, pixel by pixel, with a live preview. Friends see it in multiplayer.
     fileprivate func buildSkinCreator(_ ui: inout UIBuilder, input: MenuInput, width W: Float, height H: Float, scale s: Float, now: Double) {
