@@ -3,7 +3,7 @@ import Foundation
 import simd
 #endif
 
-public typealias BlockID = UInt8
+public typealias BlockID = UInt16
 
 public enum RenderLayer: String, Codable, Sendable {
     case opaque, cutout, translucent, invisible
@@ -293,15 +293,21 @@ public struct BlockInfo: Sendable {
 }
 
 /// Immutable registry of all block types. Loaded once from `Data/blocks.json`
-/// and shared across threads. Hot per-ID flags are stored in flat 256-entry
+/// and shared across threads. Hot per-ID flags are stored in flat tables with one entry per possible id
 /// tables so the mesher, lighting and physics can query without dictionary
 /// lookups.
 public final class BlockRegistry: @unchecked Sendable {
-    public let blocks: [BlockInfo?]            // indexed by id, 256 entries
+    /// Every possible block id has an entry in the lookup tables, so any id read from a save or the
+    /// network can be looked up safely (ids no block uses behave like air).
+    public static let capacity = Int(BlockID.max) + 1
+    /// Blocks are numbered up to here; item ids for other items start just after.
+    public static let maxDefinedID = 4095
+
+    public let blocks: [BlockInfo?]            // indexed by id, `capacity` entries
     public let all: [BlockInfo]                // registered blocks in id order
     private let byName: [String: BlockID]
 
-    // Flat tables (256 entries each)
+    // Flat tables (`capacity` entries each)
     public let isOpaque: [Bool]
     public let isSolid: [Bool]
     public let emission: [UInt8]
@@ -319,7 +325,7 @@ public final class BlockRegistry: @unchecked Sendable {
     public let isWet: [Bool]
 
     /// Texture-array layer per (id * 6 + face). Filled after the texture atlas is built.
-    public private(set) var faceLayers: [UInt16] = Array(repeating: 0, count: 256 * 6)
+    public private(set) var faceLayers: [UInt16] = Array(repeating: 0, count: BlockRegistry.capacity * 6)
 
     public enum RegistryError: Error, CustomStringConvertible {
         case invalid(String)
@@ -329,10 +335,10 @@ public final class BlockRegistry: @unchecked Sendable {
     }
 
     public init(definitions: [BlockDefinition]) throws {
-        var table = [BlockInfo?](repeating: nil, count: 256)
+        var table = [BlockInfo?](repeating: nil, count: BlockRegistry.capacity)
         var names: [String: BlockID] = [:]
         for def in definitions {
-            guard (0...255).contains(def.id) else { throw RegistryError.invalid("block '\(def.name)' has out-of-range id \(def.id)") }
+            guard (0...BlockRegistry.maxDefinedID).contains(def.id) else { throw RegistryError.invalid("block '\(def.name)' has out-of-range id \(def.id)") }
             guard table[def.id] == nil else { throw RegistryError.invalid("duplicate block id \(def.id) ('\(def.name)')") }
             guard names[def.name] == nil else { throw RegistryError.invalid("duplicate block name '\(def.name)'") }
             let shape = def.shape ?? .cube
@@ -449,7 +455,7 @@ public final class BlockRegistry: @unchecked Sendable {
     public private(set) var extraLayers: [String: UInt16] = [:]
 
     /// Texture-array layers of each block's `variants` (empty for most blocks), indexed by id.
-    public private(set) var variantLayers: [[UInt16]] = Array(repeating: [], count: 256)
+    public private(set) var variantLayers: [[UInt16]] = Array(repeating: [], count: BlockRegistry.capacity)
 
     /// All distinct texture names referenced by blocks (and the mesher's extras).
     public var textureNames: [String] {
@@ -464,13 +470,13 @@ public final class BlockRegistry: @unchecked Sendable {
 
     /// Resolves face textures into texture-array layers once the atlas exists.
     public func bindTextureLayers(_ lookup: (String) -> UInt16) {
-        var layers = [UInt16](repeating: 0, count: 256 * 6)
+        var layers = [UInt16](repeating: 0, count: BlockRegistry.capacity * 6)
         for b in all {
             for f in 0..<6 { layers[Int(b.id) * 6 + f] = lookup(b.faceTextureNames[f]) }
         }
         faceLayers = layers
         extraLayers = Dictionary(uniqueKeysWithValues: BlockRegistry.extraTextureNames.map { ($0, lookup($0)) })
-        var variants = [[UInt16]](repeating: [], count: 256)
+        var variants = [[UInt16]](repeating: [], count: BlockRegistry.capacity)
         for b in all where !b.variants.isEmpty { variants[Int(b.id)] = b.variants.map(lookup) }
         variantLayers = variants
     }

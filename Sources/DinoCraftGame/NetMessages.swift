@@ -9,7 +9,7 @@ import DinoCraftCore
 enum NetConfig {
     static let port: UInt16 = 25650
     static let bonjourType = "_dinocraft._tcp"
-    static let protocolVersion = 1
+    static let protocolVersion = 2
     static let maxFrame = 8 * 1024 * 1024
 }
 
@@ -80,7 +80,7 @@ struct ChunkRequestMessage: Codable { var chunks: [[Int32]] }
 
 struct BlockChangeMessage: Codable {
     var x: Int32, y: Int32, z: Int32
-    var id: UInt8
+    var id: BlockID
     var harvest: Bool?
 }
 

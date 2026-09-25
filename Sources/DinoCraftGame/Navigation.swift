@@ -170,7 +170,7 @@ final class Minimap {
 
     /// Each block's colour: the average of its top texture.
     private static func loadColors(_ reg: BlockRegistry) -> [UInt32] {
-        var out = [UInt32](repeating: 0x808080, count: 256)
+        var out = [UInt32](repeating: 0x808080, count: BlockRegistry.capacity)
         var cache: [String: UInt32] = [:]
         for b in reg.all {
             let name = b.faceTextureNames[BlockFace.up.rawValue]

@@ -58,10 +58,10 @@ public struct ItemInfo: Sendable {
 }
 
 /// Registry of every item. Block items share their numeric ID with the block
-/// (0–255); other items start at 256. Saves always store item *names*, so
+/// (below `firstNonBlockID`); other items start there. Saves always store item *names*, so
 /// IDs may change between versions without corrupting inventories.
 public final class ItemRegistry: @unchecked Sendable {
-    public static let firstNonBlockID: ItemID = 256
+    public static let firstNonBlockID: ItemID = ItemID(BlockRegistry.maxDefinedID + 1)
 
     public let items: [ItemInfo?]
     private let byName: [String: ItemID]

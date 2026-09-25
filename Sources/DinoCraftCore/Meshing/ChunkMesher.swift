@@ -65,7 +65,7 @@ public final class ChunkMesher {
     private let R = ChunkMesher.regionSize
     private let registry: BlockRegistry
 
-    private let ids: UnsafeMutablePointer<UInt8>
+    private let ids: UnsafeMutablePointer<BlockID>
     private let sky: UnsafeMutablePointer<UInt8>
     private let blk: UnsafeMutablePointer<UInt8>
     private var queue: UnsafeMutablePointer<Int32>
@@ -117,18 +117,18 @@ public final class ChunkMesher {
         maskKey = .allocate(capacity: 16 * WorldConst.height)
         maskLight = .allocate(capacity: 16 * WorldConst.height)
 
-        opaqueTable = .allocate(capacity: 256)
-        filterTable = .allocate(capacity: 256)
-        emissionTable = .allocate(capacity: 256)
-        shapeTable = .allocate(capacity: 256)
-        layerTable = .allocate(capacity: 256)
-        wavingTable = .allocate(capacity: 256)
-        leafLike = .allocate(capacity: 256)
+        opaqueTable = .allocate(capacity: BlockRegistry.capacity)
+        filterTable = .allocate(capacity: BlockRegistry.capacity)
+        emissionTable = .allocate(capacity: BlockRegistry.capacity)
+        shapeTable = .allocate(capacity: BlockRegistry.capacity)
+        layerTable = .allocate(capacity: BlockRegistry.capacity)
+        wavingTable = .allocate(capacity: BlockRegistry.capacity)
+        leafLike = .allocate(capacity: BlockRegistry.capacity)
         boxTable = registry.shapeBoxes
         submergedTable = registry.isSubmerged
         variantLayers = registry.variantLayers
         facingTable = registry.facingIndex
-        for i in 0..<256 {
+        for i in 0..<BlockRegistry.capacity {
             let info = registry.blocks[i]
             opaqueTable[i] = registry.isOpaque[i]
             filterTable[i] = registry.lightFilter[i]

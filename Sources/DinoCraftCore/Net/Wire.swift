@@ -10,7 +10,7 @@ import Foundation
 /// (the Mac host and client), which uses the same message numbers and JSON keys.
 public enum Wire {
     public static let defaultPort: UInt16 = 25650
-    public static let protocolVersion = 1
+    public static let protocolVersion = 2
     public static let maxFrame = 8 * 1024 * 1024
 
     public enum Kind: UInt8 {
@@ -96,7 +96,7 @@ public enum Wire {
 
     public struct BlockChange: Codable {
         public var x: Int32, y: Int32, z: Int32
-        public var id: UInt8
+        public var id: BlockID
         public var harvest: Bool?
         public init(pos: BlockPos, id: BlockID, harvest: Bool? = nil) { x = pos.x; y = pos.y; z = pos.z; self.id = id; self.harvest = harvest }
     }

@@ -383,6 +383,21 @@ func persistenceTests() throws {
     var noise = data.prefix(16)
     for i in 0..<4000 { noise.append(UInt8(truncatingIfNeeded: i &* 2_654_435_761 >> 13)) }
     _ = try? Chunk.deserialize(noise, expected: ChunkPos(-7, 3))   // random payload must not crash
+    // Two-byte block ids: chunks with blocks numbered 256+ use format 3; others keep the old format.
+    check(data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 4, as: UInt16.self) } == 2, "chunks of original blocks keep format 2")
+    let wide = gen.generate(ChunkPos(-7, 3))
+    wide.set(2, 101, 2, 300)
+    wide.set(3, 101, 3, 4095)
+    wide.set(4, 101, 4, 0x1FF)
+    let wideData = try wide.serialize()
+    check(wideData.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 4, as: UInt16.self) } == 3, "chunks with new blocks use format 3")
+    let wideBack = try Chunk.deserialize(wideData, expected: ChunkPos(-7, 3))
+    check(checksum(wideBack) == checksum(wide) && wideBack.block(2, 101, 2) == 300 && wideBack.block(3, 101, 3) == 4095,
+          "two-byte block ids round-trip")
+    print("  wide chunk file size: \(wideData.count) bytes")
+    var wideCorrupt = wideData; wideCorrupt[18] ^= 0x7F; wideCorrupt[wideCorrupt.count - 3] ^= 0xFF
+    _ = try? Chunk.deserialize(wideCorrupt, expected: ChunkPos(-7, 3))   // must not crash
+    check((try? Chunk.deserialize(wideData.prefix(wideData.count - 5), expected: ChunkPos(-7, 3))) == nil, "truncated wide chunk is rejected")
 
     let storage = WorldStorage(root: tempRoot.appendingPathComponent("worlds"))
     let meta = try storage.createWorld(name: "Dino World", seedText: "Dino World", gameMode: .survival, difficulty: .normal)
@@ -447,7 +462,7 @@ section("Ocean life") {
     let reg = try! BlockRegistry.loadDefault()
     check(reg.isSubmerged[Int(Blocks.kelp)] && reg.isWet[Int(Blocks.seagrass)] && reg.isWet[Int(Blocks.water)] && !reg.isWet[Int(Blocks.sand)],
           "sea plants count as water for swimming")
-    check(reg.variantLayers.count == 256 && reg[Blocks.coralBlock]?.variants.count == 5 && reg.textureNames.contains("coral_fan_purple"),
+    check(reg.variantLayers.count == BlockRegistry.capacity && reg[Blocks.coralBlock]?.variants.count == 5 && reg.textureNames.contains("coral_fan_purple"),
           "coral comes in five colours")
     check(reg.emission[Int(Blocks.seaLantern)] == 15, "sea lanterns glow")
     // Somewhere in a big patch of ocean there are kelp, seagrass and a coral reef.
