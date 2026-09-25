@@ -202,9 +202,10 @@ final class WinDiscordIPC: PresenceTransport, @unchecked Sendable {
         let activity = desiredActivity
         lock.unlock()
         guard version != sentVersion else { return }
+        let activityValue: Any = activity ?? NSNull()
         let payload: [String: Any] = [
             "cmd": "SET_ACTIVITY",
-            "args": ["pid": Int(GetCurrentProcessId()), "activity": activity ?? NSNull()],
+            "args": ["pid": Int(GetCurrentProcessId()), "activity": activityValue],
             "nonce": UUID().uuidString,
         ]
         if writeFrame(.frame, payload) {
