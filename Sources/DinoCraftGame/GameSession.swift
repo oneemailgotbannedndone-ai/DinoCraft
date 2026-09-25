@@ -28,7 +28,8 @@ final class GameSession {
     /// 1 right after eating, fading to 0: the hunger bar ripples.
     private(set) var eatFlash = 0.0
     private(set) var air: Double = 10
-    private var exhaustion = 0.0, regenTimer = 0.0, starveTimer = 0.0, drownTimer = 0.0, lavaTimer = 0.0, cactusTimer = 0.0
+    var exhaustion = 0.0
+    private var regenTimer = 0.0, starveTimer = 0.0, drownTimer = 0.0, lavaTimer = 0.0, cactusTimer = 0.0
     private var hurtCooldown = 0.0
     private(set) var isDead = false
     private(set) var deathMessage = ""
@@ -123,8 +124,11 @@ final class GameSession {
     let crops = CropManager()
     let arrows = ArrowSystem()
     /// 0…1 while drawing a bow.
-    private(set) var bowCharge = 0.0
-    private var drawingBow = false
+    /// 0…1 while drawing a bow, winding up a spear or loading a crossbow (1 while a crossbow is loaded).
+    var bowCharge = 0.0
+    var drawingBow = false
+    /// Holding up a shield (see `Weapons`).
+    var blocking = false
     var smelting: SmeltingRegistry?
     var onOpenContainer: ((BlockPos, ContainerKind) -> Void)?
     var onOpenTrade: ((Mob) -> Void)?
@@ -434,6 +438,12 @@ final class GameSession {
         m.jumpPressed = input.wasPressed(s.binding(for: .jump))
         m.sprint = input.isDown(s.binding(for: .sprint))
         m.sneak = input.isDown(s.binding(for: .crouch))
+        if blocking {
+            // Behind a raised shield you only shuffle.
+            m.forward *= 0.3
+            m.strafe *= 0.3
+            m.sprint = false
+        }
         return m
     }
 
@@ -555,18 +565,12 @@ final class GameSession {
         }
 
         let use = s.binding(for: .use)
-        if let stack = inventory.selectedStack, items[stack.item]?.name == "bow" {
-            // Hold to draw (full power after a second), release to shoot.
-            if input.isDown(use) {
-                if !drawingBow && input.wasPressed(use) {
-                    if hasArrows { drawingBow = true; bowCharge = 0 } else { onToast?("You need arrows to shoot the bow") }
-                }
-                if drawingBow { bowCharge = min(1, bowCharge + dt) }
-            } else if drawingBow {
-                if bowCharge > 0.15 { fireBow(power: bowCharge) }
-                drawingBow = false
-                bowCharge = 0
-            }
+        // Right-clicking a creature (taming, trading, boarding) comes before winding up a weapon.
+        let usedOnCreature = input.wasPressed(use) && targetMob.map { interactWithCreature($0) } == true
+        if usedOnCreature {
+            useCooldown = 0.22
+        } else if handleHeldWeapon(input, use: use, dt: dt) {
+            // Bow, spear, crossbow or shield
         } else {
             drawingBow = false
             bowCharge = 0
@@ -623,11 +627,11 @@ final class GameSession {
 
     // MARK: Bows
 
-    private var hasArrows: Bool {
+    var hasArrows: Bool {
         player.gameMode == .creative || inventory.slots.contains { $0.flatMap { items[$0.item]?.name } == "arrow" }
     }
 
-    private func fireBow(power: Double) {
+    func fireBow(power: Double) {
         let survival = player.gameMode == .survival
         if survival {
             guard let i = inventory.slots.firstIndex(where: { $0.flatMap { items[$0.item]?.name } == "arrow" }), var st = inventory.slots[i] else { return }
@@ -659,15 +663,16 @@ final class GameSession {
         if distance >= 15 { advancements.record("snipe") }
         noteCombat(with: mob.species.displayName)
         onSound?("arrow_hit", 0.7, 1.4)
+        dropThrownSpear(arrow, at: mob.position)
         Log.info(String(format: "Arrow hit %@ for %.0f from %.1f blocks", mob.species.displayName, arrow.damage, distance), category: "Game")
     }
 
     /// Walk over arrows stuck in blocks to get them back.
     private func collectArrows() {
-        guard !spectator, !isDead, let arrowID = items.id(named: "arrow") else { return }
+        guard !spectator, !isDead else { return }
         let center = player.position + DVec3(0, 0.9, 0)
         for a in arrows.arrows where a.stuck && a.pickup && !a.done && a.age > 0.5 && simd_distance(a.position, center) < 1.8 {
-            if inventory.add(ItemStack(item: arrowID, count: 1)) == 0 {
+            if pickUpProjectile(a) {
                 a.done = true
                 onSound?("pickup", 0.35, 1.25)
             }
@@ -774,7 +779,7 @@ final class GameSession {
         }
         equipOffset = max(0, equipOffset - dt * 5)
         let tool = held.flatMap { items[$0]?.tool?.kind }
-        hand.update(dt: dt, player: player, swing: swingProgress, tool: tool)
+        hand.update(dt: dt, player: player, swing: swingProgress, tool: tool, raised: blocking)
         if !crumbTimes.isEmpty {
             crumbTimes = crumbTimes.map { $0 - dt }
             for _ in crumbTimes.filter({ $0 <= 0 }) {
@@ -1501,6 +1506,10 @@ final class GameSession {
         case .hard: scale = 1.0
         }
         guard scale > 0 else { return }
+        if blockWithShield(amount * scale, from: knockback) {
+            hurtCooldown = 0.3
+            return
+        }
         hurtCooldown = 0.55
         if let k = knockback {
             player.velocity += DVec3(k.x * 7, 4.5, k.z * 7)

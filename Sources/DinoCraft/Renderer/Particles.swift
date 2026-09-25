@@ -125,6 +125,18 @@ final class ParticleRenderer {
             let s0 = simd_length(across) > 0.05 ? simd_normalize(across) : SIMD3<Float>(1, 0, 0)
             let s1 = simd_normalize(simd_cross(d, s0))
             let light = world.light(at: a.position)
+            if a.kind != .arrow {
+                // Spears: long shaft, flint point, leather grip. Bolts: short and thick with an iron head.
+                let spear = a.kind == .spear
+                let half: Float = spear ? 0.75 : 0.2, thick: Float = spear ? 0.03 : 0.03
+                for side in [s0, s1] {
+                    quad(rel - d * (spear ? 0.0 : 0.0), side * thick, d * half, uv: .zero, uvSize: 1,
+                         color: spear ? SIMD4(0.33, 0.17, 0.06, 1) : SIMD4(0.2, 0.1, 0.04, 1), layer: -2, sky: light.sky, block: light.block, emissive: false)
+                    quad(rel + d * (half + 0.1), side * (spear ? 0.06 : 0.045), d * 0.1, uv: .zero, uvSize: 1,
+                         color: SIMD4(0.16, 0.16, 0.2, 1), layer: -2, sky: light.sky, block: light.block, emissive: false)
+                }
+                continue
+            }
             let center = rel - d * 0.3
             for side in [s0, s1] {
                 quad(center, side * 0.018, d * 0.3, uv: .zero, uvSize: 1, color: SIMD4(0.52, 0.36, 0.2, 1), layer: -2,

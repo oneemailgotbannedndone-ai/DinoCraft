@@ -22,6 +22,7 @@ struct HandAnimator {
     private var strokePhase: Double = 0
     private var strokeAmount: Double = 0
     private(set) var eatTimer: Double = -1
+    private var raise: Double = 0
     private(set) var motion = HandMotion()
 
     mutating func startEating() { eatTimer = 0 }
@@ -30,7 +31,7 @@ struct HandAnimator {
         landDip = min(1, max(landDip, fallDistance / 4))
     }
 
-    mutating func update(dt: Double, player: PlayerController, swing: Double, tool: ToolKind?) {
+    mutating func update(dt: Double, player: PlayerController, swing: Double, tool: ToolKind?, raised: Bool = false) {
         // Sway: the hand trails behind quick turns, then springs back.
         if let last = lastYaw {
             var dy = player.yaw - last
@@ -77,6 +78,14 @@ struct HandAnimator {
             m.offset.z -= s * 0.08
         default:
             break
+        }
+        // A raised shield comes up in front of you
+        raise += ((raised ? 1 : 0) - raise) * (1 - exp(-14 * dt))
+        if raise > 0.01 {
+            let r = Float(raise)
+            m.offset += SIMD3(-0.16 * r, 0.02 * r, -0.04 * r)
+            m.yaw += 0.3 * r
+            m.pitch += 0.1 * r
         }
         // Eating: lift toward the mouth and nibble
         if eatTimer >= 0 {

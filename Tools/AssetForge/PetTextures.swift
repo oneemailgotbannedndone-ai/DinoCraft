@@ -11,6 +11,9 @@ enum PetTextures {
         case "fishing_rod": return fishingRod()
         case "string": return string()
         case "saddle": return saddle()
+        case "spear": return spear()
+        case "crossbow": return crossbow()
+        case "shield": return shield()
         default: return nil
         }
     }
@@ -86,6 +89,61 @@ enum PetTextures {
             }
         }
         c.line(21, 20, 27, 27, width: 1) { _ in white }
+        c.outline()
+        return c
+    }
+
+    /// A long ash shaft bound with leather under a knapped flint point.
+    private static func spear() -> Canvas {
+        let c = Canvas(S)
+        c.line(4, 28, 21, 11, width: 1.8) { t in RGBA(hex: 0x8A5E32).mix(RGBA(hex: 0xB0824A), t) }
+        c.line(12, 20, 15, 17, width: 2.4) { _ in RGBA(hex: 0x5A3A1E) }                 // leather grip
+        c.line(19, 13, 21, 11, width: 2.6) { _ in RGBA(hex: 0x6A4424) }                 // binding
+        for (x, y, col) in [(22, 10, 0x4A4A55), (23, 9, 0x5E5E6A), (24, 8, 0x6E6E7C), (25, 7, 0x7E7E8C), (26, 6, 0x9A9AA8),
+                            (27, 5, 0xB8B8C4), (23, 11, 0x3C3C46), (24, 10, 0x55555F), (21, 8, 0x55555F), (22, 7, 0x6E6E7C)] {
+            c.plot(x, y, RGBA(hex: UInt32(col)))
+        }
+        c.plot(22, 9, RGBA(hex: 0x6E6E7C)); c.plot(24, 9, RGBA(hex: 0x8A8A98)); c.plot(25, 8, RGBA(hex: 0x9A9AA8)); c.plot(26, 7, RGBA(hex: 0xC8C8D4))
+        c.outline()
+        return c
+    }
+
+    /// A wooden stock with an iron-tipped bow across it and a bolt ready.
+    private static func crossbow() -> Canvas {
+        let c = Canvas(S)
+        c.line(7, 25, 22, 10, width: 3) { t in RGBA(hex: 0x7A5028).mix(RGBA(hex: 0x9A6A38), t) }     // stock
+        // Bow limbs, curved across the front of the stock
+        c.line(12, 6, 18, 9, width: 1.6) { _ in RGBA(hex: 0x8A8A96) }
+        c.line(18, 9, 22, 13, width: 1.8) { _ in RGBA(hex: 0x8A8A96) }
+        c.line(22, 13, 25, 19, width: 1.6) { _ in RGBA(hex: 0x8A8A96) }
+        c.line(12, 6, 25, 19, width: 0.9) { _ in RGBA(hex: 0xE8E4D8) }                   // string
+        c.line(15, 17, 24, 8, width: 1) { _ in RGBA(hex: 0xC8A060) }                     // bolt
+        c.plot(25, 7, RGBA(hex: 0xB8B8C4)); c.plot(24, 7, RGBA(hex: 0x9A9AA8))
+        c.rect(8, 22, 3, 3, RGBA(hex: 0x5A3A1E))                                          // butt
+        c.outline()
+        return c
+    }
+
+    /// A round wooden shield with an iron rim and boss, painted with a dinosaur footprint.
+    private static func shield() -> Canvas {
+        let c = Canvas(S)
+        let wood = Palette([0x5E3C1C, 0x7A5028, 0x96683A, 0xB08050])
+        for y in 3..<29 {
+            for x in 5..<27 {
+                let dx = (Double(x) - 15.5) / 11, dy = (Double(y) - 15.5) / 13
+                let d = dx * dx + dy * dy
+                guard d < 1 else { continue }
+                if d > 0.8 { c.plot(x, y, RGBA(hex: 0x8A8A96).shade(d > 0.9 ? 0.8 : 1)) }
+                else { c.plot(x, y, wood.step(0.4 + Double((x / 3) % 2) * 0.15 + (1 - d) * 0.3)) }
+            }
+        }
+        // Three-toed footprint in red paint
+        let red = RGBA(hex: 0xA83228)
+        c.line(15.5, 20, 15.5, 11, width: 1.8) { _ in red }
+        c.line(15.5, 20, 11, 13, width: 1.6) { _ in red }
+        c.line(15.5, 20, 20, 13, width: 1.6) { _ in red }
+        c.disc(15.5, 20.5, 2.2, red)
+        c.disc(15.5, 16, 1.4, RGBA(hex: 0xB8B8C4))                                        // boss
         c.outline()
         return c
     }

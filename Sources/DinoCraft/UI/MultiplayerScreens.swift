@@ -231,7 +231,7 @@ enum MultiplayerHUD {
         // Name tags over your tamed creatures (and the name of whatever you're looking at that's yours)
         if let s = e.session {
             for m in s.mobs.mobs where m.isTamed && !m.isDying && m !== s.riding {
-                let rel = SIMD3<Float>(Float(m.position.x - e.camera.position.x), Float(m.position.y + m.species.height + 0.45 - e.camera.position.y),
+                let rel = SIMD3<Float>(Float(m.position.x - e.camera.position.x), Float(m.position.y + m.species.height * m.scale + 0.45 - e.camera.position.y),
                                        Float(m.position.z - e.camera.position.z))
                 let distance = simd_length(rel)
                 guard distance < 20 else { continue }

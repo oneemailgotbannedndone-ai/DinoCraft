@@ -135,6 +135,9 @@
     { "name": "saddle", "displayName": "Saddle", "maxStack": 1 },
     {"name": "boat", "displayName": "Boat", "maxStack": 1},
     {"name": "fishing_rod", "displayName": "Fishing Rod", "maxStack": 1},
-    {"name": "string", "displayName": "String"}
+    {"name": "string", "displayName": "String"},
+    {"name": "spear", "displayName": "Spear", "tool": {"kind": "spear", "level": 1, "speed": 1.0, "durability": 180, "damage": 5}},
+    {"name": "crossbow", "displayName": "Crossbow", "maxStack": 1},
+    {"name": "shield", "displayName": "Shield", "tool": {"kind": "shield", "level": 1, "speed": 1.0, "durability": 336, "damage": 1}}
   ]
 }

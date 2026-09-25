@@ -10,7 +10,7 @@ enum CreatureKind: String, CaseIterable {
     case trikey, dodo, longneck, raptor, spitter, crawler, magmaRaptor, villager, stego, ankylo, rex, compy, ptero, parasaur,
          sailback, boneWalker, scorpion, pig, cow, sheep, chicken, pookpook, carnotaurus, allosaurus, baryonyx, troodon, spinosaurus,
          grumblesaurus, grinasaurus, cod, salmon, clownfish, blueTang,
-         pachy, iguanodon, therizino, gallimimus, oviraptor, microraptor, boat
+         pachy, iguanodon, therizino, gallimimus, oviraptor, microraptor, boat, egg
 }
 
 enum PartRole {
@@ -417,12 +417,13 @@ enum CreatureModels {
 
     /// A creature at camera-relative position `rel`, animated like the Mac renderer.
     static func appendCreature(_ v: inout [Float], kind name: String, at rel: SIMD3<Float>, yaw: Float, walk: Float, amount: Float,
-                               lunge: Float, hurt: Float, dying: Float, variant: Int, seed: Double, time: Double) {
+                               lunge: Float, hurt: Float, dying: Float, variant: Int, seed: Double, time: Double, scale: Float = 1) {
         guard let kind = CreatureKind(rawValue: name) else { return }
         let tint: SIMD4<Float> = hurt > 0 ? SIMD4(0.9, 0.1, 0.1, min(1, hurt / 0.35) * 0.6)
             : (dying > 0 ? SIMD4(0.9, 0.1, 0.1, 0.45) : (kind == .sheep && variant == 1 ? SIMD4(0.08, 0.08, 0.1, 0.8) : SIMD4(0, 0, 0, 0)))
         let tip: Float = dying > 0 ? min(1, dying / 0.4) * (.pi / 2) : 0
-        let base = MathUtil.translation(rel) * MathUtil.rotationY(yaw) * MathUtil.rotationZ(tip)
+        var base = MathUtil.translation(rel) * MathUtil.rotationY(yaw) * MathUtil.rotationZ(tip)
+        if scale != 1 { base = base * MathUtil.scale(SIMD3(repeating: scale)) }
         for part in parts(kind, variant: variant) {
             let local: Mat4
             switch part.role {

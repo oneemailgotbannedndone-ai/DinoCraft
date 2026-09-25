@@ -38,12 +38,19 @@ enum CreatureShapes {
         case .oviraptor: return oviraptor()
         case .microraptor: return microraptor()
         case .boat: return boat()
+        case .egg: return egg(Breeding.kind(ofEgg: variant))
         default: return nil
         }
     }
 
     /// How many looks a kind has (villagers: one per profession).
-    static func variantCount(_ kind: MobKind) -> Int { kind == .villager ? VillagerProfession.all.count : 1 }
+    static func variantCount(_ kind: MobKind) -> Int {
+        switch kind {
+        case .villager: return VillagerProfession.all.count
+        case .egg: return Breeding.kinds.count
+        default: return 1
+        }
+    }
 
     // MARK: Building blocks
 
@@ -253,6 +260,25 @@ enum CreatureShapes {
     // MARK: Boats
 
     /// A wooden rowing boat: plank hull with a pointed bow, a bench, and oars that row as it moves.
+    /// A dino egg, speckled in its kind's colours; it rocks on its base (the "leg" role) before hatching.
+    static func egg(_ kind: MobKind) -> [ShapePart] {
+        var m = Model()
+        let (shell, spot) = Breeding.eggColors(kind)
+        // Stacked slabs make the rounded egg: widest a third of the way up.
+        let rings: [(Float, Float, Float)] = [(0, 0.06, 0.14), (0.06, 0.16, 0.2), (0.16, 0.3, 0.23), (0.3, 0.42, 0.2), (0.42, 0.5, 0.15), (0.5, 0.56, 0.08)]
+        var boxes = rings.map { b(-$0.2, $0.0, -$0.2, $0.2, $0.1, $0.2, shell) }
+        let spots: [(Float, Float, Float)] = [(0.1, 0.2, 1), (-0.12, 0.34, 1), (0.04, 0.44, -1), (-0.08, 0.12, -1), (0.14, 0.32, -1)]
+        for (x, y, side) in spots {
+            let z = side * 0.23
+            boxes.append(b(x - 0.035, y, min(z, z + side * 0.012), x + 0.035, y + 0.05, max(z, z + side * 0.012), spot))
+        }
+        for (x, y) in [(Float(-0.235), Float(0.22)), (0.235, 0.26)] {
+            boxes.append(b(min(x, x * 1.05), y, -0.03, max(x, x * 1.05), y + 0.05, 0.04, spot))
+        }
+        m.add(.leg(0), .zero, boxes)
+        return m.parts
+    }
+
     static func boat() -> [ShapePart] {
         var m = Model()
         let plank: UInt32 = 0xA8783E, dark: UInt32 = 0x7E5528, rim: UInt32 = 0x5E3C1C, seat: UInt32 = 0x8E6232

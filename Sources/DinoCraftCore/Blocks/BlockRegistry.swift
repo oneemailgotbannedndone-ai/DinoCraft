@@ -34,7 +34,7 @@ public struct BlockBox: Sendable, Equatable {
 }
 
 public enum ToolKind: String, Codable, Sendable, CaseIterable {
-    case none, pickaxe, axe, shovel, sword, hoe
+    case none, pickaxe, axe, shovel, sword, hoe, spear, shield
 }
 
 public enum SoundGroup: String, Codable, Sendable, CaseIterable {

@@ -152,7 +152,7 @@ extension WinSolo {
 
         // Name tags over your tamed creatures (and the name of whatever you're looking at that's yours)
         for m in s.mobs.mobs where m.isTamed && !m.isDying && m !== s.riding {
-            let rel = m.position + DVec3(0, m.species.height + 0.45, 0) - camera.position
+            let rel = m.position + DVec3(0, m.species.height * m.scale + 0.45, 0) - camera.position
             guard simd_length(rel) < 20 else { continue }
             let clip = viewProj * SIMD4<Float>(Float(rel.x), Float(rel.y), Float(rel.z), 1)
             guard clip.w > 0.1 else { continue }

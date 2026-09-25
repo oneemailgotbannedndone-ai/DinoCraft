@@ -118,6 +118,8 @@ struct MobState: Codable {
     var dying: Float
     var lunge: Float
     var variant: Int?
+    /// Babies: how big they are (absent when full grown).
+    var scale: Float?
 }
 
 struct MobSnapshotMessage: Codable { var mobs: [MobState]; var spits: [[Double]] }

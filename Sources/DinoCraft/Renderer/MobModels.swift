@@ -409,7 +409,8 @@ extension ModelRenderer {
             let tint: SIMD4<Float> = m.hurtTimer > 0 ? SIMD4(0.9, 0.1, 0.1, Float(m.hurtTimer / 0.35) * 0.6)
                 : (m.isDying ? SIMD4(0.9, 0.1, 0.1, 0.45) : (m.species.kind == .sheep && m.variant == 1 ? SIMD4(0.08, 0.08, 0.1, 0.8) : .zero))
             let tip = m.isDying ? Float(min(1, m.deathTimer / 0.4)) * (.pi / 2) : 0
-            let base = MathUtil.translation(rel) * MathUtil.rotationY(Float(m.yaw)) * MathUtil.rotationZ(tip)
+            var base = MathUtil.translation(rel) * MathUtil.rotationY(Float(m.yaw)) * MathUtil.rotationZ(tip)
+            if m.scale != 1 { base = base * MathUtil.scale(SIMD3(repeating: Float(m.scale))) }
             let walk = Float(m.walkPhase), amount = Float(m.moveAmount), lunge = Float(m.lunge)
             let seed = Double(m.id)
             for part in library.parts(m.species.kind, variant: m.variant) {

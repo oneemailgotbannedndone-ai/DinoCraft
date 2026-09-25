@@ -730,7 +730,7 @@ final class WinSolo: CommandHost {
             CreatureModels.appendCreature(&v, kind: m.species.kind.rawValue, at: r, yaw: Float(m.yaw), walk: Float(m.walkPhase),
                                           amount: Float(m.moveAmount), lunge: Float(m.lunge), hurt: Float(m.hurtTimer),
                                           dying: m.isDying ? Float(max(0.001, m.deathTimer)) : 0, variant: m.variant,
-                                          seed: Double(m.id % 997) * 0.61, time: time)
+                                          seed: Double(m.id % 997) * 0.61, time: time, scale: Float(m.scale))
         }
         let none = SIMD4<Float>(0, 0, 0, 0)
         for p in s.mobs.projectiles where !p.removed {
@@ -743,8 +743,21 @@ final class WinSolo: CommandHost {
             let d = simd_length(a.velocity) > 0.01 ? simd_normalize(a.velocity) : DVec3(0, 0, -1)
             let yaw = Float(atan2(-d.x, -d.z)), pitch = Float(asin(max(-1, min(1, d.y))))
             let m = MathUtil.translation(r) * MathUtil.rotationY(yaw) * MathUtil.rotationX(pitch)
-            CreatureModels.appendBox(&v, m, SIMD3(-0.025, -0.025, -0.3), SIMD3(0.025, 0.025, 0.3), CreatureModels.c(0x8A6A44), glow: false, tint: none)
-            CreatureModels.appendBox(&v, m, SIMD3(-0.05, -0.05, 0.22), SIMD3(0.05, 0.05, 0.3), CreatureModels.c(0xE8E2D6), glow: false, tint: none)
+            switch a.kind {
+            case .arrow:
+                CreatureModels.appendBox(&v, m, SIMD3(-0.025, -0.025, -0.3), SIMD3(0.025, 0.025, 0.3), CreatureModels.c(0x8A6A44), glow: false, tint: none)
+                CreatureModels.appendBox(&v, m, SIMD3(-0.05, -0.05, 0.22), SIMD3(0.05, 0.05, 0.3), CreatureModels.c(0xE8E2D6), glow: false, tint: none)
+            case .bolt:
+                // Short and thick, with an iron head and stiff vanes
+                CreatureModels.appendBox(&v, m, SIMD3(-0.03, -0.03, -0.2), SIMD3(0.03, 0.03, 0.2), CreatureModels.c(0x7A5A38), glow: false, tint: none)
+                CreatureModels.appendBox(&v, m, SIMD3(-0.045, -0.045, -0.28), SIMD3(0.045, 0.045, -0.18), CreatureModels.c(0x8A8A96), glow: false, tint: none)
+                CreatureModels.appendBox(&v, m, SIMD3(-0.06, -0.01, 0.12), SIMD3(0.06, 0.01, 0.2), CreatureModels.c(0x5A3A1E), glow: false, tint: none)
+            case .spear:
+                // A long shaft with a flint point and a leather grip
+                CreatureModels.appendBox(&v, m, SIMD3(-0.03, -0.03, -0.75), SIMD3(0.03, 0.03, 0.75), CreatureModels.c(0x9A6E3E), glow: false, tint: none)
+                CreatureModels.appendBox(&v, m, SIMD3(-0.06, -0.035, -1.0), SIMD3(0.06, 0.035, -0.75), CreatureModels.c(0x6E6E7C), glow: false, tint: none)
+                CreatureModels.appendBox(&v, m, SIMD3(-0.04, -0.04, 0.1), SIMD3(0.04, 0.04, 0.35), CreatureModels.c(0x5A3A1E), glow: false, tint: none)
+            }
         }
         if let b = s.bobber, let r = rel(b.position) {
             // The fishing float (red over white) and the line sagging back to the rod.
@@ -917,6 +930,58 @@ final class WinSolo: CommandHost {
             s.mount(mount)
             s.followMount()
             s.player.pitch = -0.25
+            return
+        }
+        if options.demoScreen == "nursery" || options.demoScreen == "armory" || options.demoScreen == "sky" {
+            demoPlaced = true
+            let look = s.player.lookDirection
+            let forward = simd_normalize(DVec3(look.x, 0, look.z)), right = DVec3(-forward.z, 0, forward.x)
+            func ground(_ p: DVec3) -> DVec3 {
+                DVec3(p.x, Double(s.world.findStandingY(Int(floor(p.x)), Int(floor(p.z)), near: Int(s.player.position.y)) ?? Int(p.y)), p.z)
+            }
+            let facing = atan2(forward.x, forward.z)
+            switch options.demoScreen {
+            case "nursery":
+                // Automated check: a clutch of eggs, parents in love, and babies at different ages.
+                for (i, kind) in [MobKind.trikey, .raptor, .ptero, .stego, .dodo].enumerated() {
+                    let egg = s.mobs.spawn(.egg, at: ground(s.player.position + forward * 3.2 + right * (Double(i) - 2) * 0.8))
+                    egg.variant = Breeding.kinds.firstIndex(of: kind) ?? 0
+                    egg.hatchTimer = i == 2 ? 5 : 40
+                }
+                for (i, growth) in [0.0, 0.5, 1.0].enumerated() {
+                    let t = s.mobs.spawn(.trikey, at: ground(s.player.position + forward * 7 + right * (Double(i) - 1) * 3))
+                    t.owner = Taming.owner; t.growth = growth; t.sitting = true; t.yaw = facing + .pi + 0.5
+                }
+                let parent = s.mobs.spawn(.raptor, at: ground(s.player.position + forward * 5 - right * 4))
+                parent.owner = Taming.owner; parent.loveTimer = 20; parent.sitting = true
+                s.player.pitch = -0.35
+            case "armory":
+                // Automated check: holding a shield up, a spear and bolts stuck in the ground ahead.
+                if let shield = items.id(named: "shield"), let crossbow = items.id(named: "crossbow"), let spear = items.id(named: "spear") {
+                    s.inventory.slots[0] = ItemStack(item: shield, count: 1)
+                    s.inventory.slots[1] = ItemStack(item: crossbow, count: 1)
+                    s.inventory.slots[2] = ItemStack(item: spear, count: 1)
+                    s.inventory.selected = 0
+                    for i in 0..<3 {
+                        let from = s.player.position + forward * (2.6 + Double(i % 2) * 0.8) + right * (Double(i) - 1) * 0.9 + DVec3(0, 2.5, 0)
+                        s.arrows.fire(from: from, velocity: DVec3(forward.x * 2, -14, forward.z * 2), damage: 0, pickup: false,
+                                      kind: i == 1 ? .spear : .bolt, carried: i == 1 ? ItemStack(item: spear, count: 1) : nil)
+                    }
+                }
+                s.blocking = true
+                let raptor = s.mobs.spawn(.raptor, at: ground(s.player.position + forward * 7))
+                raptor.yaw = facing + .pi
+                s.player.pitch = -0.55
+            default:
+                // Automated check: flying high on a saddled Pteranodon.
+                let ptero = s.mobs.spawn(.ptero, at: s.player.position + DVec3(0, 18, 0))
+                ptero.owner = Taming.owner; ptero.saddled = true; ptero.yaw = facing + .pi
+                s.player.setFlying(false)
+                s.mount(ptero)
+                s.followMount()
+                s.player.pitch = -0.35
+                cameraView = .behind
+            }
             return
         }
         if options.demoScreen == "dinos" || options.demoScreen == "villagers" {

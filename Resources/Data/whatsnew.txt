@@ -1,5 +1,20 @@
 DinoCraft - the Toonland update
 
+Spears, crossbows, shields and flying Pteranodons
+- Spear (flint over two sticks, diagonal): hold right-click and let go to throw it. It sticks where it lands;
+  walk over it to pick it back up.
+- Crossbow (sticks, iron and string): hold right-click to load an arrow, then right-click to fire a hard-hitting bolt.
+- Shield (planks and iron): hold right-click to raise it. It stops attacks from the front and you move slowly.
+- Tame a Pteranodon with fish, saddle it and ride it: fly where you look, sprint to go faster, jump to climb.
+  Saddled Pteranodons grow big enough to carry you.
+
+Dino eggs and babies
+- Feed one of your fully healed tamed dinosaurs its favourite food and it goes looking for a partner. Do the same
+  for a second one of the same kind nearby and they lay a speckled egg.
+- The egg rocks harder as it gets ready and hatches after about 45 seconds into a tamed baby.
+  Babies grow up over about ten minutes; feeding them makes them grow faster. They can't be ridden until grown.
+- New advancements: Sky Rider, The Next Generation, Hatchling, Hold the Line, Javelin and Bolt Action.
+
 One DinoCraft on Mac and Windows
 - Joining a friend's world on Windows now runs the full game, like on the Mac: boats, fishing, taming and riding,
   the minimap, the guide, advancements, containers and everything else work when you join, not just when you host.

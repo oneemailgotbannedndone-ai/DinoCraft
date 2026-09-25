@@ -34,6 +34,8 @@ enum Taming {
         .dodo: TameRule(foods: ["wheat_seeds", "berries"], rideable: false, seat: 0, guardian: false),
         .oviraptor: TameRule(foods: ["berries", "raw_poultry"], rideable: false, seat: 0, guardian: false),
         .pookpook: TameRule(foods: ["wheat_seeds"], rideable: false, seat: 0, guardian: false),
+        // Fish-eaters of the sky: saddle one and fly.
+        .ptero: TameRule(foods: ["raw_fish", "tropical_fish", "cooked_fish"], rideable: true, seat: 0.45, guardian: false),
     ]
 
     static func rule(_ kind: MobKind) -> TameRule? { rules[kind] }
@@ -107,7 +109,8 @@ extension GameSession {
             onSound?("eat", 0.6, mob.species.callPitch)
             return true
         }
-        if held == "saddle" && rule.rideable && !mob.saddled {
+        if isFood && feedToBreed(mob, rule: rule) { return true }
+        if held == "saddle" && rule.rideable && !mob.saddled && mob.growth >= 1 {
             swing()
             mob.saddled = true
             if player.gameMode == .survival { inventory.consumeSelected() }
@@ -115,7 +118,7 @@ extension GameSession {
             onToast?("Saddled! Right-click to ride, sneak to get off.")
             return true
         }
-        if rule.rideable && mob.saddled && !player.isSneaking {
+        if rule.rideable && mob.saddled && mob.growth >= 1 && !player.isSneaking {
             mount(mob)
             return true
         }
@@ -128,6 +131,7 @@ extension GameSession {
 
     func mount(_ mob: Mob) {
         riding = mob
+        if mob.species.flying { advancements.record("ride", "ptero_flight") }
         mob.sitting = false
         if player.flying { player.setFlying(false) }
         onSound?(mob.species.callSound, 0.5, mob.species.callPitch)
@@ -157,6 +161,10 @@ extension GameSession {
         let forward = simd_length(DVec3(look.x, 0, look.z)) > 0.01 ? simd_normalize(DVec3(look.x, 0, look.z)) : DVec3(0, 0, -1)
         let right = DVec3(-forward.z, 0, forward.x)
         var desired = forward * move.forward + right * move.strafe
+        if mob.species.flying {
+            // In the air you fly where you look: tip down to dive, up to climb; Jump flies straight up.
+            desired = look * move.forward + right * move.strafe + DVec3(0, move.jump ? 0.8 : 0, 0)
+        }
         if simd_length(desired) > 1 { desired = simd_normalize(desired) }
         mob.rideInput = desired
         mob.rideSprint = move.sprint
@@ -166,7 +174,7 @@ extension GameSession {
     /// Keeps you in the saddle after the creature has moved.
     func followMount() {
         guard let mob = riding else { return }
-        let seat = mob.species.isVehicle ? Boats.seat : (Taming.rule(mob.species.kind)?.seat ?? mob.species.height)
+        let seat = mob.species.isVehicle ? Boats.seat : (Taming.rule(mob.species.kind)?.seat ?? mob.species.height) * mob.scale
         player.teleport(to: mob.position + DVec3(0, seat, 0))
         player.refreshSurroundings(world)
     }
@@ -179,6 +187,10 @@ extension MobManager {
         let toOwner = DVec3(owner.x - m.position.x, 0, owner.z - m.position.z)
         let distance = simd_length(toOwner)
         var desired = DVec3.zero, speed = 0.0
+        if let ride = m.rideInput, m.species.flying {
+            rideFlight(m, input: ride, dt: dt, session: s)
+            return
+        }
         if let ride = m.rideInput {
             desired = ride
             speed = m.rideSprint ? m.species.runSpeed * 0.85 : max(m.species.walkSpeed * 1.8, 3.2)
@@ -199,7 +211,11 @@ extension MobManager {
             }
         } else {
             m.guardTarget = nil
-            if m.sitting {
+            if let mate = m.mateTarget {
+                let to = DVec3(mate.x - m.position.x, 0, mate.z - m.position.z)
+                if simd_length(to) > 0.1 { desired = simd_normalize(to) }
+                speed = m.species.walkSpeed * 1.3
+            } else if m.sitting {
                 // Stay put.
             } else if distance > 26 && !s.player.flying {
                 // Left far behind: catch up.
@@ -214,6 +230,24 @@ extension MobManager {
             }
         }
         physics(m, desired: desired, speed: speed, dt: dt, session: s)
+    }
+
+    /// A ridden flier: glides where the rider steers, hovers with a slow flap when there's no input, and
+    /// lands (walking slowly) when it touches the ground.
+    private func rideFlight(_ m: Mob, input: DVec3, dt: Double, session s: GameSession) {
+        let top = m.rideSprint ? 16.0 : 10.0
+        let k = 1 - exp(-(simd_length(input) > 0 ? 2.2 : 1.4) * dt)
+        var target = input * top
+        if simd_length(input) < 0.01 { target.y = -0.6 }   // drifting slowly down while hovering
+        m.velocity += (target - m.velocity) * k
+        _ = move(m, m.velocity * dt, s.world)
+        let horizontal = DVec3(m.velocity.x, 0, m.velocity.z)
+        if simd_length(horizontal) > 0.3 {
+            m.yaw = MobManager.lerpAngle(m.yaw, atan2(-horizontal.x, -horizontal.z), 1 - exp(-6 * dt))
+        }
+        m.moveAmount = m.onGround ? min(1, simd_length(horizontal) / 3) : 1
+        m.walkPhase += dt * (m.onGround ? 4 : (m.rideSprint ? 9 : 6))
+        if m.position.y < -32 { m.position.y = -32; m.velocity.y = max(0, m.velocity.y) }
     }
 
     private func wanderNearOwner(_ m: Mob, dt: Double, desired: inout DVec3, speed: inout Double) {

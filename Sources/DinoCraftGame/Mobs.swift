@@ -10,7 +10,7 @@ enum MobKind: String, CaseIterable, Codable {
          grumblesaurus, grinasaurus,
          cod, salmon, clownfish, blueTang,
          pachy, iguanodon, therizino, gallimimus, oviraptor, microraptor,
-         boat
+         boat, egg
 }
 
 /// Kinds of particle burst the game can ask for.
@@ -205,6 +205,9 @@ struct MobSpecies {
         .boat: MobSpecies(kind: .boat, displayName: "Boat", hostile: false, maxHealth: 4, width: 1.2, height: 0.6,
                    walkSpeed: 0, runSpeed: 7.5, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: false,
                    detectRange: 0, drops: [], callPitch: 1, deepCall: false),
+        .egg: MobSpecies(kind: .egg, displayName: "Dino Egg", hostile: false, maxHealth: 3, width: 0.46, height: 0.58,
+                   walkSpeed: 0, runSpeed: 0, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: false,
+                   detectRange: 0, drops: [], callPitch: 1.6, deepCall: false),
         .grinasaurus: MobSpecies(kind: .grinasaurus, displayName: "Happy Grumblesaurus", hostile: false, maxHealth: 320, width: 2.2, height: 4.4,
                    walkSpeed: 1.2, runSpeed: 2.0, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: true,
                    detectRange: 0, drops: [], callPitch: 0.6, deepCall: true),
@@ -283,6 +286,14 @@ final class Mob {
     var rideInput: DVec3?
     var rideSprint = false
     var rideJump = false
+    /// Breeding (see `Breeding`): 0 for a new hatchling, 1 grown up.
+    var growth = 1.0
+    var loveTimer = 0.0
+    var breedCooldown = 0.0
+    /// Eggs: seconds until it hatches.
+    var hatchTimer = 0.0
+    /// In love: where its partner is.
+    var mateTarget: DVec3?
 
     init(species: MobSpecies, position: DVec3) {
         id = Mob.nextID
@@ -294,10 +305,19 @@ final class Mob {
 
     var isDying: Bool { deathTimer >= 0 }
 
+    /// How big it is drawn and collides: babies start small and grow up.
+    var scale: Double {
+        if let netScale { return netScale }
+        if saddled && species.kind == .ptero { return Breeding.saddledPteroScale }   // big enough to carry you
+        return growth >= 1 ? 1 : 0.45 + 0.55 * max(0, growth)
+    }
+    /// A joined game's copy: the size the host sent.
+    var netScale: Double?
+
     var box: DBox {
-        let hw = species.width / 2
+        let hw = species.width / 2 * scale
         return DBox(min: DVec3(position.x - hw, position.y, position.z - hw),
-                    max: DVec3(position.x + hw, position.y + species.height, position.z + hw))
+                    max: DVec3(position.x + hw, position.y + species.height * scale, position.z + hw))
     }
 }
 
@@ -328,6 +348,8 @@ private struct SavedMob: Codable {
     var sitting: Bool?
     var saddled: Bool?
     var name: String?
+    var growth: Double?
+    var hatch: Double?
 }
 
 /// Creatures: spawning rules per dimension, biome, light and time of day;
@@ -354,6 +376,7 @@ final class MobManager {
         m.yaw = Double.random(in: 0..<(2 * .pi))
         if kind == .villager { m.variant = Int.random(in: 0..<VillagerProfession.all.count) }
         if kind == .sheep { m.variant = Int.random(in: 0..<10) == 0 ? 1 : 0 }
+        if kind == .egg { m.hatchTimer = Breeding.hatchTime }
         mobs.append(m)
         return m
     }
@@ -422,7 +445,12 @@ final class MobManager {
                 boatPhysics(m, dt: dt, session: s)
                 continue
             }
+            if m.species.kind == .egg {
+                updateEgg(m, dt: dt, session: s)
+                continue
+            }
             if m.isTamed {
+                updateBreeding(m, dt: dt, session: s)
                 updateTamed(m, dt: dt, session: s)
                 continue
             }
@@ -777,7 +805,8 @@ final class MobManager {
         MobSnapshotMessage(mobs: mobs.filter { !$0.removed }.map {
             MobState(id: $0.id, kind: $0.species.kind.rawValue, x: $0.position.x, y: $0.position.y, z: $0.position.z, yaw: Float($0.yaw),
                      health: Float($0.health), maxHealth: Float($0.species.maxHealth), walk: Float($0.walkPhase), move: Float($0.moveAmount),
-                     hurt: Float($0.hurtTimer), dying: Float($0.deathTimer), lunge: Float($0.lunge), variant: $0.variant)
+                     hurt: Float($0.hurtTimer), dying: Float($0.deathTimer), lunge: Float($0.lunge), variant: $0.variant,
+                     scale: $0.scale != 1 ? Float($0.scale) : nil)
         }, spits: projectiles.map { [$0.position.x, $0.position.y, $0.position.z] })
     }
 
@@ -803,6 +832,7 @@ final class MobManager {
             m.deathTimer = Double(st.dying)
             m.lunge = Double(st.lunge)
             m.variant = st.variant ?? 0
+            m.netScale = st.scale.map { Double($0) }
             next.append(m)
         }
         mobs = next
@@ -858,8 +888,8 @@ final class MobManager {
     func raycast(origin: DVec3, direction: DVec3, maxDistance: Double) -> (Mob, Double)? {
         var best: (Mob, Double)?
         for m in mobs where !m.removed && !m.isDying {
-            let hw = m.species.width / 2 + 0.1
-            let box = DBox(min: m.position - DVec3(hw, 0, hw), max: m.position + DVec3(hw, m.species.height + 0.1, hw))
+            let hw = m.species.width / 2 * m.scale + 0.1
+            let box = DBox(min: m.position - DVec3(hw, 0, hw), max: m.position + DVec3(hw, m.species.height * m.scale + 0.1, hw))
             if let t = MobManager.rayBox(origin, direction, box), t <= maxDistance, t < (best?.1 ?? .infinity) {
                 best = (m, t)
             }
@@ -933,7 +963,7 @@ final class MobManager {
         if difficulty == .peaceful { mobs.removeAll { $0.species.hostile && !$0.isTamed } }
         if s.dimension == .overworld { trySpawnFish(s) }
         let hostiles = mobs.filter { $0.species.hostile }.count
-        let friendlies = mobs.filter { !$0.species.hostile && $0.species.kind != .villager && !$0.species.aquatic && !$0.species.isVehicle && !$0.isTamed }.count
+        let friendlies = mobs.filter { !$0.species.hostile && $0.species.kind != .villager && !$0.species.aquatic && !$0.species.isVehicle && !$0.isTamed && $0.species.kind != .egg }.count
         let allowHostile = hostiles < hostileCap
         let allowFriendly = friendlies < 10 && Double.random(in: 0..<1) < 0.25
         guard allowHostile || allowFriendly else { return }
@@ -1079,7 +1109,8 @@ final class MobManager {
         let saved = mobs.filter { (!$0.species.hostile || $0.isTamed) && !$0.species.aquatic && !$0.isDying && !$0.removed }.map {
             SavedMob(kind: $0.species.kind.rawValue, x: $0.position.x, y: $0.position.y, z: $0.position.z, health: $0.health, yaw: $0.yaw,
                      variant: $0.variant, hx: $0.home?.x, hy: $0.home?.y, hz: $0.home?.z,
-                     owner: $0.owner, sitting: $0.sitting ? true : nil, saddled: $0.saddled ? true : nil, name: $0.petName)
+                     owner: $0.owner, sitting: $0.sitting ? true : nil, saddled: $0.saddled ? true : nil, name: $0.petName,
+                     growth: $0.growth < 1 ? $0.growth : nil, hatch: $0.species.kind == .egg ? $0.hatchTimer : nil)
         }
         do {
             try AtomicFile.write(JSONEncoder().encode(saved), to: url)
@@ -1102,6 +1133,8 @@ final class MobManager {
                 m.sitting = s.sitting ?? false
                 m.saddled = s.saddled ?? false
                 m.petName = s.name
+                m.growth = s.growth ?? 1
+                m.hatchTimer = s.hatch ?? 0
             }
             Log.info("Restored \(mobs.count) creatures", category: "Save")
         } catch {
