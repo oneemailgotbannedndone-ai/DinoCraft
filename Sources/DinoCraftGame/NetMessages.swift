@@ -63,6 +63,8 @@ struct WelcomeMessage: Codable {
     var players: [PlayerInfo]
     /// Whether the host's overworld goes down to Y -70 (nil from older hosts: no).
     var deep: Bool? = nil
+    /// Hardcore: this player already died here, so they can only spectate.
+    var spectator: Bool? = nil
 }
 
 struct PlayerInfo: Codable {
@@ -99,6 +101,8 @@ struct PlayerStateMessage: Codable {
 struct ChatMessage: Codable {
     var from: String
     var text: String
+    /// Set for a private message (`/msg`): who it's for.
+    var to: String? = nil
 }
 
 struct MobState: Codable {

@@ -19,7 +19,7 @@ struct CommandSuggestion {
 enum Commands {
     enum Arg {
         case items, blocks, creatures, biomes, command, coordinate, number, text
-        case itemsOrPlayers, countOrItem, coordinateOrPlayer
+        case itemsOrPlayers, countOrItem, coordinateOrPlayer, players
         case choices([String])
     }
 
@@ -74,6 +74,8 @@ enum Commands {
         Spec("dimension", "/dimension <overworld|underworld|skylands|toonland>", "Travel to a dimension", args: [.choices(["overworld", "underworld", "skylands", "toonland"])]),
         Spec("seed", "/seed", "Show the world seed", readOnly: true),
         Spec("say", "/say <message>", "Announce a message", args: [.text]),
+        Spec("msg", "/msg <player> <message>", "Send a private message to one player", args: [.players, .text],
+             aliases: ["tell", "w", "whisper"], readOnly: true),
     ]
 
     static func spec(_ name: String) -> Spec? {
@@ -413,6 +415,15 @@ enum Commands {
             guard !message.isEmpty else { return reply("Usage: \(command.usage)") }
             if e.isMultiplayer { e.sendChat("[\(e.settings.username)] \(message)") } else { reply("[\(e.settings.username)] \(message)") }
 
+        case "msg":
+            guard e.isMultiplayer else { return reply("Private messages need other players in the game.") }
+            guard rest.count >= 2 else { return reply("Usage: \(command.usage)") }
+            let names = e.remotePlayers.map { $0.name }
+            guard let target = names.first(where: { $0.lowercased() == rest[0].lowercased() }) ?? closest(rest[0], in: names) else {
+                return reply("No player called \(rest[0]) is here. Type /list to see who's playing.")
+            }
+            if let problem = e.whisper(to: target, text: rest.dropFirst().joined(separator: " ")) { reply(problem) }
+
         default:
             reply("Unknown command /\(name). Type /help for the list.")
         }
@@ -462,6 +473,7 @@ enum Commands {
             if let first = previous.first, players.contains(where: { $0.lowercased() == first.lowercased() }) { return e.items.all.map { $0.name } }
             return ["1", "16", "32", "64"]
         case .coordinateOrPlayer: return ["~"] + players
+        case .players: return players
         case .choices(let options): return options
         }
     }

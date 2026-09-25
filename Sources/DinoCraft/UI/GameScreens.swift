@@ -219,7 +219,8 @@ final class SettingsScreen: Screen {
         switch tab {
         case 0:
             var rd = Double(s.renderDistance)
-            if ui.slider("set.rd", "Render Distance", next(), &rd, range: 4...24, step: 1, format: { "\(Int($0)) chunks" }) { s.renderDistance = Int(rd) }
+            if ui.slider("set.rd", "Render Distance", next(), &rd, range: 4...Double(GameSettings.maxRenderDistance), step: 1,
+                         format: { "\(Int($0)) chunks\($0 > 32 ? " · needs a strong Mac" : "")" }) { s.renderDistance = Int(rd) }
             ui.slider("set.fov", "Field of View", next(), &s.fov, range: 50...110, step: 1, format: { "\(Int($0))°" })
             ui.slider("set.brightness", "Brightness", next(), &s.brightness, range: 0...1, step: 0.01, format: { $0 < 0.05 ? "Moody" : ($0 > 0.95 ? "Bright" : "\(Int($0 * 100))%") })
             var q = GraphicsQuality.allCases.firstIndex(of: s.graphicsQuality) ?? 2
@@ -500,6 +501,12 @@ enum HUD {
         d.fill(sel.inset(-2), Theme.amber.alpha(0.25), radius: 13, blur: 8)
         d.stroke(sel, Theme.amber, radius: 12, width: 2.5)
 
+        // Zoom level while holding the zoom key
+        if s.zooming {
+            d.text(String(format: "Zoom %.1f×  ·  scroll to adjust", s.zoomFactor), x: W / 2, y: hy - 96, size: 15, color: Theme.text.alpha(0.9),
+                   face: .display, align: .center, shadow: Color(linear: 0, 0, 0, 0.8))
+        }
+
         // Selected item name
         if s.hotbarNameTimer > 0, let stack = s.inventory.selectedStack, let info = e.items[stack.item] {
             let a = Float(min(1, s.hotbarNameTimer / 0.4))
@@ -514,13 +521,9 @@ enum HUD {
             for i in 0..<10 {
                 let x = hx + Float(i) * 22
                 let value = s.health / 2 - Double(i)
-                d.text("♥", x: x, y: rowY, size: 20, color: Color(hex: 0x2A0A10, alpha: 0.7), face: .display)
-                if value > 0 {
-                    let full = value >= 1
-                    if !full { d.pushClip(Rect(x, rowY, 9, 26)) }
-                    let lowPulse: Float = s.health <= 4 ? Float(0.7 + 0.3 * sin(ui.time * 10)) : 1
-                    d.text("♥", x: x, y: rowY, size: 20, color: (s.meta.isHardcore ? Color(hex: 0xC01830) : Color(hex: 0xFF4D5E)).scaled(lowPulse), face: .display)
-                    if !full { d.popClip() }
+                let lowPulse: Float = s.health <= 4 ? Float(0.75 + 0.25 * sin(ui.time * 10)) : 1
+                for (col, row, hex) in HeartIcon.pixels(fill: value >= 1 ? 1 : (value > 0 ? 0.5 : 0), hardcore: s.meta.isHardcore) {
+                    d.fill(Rect(x + Float(col) * 2.2, rowY + 4 + Float(row) * 2.2, 2.2, 2.2), Color(hex: hex).scaled(lowPulse))
                 }
             }
             // Armor bar: one shield per 2 points

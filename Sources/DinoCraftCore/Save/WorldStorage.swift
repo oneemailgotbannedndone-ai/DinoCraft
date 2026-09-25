@@ -21,6 +21,9 @@ public struct WorldMetadata: Codable, Sendable, Identifiable {
     /// One life: the world locks into spectator mode when the player dies.
     public var hardcore: Bool?
     public var hardcoreDead: Bool?
+    /// Hardcore multiplayer: players (by player ID, or lowercased name for older versions) who died in this
+    /// world. They can only spectate when they come back.
+    public var hardcoreDeadPlayers: [String]? = nil
     /// Place a chest of starter supplies next to spawn when the world first loads.
     public var bonusChest: Bool?
     /// World rules changed with /gamerule (missing entries use the defaults).

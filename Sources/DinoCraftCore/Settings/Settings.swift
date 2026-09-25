@@ -27,7 +27,7 @@ public struct InputBinding: Codable, Hashable, Sendable {
 
 public enum GameAction: String, Codable, CaseIterable, Sendable {
     case forward, backward, left, right, jump, sprint, crouch, inventory, attack, use, pause
-    case drop, pickBlock, toggleDebug, screenshot, toggleHUD, advancements
+    case drop, pickBlock, toggleDebug, screenshot, toggleHUD, advancements, zoom
 
     public var displayName: String {
         switch self {
@@ -48,6 +48,7 @@ public enum GameAction: String, Codable, CaseIterable, Sendable {
         case .screenshot: return "Screenshot"
         case .toggleHUD: return "Hide HUD"
         case .advancements: return "Advancements"
+        case .zoom: return "Zoom (hold, scroll to adjust)"
         }
     }
 
@@ -70,6 +71,7 @@ public enum GameAction: String, Codable, CaseIterable, Sendable {
             .screenshot: .key(120),   // F2
             .toggleHUD: .key(99),     // F3
             .advancements: .key(37),  // L
+            .zoom: .key(6),           // Z
         ]
     }
 }
@@ -89,6 +91,8 @@ public struct GameSettings: Codable, Equatable, Sendable {
     /// Set once VSync has been switched off by default (older settings files had it on).
     public var vsyncOffByDefault = true
     public var renderDistance = 12   // chunks
+    /// Far view distances need a lot of memory: 64 chunks is about 2 GB of world.
+    public static let maxRenderDistance = 64
     public var graphicsQuality: GraphicsQuality = .fancy
     public var fov: Double = 75
     public var brightness: Double = 0.5
@@ -192,7 +196,7 @@ public struct GameSettings: Codable, Equatable, Sendable {
         if !PlayerIdentity.isValid(playerID) { playerID = PlayerIdentity.newID() }
         windowWidth = max(960, min(7680, windowWidth))
         windowHeight = max(540, min(4320, windowHeight))
-        renderDistance = max(2, min(32, renderDistance))
+        renderDistance = max(2, min(GameSettings.maxRenderDistance, renderDistance))
         maxFPS = max(0, min(500, maxFPS))
         fov = max(50, min(110, fov))
         brightness = max(0, min(1, brightness))

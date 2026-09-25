@@ -190,7 +190,11 @@ final class WinNetwork {
                     out.append(.notice("\(info.name) left the game"))
                 case .chat:
                     guard let m = try? decoder.decode(Wire.Chat.self, from: data) else { continue }
-                    out.append(.notice(m.from.isEmpty ? m.text : "<\(m.from)> \(m.text)"))
+                    if m.to != nil {
+                        out.append(.notice("\(m.from) whispers to you: \(m.text)"))
+                    } else {
+                        out.append(.notice(m.from.isEmpty ? m.text : "<\(m.from)> \(m.text)"))
+                    }
                 case .mobSnapshot:
                     guard let snapshot = try? decoder.decode(Wire.MobSnapshot.self, from: data) else { continue }
                     var next: [Int: RemoteEntity] = [:]
@@ -252,8 +256,8 @@ final class WinNetwork {
                                                        look: look))
     }
 
-    func sendChat(_ text: String) {
-        connection.send(.chat, Wire.Chat(from: username, text: String(text.prefix(200))))
+    func sendChat(_ text: String, to: String? = nil) {
+        connection.send(.chat, Wire.Chat(from: username, text: String(text.prefix(200)), to: to))
     }
 
     func sendAttackMob(id: Int, damage: Double, knockback: DVec3) {

@@ -66,6 +66,16 @@ final class GameServer: SessionNetwork {
     var hostLook: String?
     /// A player joined: their ID (if their version sends one), name and look.
     var onMet: ((_ playerID: String?, _ name: String, _ look: String?) -> Void)?
+    /// A player sent the host a private message: (from, text).
+    var onWhisper: ((String, String) -> Void)?
+
+    /// The host sends a private message to one player. Returns false if nobody by that name is connected.
+    @discardableResult
+    func whisper(from: String, to name: String, text: String) -> Bool {
+        guard let peer = peers.values.first(where: { $0.joined && $0.name.lowercased() == name.lowercased() }) else { return false }
+        peer.connection.send(.chat, ChatMessage(from: from, text: String(text.prefix(200)), to: peer.name))
+        return true
+    }
 
     var remotePlayers: [RemotePlayer] { peers.values.filter { $0.joined }.compactMap { $0.player } }
     var playerCount: Int { remotePlayers.count + 1 }
@@ -185,9 +195,11 @@ final class GameServer: SessionNetwork {
                 + peers.values.filter { $0.joined && $0.id != peer.id }.map { PlayerInfo(id: $0.id, name: $0.name, playerID: $0.playerID, look: $0.look) }
             peer.connection.send(.welcome, WelcomeMessage(playerID: peer.id, worldName: s.meta.name, seed: s.meta.seed,
                                                           dimension: s.dimension.rawValue, gameMode: s.meta.gameMode.rawValue,
-                                                          difficulty: s.meta.difficulty.rawValue, hardcore: false,
+                                                          difficulty: s.meta.difficulty.rawValue, hardcore: s.meta.isHardcore,
                                                           x: spawn.x, y: spawn.y, z: spawn.z, worldTime: s.worldTime, players: others,
-                                                          deep: s.meta.isDeep))
+                                                          deep: s.meta.isDeep,
+                                                          spectator: s.meta.isHardcore
+                                                            && (s.meta.hardcoreDeadPlayers ?? []).contains(WireHost.deathKey(id: hello.playerID, name: name))))
             broadcast(.playerJoined, PlayerInfo(id: peer.id, name: name, playerID: hello.playerID, look: hello.look), except: peer.id)
             onChat?("", "\(name) joined the game")
             onMet?(hello.playerID, name, hello.look)
@@ -209,12 +221,28 @@ final class GameServer: SessionNetwork {
             state.id = peer.id
             peer.player?.apply(state, now: CACurrentMediaTime())
             broadcast(.playerState, state, except: peer.id)
+            // Hardcore: a player who dies stays a spectator, even if they leave and come back.
+            if state.dead && s.recordHardcoreDeath(WireHost.deathKey(id: peer.playerID, name: peer.name)) {
+                onChat?("", "\(peer.name) is out of lives and can only spectate now.")
+            }
 
         case .chat:
             guard peer.joined, let m = NetConnection.decode(ChatMessage.self, data) else { return }
             let text = String(m.text.prefix(200))
-            broadcast(.chat, ChatMessage(from: peer.name, text: text))
-            onChat?(peer.name, text)
+            if let target = m.to {
+                if target.lowercased() == hostName.lowercased() {
+                    onWhisper?(peer.name, text)
+                    peer.connection.send(.chat, ChatMessage(from: "", text: "You whisper to \(hostName): \(text)"))
+                } else if let other = peers.values.first(where: { $0.joined && $0.name.lowercased() == target.lowercased() }) {
+                    whisper(from: peer.name, to: other.name, text: text)
+                    peer.connection.send(.chat, ChatMessage(from: "", text: "You whisper to \(other.name): \(text)"))
+                } else {
+                    peer.connection.send(.chat, ChatMessage(from: "", text: "No player called \(target) is here."))
+                }
+            } else {
+                broadcast(.chat, ChatMessage(from: peer.name, text: text))
+                onChat?(peer.name, text)
+            }
 
         case .spawnMob:
             guard peer.joined, let m = NetConnection.decode(SpawnMobMessage.self, data), let kind = MobKind(rawValue: m.kind),

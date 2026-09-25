@@ -48,6 +48,8 @@ protocol CommandHost: AnyObject {
     var isClient: Bool { get }
     func addChat(from: String, text: String)
     func sendChat(_ text: String)
+    /// Sends a private message (`/msg`); returns a problem to show, or nil once it's on its way.
+    func whisper(to name: String, text: String) -> String?
     /// Host only: gives items to a connected player. Returns false if they aren't connected.
     func give(playerNamed name: String, item: String, count: Int) -> Bool
 }

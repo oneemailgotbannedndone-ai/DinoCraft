@@ -70,10 +70,14 @@ public enum Wire {
         public var players: [PlayerInfo]
         /// Whether the host's overworld goes down to Y -70 (nil from older hosts: no).
         public var deep: Bool?
+        /// Hardcore: this player already died here, so they can only spectate.
+        public var spectator: Bool?
 
         public init(playerID: Int, worldName: String, seed: String, dimension: String, gameMode: String, difficulty: String,
-                    hardcore: Bool, x: Double, y: Double, z: Double, worldTime: Double, players: [PlayerInfo], deep: Bool? = nil) {
+                    hardcore: Bool, x: Double, y: Double, z: Double, worldTime: Double, players: [PlayerInfo], deep: Bool? = nil,
+                    spectator: Bool? = nil) {
             self.deep = deep
+            self.spectator = spectator
             self.playerID = playerID; self.worldName = worldName; self.seed = seed; self.dimension = dimension
             self.gameMode = gameMode; self.difficulty = difficulty; self.hardcore = hardcore
             self.x = x; self.y = y; self.z = z; self.worldTime = worldTime; self.players = players
@@ -121,7 +125,9 @@ public enum Wire {
     public struct Chat: Codable {
         public var from: String
         public var text: String
-        public init(from: String, text: String) { self.from = from; self.text = text }
+        /// Set for a private message (`/msg`): who it's for.
+        public var to: String?
+        public init(from: String, text: String, to: String? = nil) { self.from = from; self.text = text; self.to = to }
     }
 
     public struct MobState: Codable {

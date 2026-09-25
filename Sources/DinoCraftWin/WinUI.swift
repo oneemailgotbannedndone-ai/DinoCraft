@@ -1,5 +1,6 @@
 import Foundation
 import DinoCraftCore
+@testable import DinoCraftGame
 
 /// Builds 2D overlay geometry: `x, y, u, v, layer, r, g, b, a` per vertex, in pixels from the top-left.
 /// A layer of -1 is a solid colour, 0… a block texture, and `itemLayerOffset`… an item texture.
@@ -20,6 +21,16 @@ struct UIBuilder {
         let corners: [(Float, Float, Float, Float)] = [(x, y, 0, 0), (x + w, y, 1, 0), (x + w, y + h, 1, 1),
                                                       (x, y, 0, 0), (x + w, y + h, 1, 1), (x, y + h, 0, 1)]
         for c in corners { vertices += [c.0, c.1, c.2, c.3, layer, color.x, color.y, color.z, color.w] }
+    }
+
+    /// One health heart, `unit` pixels per heart pixel (9×8 heart pixels).
+    mutating func heart(x: Float, y: Float, unit: Float, fill: Double, hardcore: Bool, brightness: Float = 1) {
+        for (col, row, hex) in HeartIcon.pixels(fill: fill, hardcore: hardcore) {
+            // The overlay works in linear colour, so the heart's sRGB palette is linearised first.
+            func channel(_ shift: UInt32) -> Float { pow(Float((hex >> shift) & 255) / 255, 2.2) * brightness }
+            let c = SIMD4<Float>(channel(16), channel(8), channel(0), 1)
+            rect(x + Float(col) * unit, y + Float(row) * unit, unit, unit, c)
+        }
     }
 
     static func textWidth(_ text: String, scale: Float) -> Float {

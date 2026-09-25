@@ -11,7 +11,7 @@ struct Camera {
     var roll: Double = 0
     var fovY: Double = 75 * .pi / 180
     var near: Float = 0.05
-    var far: Float = 1200
+    var far: Float = 2400
 
     /// Rotation-only view matrix: world geometry is submitted camera-relative so
     /// precision never degrades far from the origin.

@@ -638,6 +638,8 @@ enum TexturePainter {
             if name.hasSuffix("_pickaxe"), let pick = BetterTextures.pickaxe(String(name.dropLast("_pickaxe".count))) { return pick }
             if name.hasSuffix("_axe"), !name.hasSuffix("_pickaxe"), let axe = BetterTextures.axe(String(name.dropLast("_axe".count))) { return axe }
             if name.hasSuffix("_sword"), let sword = BetterTextures.sword(String(name.dropLast("_sword".count))) { return sword }
+            if name.hasSuffix("_shovel"), let shovel = BetterTextures.shovel(String(name.dropLast("_shovel".count))) { return shovel }
+            if name.hasSuffix("_hoe"), let hoe = BetterTextures.hoe(String(name.dropLast("_hoe".count))) { return hoe }
             let parts = name.split(separator: "_")
             guard parts.count == 2, let mat = materials[String(parts[0])] else {
                 c.disc(16, 16, 10, RGBA(hex: 0xFF00FF))   // missing-texture magenta

@@ -156,7 +156,12 @@ final class WinSolo: CommandHost {
     // MARK: CommandHost
 
     var settings: GameSettings { store.settings }
-    var remotePlayers: [RemotePlayer] { [] }
+    /// The players connected to your hosted world (for /list, /msg and /tp).
+    var remotePlayers: [RemotePlayer] {
+        (host?.players ?? []).map { p in
+            RemotePlayer(id: p.id, name: p.name, position: p.state.map { DVec3($0.x, $0.y, $0.z) } ?? game.player.position)
+        }
+    }
     var isMultiplayer: Bool { host != nil }
     var isClient: Bool { false }
 
@@ -167,6 +172,14 @@ final class WinSolo: CommandHost {
         }
         if chatLines.count > 80 { chatLines.removeFirst(chatLines.count - 80) }
         Log.info("Chat: \(line)", category: "Net")
+    }
+
+    func whisper(to name: String, text: String) -> String? {
+        guard !text.isEmpty else { return "Type a message after the name." }
+        guard let host else { return "Private messages need other players in the game." }
+        guard host.whisper(from: hostName, to: name, text: text) else { return "No player called \(name) is here." }
+        addChat(from: "", text: "You whisper to \(name): \(text)")
+        return nil
     }
 
     func sendChat(_ text: String) {
@@ -556,7 +569,8 @@ final class WinSolo: CommandHost {
         camera.yaw = placement.yaw
         camera.pitch = placement.pitch
         camera.fovY = max(50, min(110, settings.fov)) * .pi / 180
-        if s.player.isSprinting { camera.fovY *= 1.08 }
+        if s.player.isSprinting && !s.zooming { camera.fovY *= 1.08 }
+        camera.fovY /= s.zoomAmount
         if settings.viewBobbing && !s.player.flying && cameraView == .firstPerson {
             // Gentle head bob while walking, like on the Mac.
             let phase = s.bobPhase * .pi, amount = s.bobAmount
@@ -753,7 +767,7 @@ final class WinSolo: CommandHost {
         do {
             server = try WireHost(settings: .init(worldName: meta.name, seed: meta.seed, gameMode: meta.gameMode.rawValue,
                                                   difficulty: meta.difficulty.rawValue, hostName: hostName, deep: meta.isDeep,
-                                                  hostID: settings.playerID, hostLook: settings.cosmetics),
+                                                  hostID: settings.playerID, hostLook: settings.cosmetics, hardcore: meta.isHardcore),
                                   makeChunk: { [storage, generator, id = meta.id] pos in
                                       storage.loadChunk(worldID: id, pos: pos) ?? generator.generate(pos)
                                   })
@@ -780,6 +794,12 @@ final class WinSolo: CommandHost {
         server.worldTime = { [weak self] in self?.session?.worldTime ?? 0 }
         server.onChat = { [weak self] from, text in self?.addChat(from: from, text: text) }
         server.onEvent = { [weak self] text in self?.addChat(from: "", text: text) }
+        server.onWhisper = { [weak self] from, text in self?.addChat(from: "", text: "\(from) whispers to you: \(text)") }
+        server.hardcoreDead = Set(meta.hardcoreDeadPlayers ?? [])
+        server.onHardcoreDeath = { [weak self] key, name in
+            guard let self, let s = self.session, s.recordHardcoreDeath(key) else { return }
+            self.addChat(from: "", text: "\(name) is out of lives and can only spectate now.")
+        }
         server.onMet = { [weak self] id, name, look in
             guard let self else { return }
             if FriendList.shared.met(id: id, name: name, look: look, address: nil, myID: self.settings.playerID) {

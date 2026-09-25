@@ -62,6 +62,12 @@ final class GameSession {
     private var autosaveTimer = 0.0
     private var environmentTimer = 0.0
     private var scrollAccumulator = 0.0
+    /// Hold-to-zoom: how far in the zoom goes (the scroll wheel changes it while zooming, and it's
+    /// remembered), whether the zoom key is held, and the smoothed amount the camera uses.
+    var zoomFactor = 4.0
+    private(set) var zooming = false
+    private(set) var zoomAmount = 1.0
+    static let zoomRange = 1.5...16.0
     private(set) var bobPhase = 0.0
     private(set) var bobAmount = 0.0
     private(set) var damageFlash = 0.0
@@ -311,6 +317,9 @@ final class GameSession {
         world.update(focus: player.position)
         damageFlash = max(0, damageFlash - dt * 1.6)
         hotbarNameTimer = max(0, hotbarNameTimer - dt)
+        if paused || input == nil || isDead { zooming = false }
+        zoomAmount += ((zooming ? zoomFactor : 1) - zoomAmount) * (1 - exp(-14 * dt))
+        if abs(zoomAmount - 1) < 0.001 { zoomAmount = 1 }
         if paused { return }
 
         clock += dt
@@ -331,9 +340,18 @@ final class GameSession {
 
         var move = MovementInput()
         if let input {
+            zooming = input.isDown(settings.binding(for: .zoom))
             applyLook(input, settings)
             move = movement(input, settings)
-            hotbar(input)
+            if zooming {
+                // While zooming the scroll wheel sets how far in to zoom instead of changing the hotbar slot.
+                if input.scroll != 0 {
+                    zoomFactor = min(GameSession.zoomRange.upperBound, max(GameSession.zoomRange.lowerBound, zoomFactor * pow(1.2, input.scroll)))
+                }
+                if let slot = input.hotbarKeyPressed { inventory.selected = slot }
+            } else {
+                hotbar(input)
+            }
             interact(dt, input, settings)
         } else {
             breakingPos = nil
@@ -378,7 +396,8 @@ final class GameSession {
     }
 
     private func applyLook(_ input: GameInput, _ s: GameSettings) {
-        let sens = 0.0022 * (0.25 + s.mouseSensitivity * 1.5)
+        // Zoomed in, the view turns slower so aiming stays steady.
+        let sens = 0.0022 * (0.25 + s.mouseSensitivity * 1.5) / zoomAmount
         player.yaw -= input.mouseDelta.x * sens
         player.pitch -= input.mouseDelta.y * sens * (s.invertY ? -1 : 1)
         player.pitch = max(-1.5533, min(1.5533, player.pitch))
@@ -1520,6 +1539,18 @@ final class GameSession {
         } else {
             player.teleport(to: spawnPoint)
         }
+    }
+
+    /// Hardcore multiplayer: remembers that a joining player died (by `WireHost.deathKey`), so they can
+    /// only spectate from now on. Returns true the first time.
+    @discardableResult
+    func recordHardcoreDeath(_ key: String) -> Bool {
+        var dead = meta.hardcoreDeadPlayers ?? []
+        guard meta.isHardcore, !dead.contains(key) else { return false }
+        dead.append(key)
+        meta.hardcoreDeadPlayers = dead
+        save()
+        return true
     }
 
     /// Hardcore: after death the world can only be watched.

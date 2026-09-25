@@ -205,6 +205,10 @@ extension WinSolo {
             ui.rect(x, y0, slot, slot, SIMD4(0.02, 0.012, 0.04, 0.85))
             if let stack = s.inventory.slots[i] { drawStack(&ui, stack, x: x, y: y0, size: slot, scale: sc) }
         }
+        if s.zooming {
+            ui.centeredText(String(format: "Zoom %.1fx - scroll to adjust", s.zoomFactor), centerX: W / 2, y: y0 - (survival ? 64 : 44) * sc - 7 * small,
+                            scale: small, color: SIMD4(1, 1, 1, 0.9))
+        }
         if s.hotbarNameTimer > 0, let stack = s.inventory.selectedStack, let info = items[stack.item] {
             let alpha = Float(min(1, s.hotbarNameTimer / 0.5))
             ui.centeredText(info.displayName, centerX: W / 2, y: y0 - (survival ? 44 : 24) * sc - 7 * small, scale: small,
@@ -214,15 +218,12 @@ extension WinSolo {
         if survival {
             let rowY = y0 - 12 * sc - 7 * small
             // Hearts
+            let pulse: Float = s.health <= 4 ? Float(0.75 + 0.25 * sin(Date.timeIntervalSinceReferenceDate * 10)) : 1
             for i in 0..<10 {
                 let hx = x0 + Float(i) * 8 * small
                 let value = s.health / 2 - Double(i)
-                ui.text("\u{2665}", x: hx, y: rowY, scale: small, color: SIMD4(0.1, 0.02, 0.03, 0.85), shadow: false)
-                if value >= 1 {
-                    ui.text("\u{2665}", x: hx, y: rowY, scale: small, color: SIMD4(0.95, 0.1, 0.16, 1), shadow: false)
-                } else if value > 0 {
-                    ui.text("\u{2665}", x: hx, y: rowY, scale: small, color: SIMD4(0.85, 0.42, 0.48, 1), shadow: false)
-                }
+                ui.heart(x: hx, y: rowY - small * 0.4, unit: small * 7.6 / 9, fill: value >= 1 ? 1 : (value > 0 ? 0.5 : 0),
+                         hardcore: s.meta.isHardcore, brightness: pulse)
             }
             // Hunger
             for i in 0..<10 {

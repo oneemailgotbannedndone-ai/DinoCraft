@@ -24,7 +24,12 @@ final class WinGame {
     private let player: PlayerController
     private let network: WinNetwork
     private let inventory: Inventory
-    private let creative: Bool
+    private let creativeMode: Bool
+    /// Hardcore worlds give one life: after dying you can only spectate.
+    private let hardcore: Bool
+    private var spectating: Bool
+    /// Creative rules (no damage, hunger or item use-up) also apply while spectating.
+    private var creative: Bool { creativeMode || spectating }
     private let spawnPoint: DVec3
     /// True when the player closed the window (rather than returning to the title screen).
     private(set) var quitRequested = false
@@ -37,6 +42,10 @@ final class WinGame {
 
     private var running = true
     private var mouseCaptured = false
+    /// Hold-to-zoom (the zoom key, Z by default); scrolling while zoomed changes how far in.
+    private var zoomFactor = 4.0
+    private var zooming = false
+    private var zoomAmount = 1.0
     private var worldTime: Double
     private var jumpPressed = false
     private var leftHeld = false
@@ -108,12 +117,14 @@ final class WinGame {
         let inventory = Inventory(registry: items)
         let welcome = network.welcome
         let creative = welcome.gameMode == "creative"
+        let spectating = welcome.hardcore && welcome.spectator == true
         let generator = WorldDimension.overworld.makeGenerator(seed: UInt64(welcome.seed) ?? 0, deep: welcome.deep == true)
         let world = World(registry: blocks, generator: generator, storage: nil, worldID: nil,
                           meshFactory: GLChunkMeshFactory(renderer: renderer), jobs: jobs, renderDistance: options.renderDistance ?? 8)
         world.remoteRequest = { network.requestChunks($0) }
         let player = PlayerController(position: DVec3(welcome.x, welcome.y, welcome.z))
-        player.gameMode = creative ? .creative : .survival
+        player.gameMode = creative || spectating ? .creative : .survival
+        if spectating { player.setFlying(true) }
         if creative {
             let names = ["grass", "dirt", "stone", "cobblestone", "planks", "log", "glass", "torch", "amber_lantern"]
             for (i, name) in names.enumerated() {
@@ -135,7 +146,9 @@ final class WinGame {
         self.player = player
         self.network = network
         self.inventory = inventory
-        self.creative = creative
+        self.creativeMode = creative
+        self.hardcore = welcome.hardcore
+        self.spectating = spectating
         spawnPoint = player.position
         worldTime = welcome.worldTime
         Log.info("Playing on '\(welcome.worldName)' in \(creative ? "Creative" : "Survival") at \(player.position)", category: "Game")
@@ -214,7 +227,11 @@ final class WinGame {
                         closeChat()
                     } else if code == Int(SDL_SCANCODE_RETURN.rawValue) || code == Int(SDL_SCANCODE_KP_ENTER.rawValue) {
                         let text = chatInput.trimmingCharacters(in: .whitespaces)
-                        if !text.isEmpty { network.sendChat(text) }
+                        if let whisper = WinGame.privateMessage(text) {
+                            network.sendChat(whisper.text, to: whisper.to)
+                        } else if !text.isEmpty {
+                            network.sendChat(text)
+                        }
                         closeChat()
                     } else if code == Int(SDL_SCANCODE_BACKSPACE.rawValue), !chatInput.isEmpty {
                         chatInput.removeLast()
@@ -230,7 +247,7 @@ final class WinGame {
                     setMouseCaptured(!mouseCaptured || dead)
                     audio?.play(mouseCaptured ? "ui_close" : "ui_open", volume: 0.45)
                 } else if code == Int(SDL_SCANCODE_E.rawValue) {
-                    if !dead { openScreen(.inventory) }
+                    if !dead && !spectating { openScreen(.inventory) }
                 } else if code == Int(SDL_SCANCODE_SPACE.rawValue) {
                     if dead { respawn() } else { jumpPressed = true }
                 } else if code == Int(SDL_SCANCODE_T.rawValue) {
@@ -243,7 +260,7 @@ final class WinGame {
             } else if type == UInt32(SDL_EVENT_MOUSE_MOTION.rawValue) {
                 mouse = SIMD2<Float>(event.motion.x, event.motion.y) * pixelScale()
                 guard mouseCaptured else { continue }
-                let sensitivity = 0.0022 * (0.25 + settings.settings.mouseSensitivity * 1.5)
+                let sensitivity = 0.0022 * (0.25 + settings.settings.mouseSensitivity * 1.5) / zoomAmount
                 player.yaw -= Double(event.motion.xrel) * sensitivity
                 player.pitch = max(-1.55, min(1.55, player.pitch - Double(event.motion.yrel) * sensitivity))
             } else if type == UInt32(SDL_EVENT_MOUSE_BUTTON_DOWN.rawValue) {
@@ -269,14 +286,27 @@ final class WinGame {
             } else if type == UInt32(SDL_EVENT_MOUSE_BUTTON_UP.rawValue) {
                 if event.button.button == 1 { leftHeld = false }
             } else if type == UInt32(SDL_EVENT_MOUSE_WHEEL.rawValue) {
-                if event.wheel.y < 0 { inventory.selected += 1 }
-                if event.wheel.y > 0 { inventory.selected -= 1 }
+                if zooming {
+                    let range = GameSession.zoomRange
+                    zoomFactor = min(range.upperBound, max(range.lowerBound, zoomFactor * pow(1.2, Double(event.wheel.y))))
+                } else {
+                    if event.wheel.y < 0 { inventory.selected += 1 }
+                    if event.wheel.y > 0 { inventory.selected -= 1 }
+                }
             } else if type == UInt32(SDL_EVENT_WINDOW_FOCUS_LOST.rawValue) {
                 setMouseCaptured(false)
                 leftHeld = false
             }
         }
         swallowText = nil
+    }
+
+    /// "/msg Rex hello" (or /tell, /w, /whisper) → who it's for and the message.
+    static func privateMessage(_ text: String) -> (to: String, text: String)? {
+        let parts = text.split(separator: " ", maxSplits: 2).map(String.init)
+        guard let command = parts.first?.lowercased(), ["/msg", "/tell", "/w", "/whisper"].contains(command),
+              parts.count == 3, !parts[2].isEmpty else { return nil }
+        return (parts[1], parts[2])
     }
 
     private func update(dt: Double, now: Double) {
@@ -292,6 +322,12 @@ final class WinGame {
         let px = Int(floor(player.position.x)), pz = Int(floor(player.position.z))
 
         let controllable = mouseCaptured && !chatOpen && !dead && screen == .closed
+        zooming = false
+        let zoomKey = settings.settings.binding(for: .zoom)
+        if controllable, zoomKey.kind == .key, let keys = SDL_GetKeyboardState(nil), let scancode = SDLGameInput.scancode(forMacKey: zoomKey.code) {
+            zooming = keys[scancode]
+        }
+        zoomAmount += ((zooming ? zoomFactor : 1) - zoomAmount) * (1 - exp(-14 * dt))
         var input = MovementInput()
         if controllable, let keys = SDL_GetKeyboardState(nil) {
             func down(_ scancode: SDL_Scancode) -> Bool { keys[Int(scancode.rawValue)] }
@@ -330,7 +366,7 @@ final class WinGame {
         if !creative && !dead { survivalTick(dt: dt, now: now) }
         updateAmbience(dt: dt)
 
-        if controllable {
+        if controllable && !spectating {
             interact(dt: dt)
         } else {
             breakingPos = nil
@@ -501,6 +537,10 @@ final class WinGame {
     }
 
     private func respawn() {
+        if hardcore {
+            spectate()
+            return
+        }
         dead = false
         health = 20
         hunger = 20
@@ -508,6 +548,19 @@ final class WinGame {
         air = 10
         damageFlash = 0
         player.teleport(to: spawnPoint)
+    }
+
+    /// Hardcore: out of lives, so fly around and watch (nothing can be broken, placed or picked up).
+    private func spectate() {
+        dead = false
+        spectating = true
+        health = 20
+        hunger = 20
+        air = 10
+        damageFlash = 0
+        player.gameMode = .creative
+        player.setFlying(true)
+        addChat("You're out of lives. You can fly around and watch, but not play.", now: Date.timeIntervalSinceReferenceDate)
     }
 
     // MARK: Network
@@ -558,7 +611,7 @@ final class WinGame {
         if stateTimer <= 0 {
             stateTimer = 0.05
             network.sendState(player: player, swinging: swingTimer > 0, held: inventory.selectedStack.flatMap { items[$0.item]?.name },
-                              health: Float(creative ? 20 : health), dead: dead,
+                              health: Float(creative ? 20 : health), dead: dead || spectating,
                               look: settings.settings.cosmetics.isEmpty ? nil : settings.settings.cosmetics)
         }
     }
@@ -645,12 +698,7 @@ final class WinGame {
             for i in 0..<10 {
                 let hx = x0 + Float(i) * 8 * small, hy = y0 - 12 * s - 7 * small
                 let value = shown / 2 - Double(i)
-                ui.text("\u{2665}", x: hx, y: hy, scale: small, color: SIMD4(0.1, 0.02, 0.03, 0.85), shadow: false)
-                if value >= 1 {
-                    ui.text("\u{2665}", x: hx, y: hy, scale: small, color: SIMD4(0.95, 0.1, 0.16, 1), shadow: false)
-                } else if value > 0 {
-                    ui.text("\u{2665}", x: hx, y: hy, scale: small, color: SIMD4(0.85, 0.42, 0.48, 1), shadow: false)
-                }
+                ui.heart(x: hx, y: hy - small * 0.4, unit: small * 7.6 / 9, fill: value >= 1 ? 1 : (value > 0 ? 0.5 : 0), hardcore: hardcore)
             }
         }
 
@@ -702,9 +750,12 @@ final class WinGame {
         if dead {
             ui.rect(0, 0, W, H, SIMD4(0.25, 0, 0, 0.6))
             let big = max(1, (7 * s).rounded())
-            ui.centeredText("YOU DIED", centerX: W / 2, y: H * 0.35, scale: big, color: SIMD4(1, 0.35, 0.35, 1))
+            ui.centeredText(hardcore ? "GAME OVER" : "YOU DIED", centerX: W / 2, y: H * 0.35, scale: big, color: SIMD4(1, 0.35, 0.35, 1))
             ui.centeredText(deathMessage, centerX: W / 2, y: H * 0.35 + 12 * big, scale: small, color: white)
-            ui.centeredText("Press Space to respawn", centerX: W / 2, y: H * 0.35 + 12 * big + 18 * small, scale: small, color: white)
+            ui.centeredText(hardcore ? "Hardcore: no respawns. Press Space to spectate" : "Press Space to respawn",
+                            centerX: W / 2, y: H * 0.35 + 12 * big + 18 * small, scale: small, color: white)
+        } else if spectating {
+            ui.centeredText("SPECTATING", centerX: W / 2, y: y0 - 24 * s, scale: small, color: SIMD4(1, 0.75, 0.3, 0.9))
         }
         if screen != .closed {
             buildScreenUI(&ui, width: W, height: H, scale: s)
@@ -721,6 +772,7 @@ final class WinGame {
         camera.position = player.eyePosition
         camera.yaw = player.yaw
         camera.pitch = player.pitch
+        camera.fovY = max(50, min(110, settings.settings.fov)) * .pi / 180 / zoomAmount
         let ui = buildUI(width: Float(w), height: Float(h), camera: camera, now: now)
         renderer.render(world: world, camera: camera, sky: SkyState.at(worldTime: worldTime), time: now - startTime, now: now,
                         width: w, height: h, ui: ui, models: entityModels(camera: camera, time: now - startTime))

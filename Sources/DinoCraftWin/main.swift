@@ -20,7 +20,7 @@ import WinSDK
 //   --frames <n>              frames to draw after loading before the screenshot (default 30)
 //   --demo-entities           automated check: place sample creatures in view
 //   --demo-screen <name>      automated check: inventory, crafting, furnace, creative, pause, advancements,
-//                             menu, worlds, create, toonland or toonland-boss
+//                             menu, worlds, create, toonland, toonland-boss or hardcore
 
 struct Options {
     var seed = ""
@@ -48,7 +48,7 @@ struct Options {
         while i < args.count {
             switch args[i] {
             case "--seed": o.seed = next() ?? ""
-            case "--render-distance": o.renderDistance = max(2, min(16, Int(next() ?? "") ?? 8))
+            case "--render-distance": o.renderDistance = max(2, min(GameSettings.maxRenderDistance, Int(next() ?? "") ?? 8))
             case "--screenshot": o.screenshotPath = next()
             case "--frames": o.frames = max(1, Int(next() ?? "") ?? 30)
             case "--join": o.join = next()
@@ -166,7 +166,7 @@ do {
     /// Plays on a friend's game. Returns whether the player closed the window, and why the game ended if it wasn't their choice.
     func join(_ network: WinNetwork) -> (quit: Bool, message: String?) {
         var sessionOptions = options
-        if sessionOptions.renderDistance == nil { sessionOptions.renderDistance = max(2, min(16, settingsStore.settings.renderDistance)) }
+        if sessionOptions.renderDistance == nil { sessionOptions.renderDistance = max(2, min(GameSettings.maxRenderDistance, settingsStore.settings.renderDistance)) }
         SDL_SetWindowTitle(window, "DinoCraft · \(network.welcome.worldName)")
         let game = WinGame(gl: gl, window: window, content: content, audio: audio, settings: settingsStore, options: sessionOptions,
                            network: network)
@@ -202,7 +202,8 @@ do {
         if let existing = storage.listWorlds().first(where: { $0.name == "Windows World" }) {
             _ = play(existing, isNew: false, hostName: options.hostName.map(cleanName))
         } else {
-            let meta = try storage.createWorld(name: "Windows World", seedText: options.seed, gameMode: .survival, difficulty: .normal)
+            let meta = try storage.createWorld(name: "Windows World", seedText: options.seed, gameMode: .survival, difficulty: .normal,
+                                               hardcore: options.demoScreen == "hardcore")
             _ = play(meta, isNew: true, hostName: options.hostName.map(cleanName))
         }
     } else {

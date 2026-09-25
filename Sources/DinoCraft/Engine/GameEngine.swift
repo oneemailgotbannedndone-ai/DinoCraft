@@ -397,6 +397,7 @@ final class GameEngine: NSObject, MTKViewDelegate {
         let srv = GameServer(session: s, hostName: host)
         srv.onEvent = { [weak self] text in self?.showToast(text) }
         srv.onChat = { [weak self] from, text in self?.addChat(from: from, text: text) }
+        srv.onWhisper = { [weak self] from, text in self?.addChat(from: "", text: "\(from) whispers to you: \(text)") }
         srv.hostID = settings.playerID
         srv.hostLook = settings.cosmetics
         srv.onMet = { [weak self] id, name, look in
@@ -535,7 +536,8 @@ final class GameEngine: NSObject, MTKViewDelegate {
         let meta = WorldMetadata(formatVersion: w.deep == true ? WorldMetadata.currentFormat : 1, id: "remote", name: w.worldName, seedText: w.seed, seed: w.seed,
                                  gameMode: GameMode(rawValue: w.gameMode) ?? .survival, difficulty: Difficulty(rawValue: w.difficulty) ?? .normal,
                                  createdAt: now, lastPlayed: now, playTimeSeconds: 0, worldTime: w.worldTime,
-                                 spawnX: Int(floor(w.x)), spawnY: Int(floor(w.y)), spawnZ: Int(floor(w.z)))
+                                 spawnX: Int(floor(w.x)), spawnY: Int(floor(w.y)), spawnZ: Int(floor(w.z)),
+                                 hardcore: w.hardcore ? true : nil, hardcoreDead: w.spectator == true ? true : nil)
         let s = GameSession(meta: meta, isNew: false, storage: storage, blocks: blocks, items: items, meshFactory: meshFactory, jobs: jobs,
                             renderDistance: settings.renderDistance, remote: true)
         s.onSound = { [weak self] name, volume, pitch in self?.audio.play(name, volume: volume, pitch: pitch) }
@@ -589,6 +591,18 @@ final class GameEngine: NSObject, MTKViewDelegate {
         } else {
             client?.sendChat(text)
         }
+    }
+
+    func whisper(to name: String, text: String) -> String? {
+        guard !text.isEmpty else { return "Type a message after the name." }
+        if let server {
+            guard server.whisper(from: settings.username, to: name, text: text) else { return "No player called \(name) is here." }
+            addChat(from: "", text: "You whisper to \(name): \(text)")
+            return nil
+        }
+        guard let client else { return "Private messages need other players in the game." }
+        client.sendChat(text, to: name)
+        return nil
     }
 
     func addChat(from: String, text: String) {
@@ -774,9 +788,9 @@ final class GameEngine: NSObject, MTKViewDelegate {
             camera.roll = 0
         }
         var target = settings.fov
-        if p.isSprinting { target *= p.flying ? 1.18 : 1.12 }
+        if p.isSprinting && !s.zooming { target *= p.flying ? 1.18 : 1.12 }
         fovCurrent += (target - fovCurrent) * (1 - exp(-10 * dt))
-        camera.fovY = fovCurrent * .pi / 180
+        camera.fovY = fovCurrent / s.zoomAmount * .pi / 180
     }
 
     private func updateGameAudio(_ s: GameSession, dt: Double) {

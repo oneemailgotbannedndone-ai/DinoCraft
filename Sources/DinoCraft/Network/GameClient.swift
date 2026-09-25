@@ -85,7 +85,11 @@ final class GameClient: SessionNetwork {
             session?.world.setBlock(BlockPos(m.x, m.y, m.z), m.id)
         case .chat:
             guard let m = NetConnection.decode(ChatMessage.self, data) else { return }
-            onChat?(m.from, m.text)
+            if m.to != nil {
+                onChat?("", "\(m.from) whispers to you: \(m.text)")
+            } else {
+                onChat?(m.from, m.text)
+            }
         case .mobSnapshot:
             guard let m = NetConnection.decode(MobSnapshotMessage.self, data) else { return }
             session?.mobs.mirror(m)
@@ -133,8 +137,8 @@ final class GameClient: SessionNetwork {
         connection.send(.chunkRequest, ChatlessChunkRequest.make(list))
     }
 
-    func sendChat(_ text: String) {
-        connection.send(.chat, ChatMessage(from: username, text: text))
+    func sendChat(_ text: String, to: String? = nil) {
+        connection.send(.chat, ChatMessage(from: username, text: text, to: to))
     }
 
     // MARK: SessionNetwork

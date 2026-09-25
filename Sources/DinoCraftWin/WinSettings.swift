@@ -53,9 +53,11 @@ struct SettingsPanel {
         }
 
         // Graphics
-        row(0, "Render distance", "\(max(4, min(16, settings.renderDistance))) chunks",
-            minus: { store.update { $0.renderDistance = max(4, min(16, $0.renderDistance) - 2) } },
-            plus: { store.update { $0.renderDistance = min(16, max(4, $0.renderDistance) + 2) } })
+        // Steps of 2 up to 16 chunks, then 4 up to 64 (far distances need a strong computer).
+        let rd = max(4, min(GameSettings.maxRenderDistance, settings.renderDistance))
+        row(0, "Render distance", "\(rd) chunks\(rd > 32 ? " (needs a strong PC)" : "")",
+            minus: { store.update { $0.renderDistance = max(4, rd - (rd > 16 ? 4 : 2)) } },
+            plus: { store.update { $0.renderDistance = min(GameSettings.maxRenderDistance, rd + (rd >= 16 ? 4 : 2)) } })
         row(0, "Field of view", "\(Int(settings.fov))\u{00B0}", minus: { step(\.fov, -5, 50, 110) }, plus: { step(\.fov, 5, 50, 110) })
         row(0, "Brightness", percent(settings.brightness), minus: { step(\.brightness, -0.1, 0, 1) }, plus: { step(\.brightness, 0.1, 0, 1) })
         // Leaves change the next time a world opens.

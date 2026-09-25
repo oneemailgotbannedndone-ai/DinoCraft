@@ -15,7 +15,7 @@ struct WinCamera {
     /// OpenGL perspective (depth -1…1) times a rotation-only view; geometry is drawn camera-relative.
     func viewProjection(aspect: Float) -> Mat4 {
         let f = 1 / Float(tan(fovY / 2))
-        let near: Float = 0.08, far: Float = 1600
+        let near: Float = 0.1, far: Float = 2400
         let projection = Mat4(columns: (
             SIMD4(f / aspect, 0, 0, 0),
             SIMD4(0, f, 0, 0),

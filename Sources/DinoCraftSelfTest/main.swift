@@ -481,8 +481,69 @@ section("Friends") {
     check(met == b, "the host learns who joined")
     check(welcome?.players.first?.playerID == hostID, "joiners learn who the host is")
     check(StatusProbe.check(address: "127.0.0.1:1", timeout: 1) == nil, "nobody hosting reads as offline")
+
+    // Private messages: Mo whispers to Zed, and to the host.
+    let second = try WireConnection.connect(host: "127.0.0.1", port: host.port)
+    second.send(.hello, Wire.Hello(version: Wire.protocolVersion, username: "Zed"))
+    var hostHeard: (String, String)?
+    host.onWhisper = { from, text in hostHeard = (from, text) }
+    var zedChats: [Wire.Chat] = [], moChats: [Wire.Chat] = []
+    func pump(_ seconds: Double, until done: () -> Bool) {
+        let end = Date().addingTimeInterval(seconds)
+        while Date() < end && !done() {
+            host.poll()
+            for event in second.poll() { if case .message(.chat, let d) = event, let c = try? JSONDecoder().decode(Wire.Chat.self, from: d) { zedChats.append(c) } }
+            for event in joiner.poll() { if case .message(.chat, let d) = event, let c = try? JSONDecoder().decode(Wire.Chat.self, from: d) { moChats.append(c) } }
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+    }
+    pump(2) { host.playerCount == 2 }
+    joiner.send(.chat, Wire.Chat(from: "Mo", text: "psst", to: "zed"))
+    joiner.send(.chat, Wire.Chat(from: "Mo", text: "hi host", to: "Rex"))
+    joiner.send(.chat, Wire.Chat(from: "Mo", text: "hello?", to: "Nobody"))
+    pump(3) { zedChats.contains { $0.text == "psst" } && hostHeard != nil && moChats.count >= 3 }
+    check(zedChats.contains { $0.text == "psst" && $0.from == "Mo" && $0.to == "Zed" }, "/msg reaches only its player")
+    check(hostHeard?.0 == "Mo" && hostHeard?.1 == "hi host", "/msg to the host reaches the host")
+    check(moChats.contains { $0.text.contains("You whisper to Zed") } && moChats.contains { $0.text.contains("No player called Nobody") },
+          "the sender sees their whisper, or that nobody has that name")
+    check(host.whisper(from: "Rex", to: "MO", text: "hey") && !host.whisper(from: "Rex", to: "ghost", text: "boo"), "the host can whisper to a player")
+    check(!zedChats.contains { $0.text == "hi host" || $0.text == "hello?" }, "other players don't see private messages")
+    second.close()
     joiner.close()
     host.stop()
+
+    // Hardcore multiplayer: a joiner who dies is remembered and can only spectate when they rejoin.
+    let hc = try WireHost(settings: WireHost.Settings(worldName: "One Life", seed: "1", gameMode: "survival", difficulty: "hard",
+                                                      hostName: "Rex", hostID: hostID, hardcore: true),
+                          port: 0, loopbackOnly: true) { TerrainGenerator(seed: 1).generate($0) }
+    var died: (String, String)?
+    hc.onHardcoreDeath = { key, name in died = (key, name) }
+    func joinHardcore() throws -> (WireConnection, Wire.Welcome?) {
+        let c = try WireConnection.connect(host: "127.0.0.1", port: hc.port)
+        c.send(.hello, Wire.Hello(version: Wire.protocolVersion, username: "Mo", playerID: b))
+        var w: Wire.Welcome?
+        let end = Date().addingTimeInterval(5)
+        while Date() < end && w == nil {
+            hc.poll()
+            for event in c.poll() { if case .message(.welcome, let d) = event { w = try? JSONDecoder().decode(Wire.Welcome.self, from: d) } }
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+        return (c, w)
+    }
+    let (first, firstWelcome) = try joinHardcore()
+    check(firstWelcome?.hardcore == true && firstWelcome?.spectator == false, "hardcore hosts say so, and new players can play")
+    first.send(.playerState, Wire.PlayerState(id: 0, x: 0, y: 80, z: 0, yaw: 0, pitch: 0, moving: 0, sneaking: false, swinging: false,
+                                              held: nil, health: 0, dead: true))
+    let deathEnd = Date().addingTimeInterval(3)
+    while Date() < deathEnd && died == nil { hc.poll(); Thread.sleep(forTimeInterval: 0.02) }
+    check(died?.0 == b && died?.1 == "Mo", "the hardcore host notices a joiner's death")
+    first.close()
+    Thread.sleep(forTimeInterval: 0.2)
+    hc.poll()
+    let (again, againWelcome) = try joinHardcore()
+    check(againWelcome?.spectator == true, "a player who died in hardcore comes back as a spectator")
+    again.close()
+    hc.stop()
 }
 
 section("Villages") {

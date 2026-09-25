@@ -1,7 +1,7 @@
 import Foundation
 import DinoCraftCore
 
-/// Hand-shaded pickaxes, a craggier bedrock and the Deep Slate of the deep layers.
+/// Hand-shaded tools, a craggier bedrock and the Deep Slate of the deep layers.
 enum BetterTextures {
     static let S = TexturePainter.S
 
@@ -49,76 +49,131 @@ enum BetterTextures {
         return c
     }
 
-    /// An axe: a broad bevelled blade with a bright cutting edge, fitted over the top of the handle,
-    /// with a short poll on the back. Drawn pixel by pixel so the shape stays crisp.
-    static func axe(_ material: String) -> Canvas? {
-        guard let (edgeHex, bodyHex, lightHex, sparkHex) = heads[material] else { return nil }
-        let c = Canvas(S)
-        handle(c, length: 22)
-        // K dark rim, D shadow near the handle, B body, L lit bevel, W cutting edge, S sparkle.
-        let head = [
-            "..KKK..............",
-            ".KWLLKK............",
-            ".KWLBBBKK..........",
-            "KWLBBBBBBKK........",
-            "KWLBBBBBBBDKK..KK..",
-            "KWLBBBBBBBBDDKKDDK.",
-            "KWLBBBBBBBBDDDBBDK.",
-            "KWLBBBBBBBBDDKKDDK.",
-            "KWLBBBBBBBDKK..KK..",
-            "KWLBBBBBBKK........",
-            ".KWLBBBKK..........",
-            ".KWLLKK............",
-            "..KKK..............",
-        ]
-        let colors: [Character: RGBA] = [
-            "K": RGBA(hex: edgeHex).shade(0.7), "D": RGBA(hex: edgeHex), "B": RGBA(hex: bodyHex),
-            "L": RGBA(hex: lightHex), "W": RGBA(hex: sparkHex).mix(RGBA(hex: lightHex), 0.35), "S": RGBA(hex: sparkHex),
-        ]
-        for (row, line) in head.enumerated() {
-            for (col, ch) in line.enumerated() {
-                if let color = colors[ch] { c.plot(8 + col, 2 + row, color) }
+    /// Every tool uses the pickaxe's look: the same grained handle with a leather wrap, and a metal
+    /// head shaded in three bands (lit top edge, body, dark lower edge) with a dark outline and a glint.
+    private struct Head {
+        let edge: RGBA, body: RGBA, light: RGBA, spark: RGBA
+        init?(_ material: String) {
+            guard let (e, b, l, s) = BetterTextures.heads[material] else { return nil }
+            edge = RGBA(hex: e); body = RGBA(hex: b); light = RGBA(hex: l); spark = RGBA(hex: s)
+        }
+        /// `across` runs from -1 (lit side) to 1 (shadow side) of the part being shaded.
+        func shade(_ across: Double) -> RGBA { across < -0.35 ? light : (across > 0.35 ? edge : body) }
+    }
+
+    /// Pixel centres in the pickaxe's frame around (cx, cy): u runs across the handle (top-left to
+    /// bottom-right), v back down the handle (towards the bottom-left).
+    private static func eachPixel(cx: Double, cy: Double, _ body: (Int, Int, Double, Double) -> Void) {
+        let r = 1 / 2.0.squareRoot()
+        for y in 0..<S {
+            for x in 0..<S {
+                let dx = Double(x) + 0.5 - cx, dy = Double(y) + 0.5 - cy
+                body(x, y, (dx + dy) * r, (dy - dx) * r)
             }
         }
-        c.plot(10, 6, RGBA(hex: sparkHex)); c.plot(10, 7, RGBA(hex: sparkHex))
-        if material == "diamond" { c.plot(14, 8, RGBA(hex: sparkHex)); c.plot(11, 12, RGBA(hex: sparkHex).withAlpha(0.7)) }
+    }
+
+    /// An axe: a flared, gently curved blade on one side of the handle and a short poll on the other.
+    static func axe(_ material: String) -> Canvas? {
+        guard let head = Head(material) else { return nil }
+        let c = Canvas(S)
+        handle(c, length: 20)
+        eachPixel(cx: 21, cy: 11) { x, y, u, v in
+            if u < -0.5 {
+                // The blade widens (along the handle) the further it reaches, and its cutting edge bulges out.
+                let reach = -u
+                let half = 1.8 + (reach - 0.5) * 0.46
+                let centre = 0.2 - reach * 0.06
+                let limit = 10.6 - (v - centre) * (v - centre) / 12
+                guard reach < limit, abs(v - centre) < half else { return }
+                c.plot(x, y, reach > limit - 1.3 ? head.light : head.shade((v - centre) / half))
+            } else if u < 3.2 && abs(v) < 1.7 {
+                c.plot(x, y, u > 2.2 ? head.edge : head.shade(v / 1.7))          // the poll
+            }
+        }
+        let wrap = RGBA(hex: 0x3A2A22)
+        c.plot(20, 11, wrap); c.plot(21, 12, wrap); c.plot(22, 12, wrap)
+        c.plot(14, 7, head.spark); c.plot(15, 6, head.spark.withAlpha(0.7))
+        if material == "diamond" { c.plot(17, 11, head.spark); c.plot(12, 9, head.spark.withAlpha(0.6)) }
         c.outline()
         return c
     }
 
-    /// A sword: a tapered blade with a fuller down the middle and one lit side, a crossguard,
-    /// a wrapped grip and a round pommel.
+    /// A sword: a tapered blade with a fuller, a crossguard of the same metal, and the pickaxe's wooden
+    /// handle wood and leather wrap on the grip.
     static func sword(_ material: String) -> Canvas? {
-        guard let (edgeHex, bodyHex, lightHex, sparkHex) = heads[material] else { return nil }
+        guard let head = Head(material) else { return nil }
         let c = Canvas(S)
-        let edge = RGBA(hex: edgeHex), body = RGBA(hex: bodyHex), light = RGBA(hex: lightHex), spark = RGBA(hex: sparkHex)
-        let guardColors: [String: (UInt32, UInt32)] = [
-            "wooden": (0x4A3018, 0x7A5230), "stone": (0x3A3C44, 0x62656F), "iron": (0x4A525E, 0x8A94A2), "diamond": (0xA8741C, 0xF0C24A),
-        ]
-        let (gDark, gLight) = guardColors[material] ?? (0x4A525E, 0x8A94A2)
-        let grip = RGBA(hex: 0x4A2E1E), gripLight = RGBA(hex: 0x7A5034)
+        let wood = RGBA(hex: 0x8A5A30), woodDark = RGBA(hex: 0x5A3A1C)
+        let wrap = RGBA(hex: 0x3A2A22), wrapLight = RGBA(hex: 0x5E4636)
         // Local frame at the guard: s runs towards the tip (top-right), t across the blade.
-        let guardAt = (x: 10.0, y: 22.0), r = 1 / 2.0.squareRoot()
+        let gx = 10.0, gy = 22.0, r = 1 / 2.0.squareRoot()
         for y in 0..<S {
             for x in 0..<S {
-                let dx = Double(x) + 0.5 - guardAt.x, dy = Double(y) + 0.5 - guardAt.y
+                let dx = Double(x) + 0.5 - gx, dy = Double(y) + 0.5 - gy
                 let s = (dx - dy) * r, t = (dx + dy) * r
                 if s > 0.6 && s < 23.5 {
-                    let half = s < 18 ? 2.3 : 2.3 * (23.5 - s) / 5.5
+                    let half = s < 18 ? 2.2 : 2.2 * (23.5 - s) / 5.5
                     guard abs(t) < half else { continue }
-                    let shade: RGBA
-                    if t < -half + 0.9 { shade = light } else if t > half - 0.9 { shade = edge } else if abs(t) < 0.5 && s > 2 && s < 16 { shade = edge.mix(body, 0.45) } else { shade = body }
+                    var shade = head.shade(t / half)
+                    if abs(t) < 0.45 && s > 2 && s < 16 { shade = head.edge.mix(head.body, 0.5) }   // fuller
                     c.plot(x, y, shade)
-                } else if s > -1.2 && s <= 0.6 && abs(t) < 5.2 {
-                    c.plot(x, y, s > -0.3 ? RGBA(hex: gLight) : RGBA(hex: gDark))   // crossguard
-                } else if s > -6.8 && s <= -1.2 && abs(t) < 1.2 {
-                    c.plot(x, y, Int((-s) * 1.2) % 2 == 0 ? grip : gripLight)    // wrapped grip
-                } else if (s + 8.2) * (s + 8.2) + t * t < 3.4 {
-                    c.plot(x, y, (s + 8.2) + t < 0 ? RGBA(hex: gDark) : RGBA(hex: gLight))   // pommel
+                } else if s > -1.1 && s <= 0.6 && abs(t) < 4.8 {
+                    c.plot(x, y, s > -0.25 ? head.light : head.edge)                               // crossguard
+                } else if s > -6.6 && s <= -1.1 && abs(t) < 1.15 {
+                    let band = Int((-s) * 1.2) % 3
+                    c.plot(x, y, band == 0 ? wrap : (band == 1 ? wrapLight : (t < 0 ? wood : woodDark)))   // grip
+                } else if (s + 7.8) * (s + 7.8) + t * t < 3 {
+                    c.plot(x, y, head.shade(t + (s + 7.8)))                                       // pommel
                 }
             }
         }
-        c.plot(24, 7, spark); c.plot(22, 9, spark.withAlpha(0.7)); c.plot(18, 13, spark.withAlpha(0.5))
+        c.plot(24, 7, head.spark); c.plot(22, 9, head.spark.withAlpha(0.7)); c.plot(18, 13, head.spark.withAlpha(0.5))
+        c.outline()
+        return c
+    }
+
+    /// A shovel: a rounded spade on a metal collar at the end of the handle.
+    static func shovel(_ material: String) -> Canvas? {
+        guard let head = Head(material) else { return nil }
+        let c = Canvas(S)
+        handle(c, length: 17)
+        // Frame at the collar: s runs out along the handle (top-right), t across it.
+        let ox = 22.0, oy = 10.0, r = 1 / 2.0.squareRoot()
+        for y in 0..<S {
+            for x in 0..<S {
+                let dx = Double(x) + 0.5 - ox, dy = Double(y) + 0.5 - oy
+                let s = (dx - dy) * r, t = (dx + dy) * r
+                if s > -0.8 && s < 1.6 && abs(t) < 1.5 {
+                    c.plot(x, y, s < 0.4 ? head.edge : head.body)                                 // collar
+                } else if s >= 1.6 && s < 11 {
+                    let tip = max(0, s - 7.5)
+                    let half = 3.3 - tip * tip * 0.27
+                    guard abs(t) < half else { continue }
+                    c.plot(x, y, s > 10 - tip * 0.2 ? head.light : head.shade(t / half))
+                }
+            }
+        }
+        c.plot(25, 4, head.spark); c.plot(26, 5, head.spark.withAlpha(0.7))
+        c.outline()
+        return c
+    }
+
+    /// A hoe: a flat blade turned down at the end, fixed across the top of the handle.
+    static func hoe(_ material: String) -> Canvas? {
+        guard let head = Head(material) else { return nil }
+        let c = Canvas(S)
+        handle(c, length: 21)
+        eachPixel(cx: 22, cy: 10) { x, y, u, v in
+            if u < 1.4 && u > -9.5 && v > -1.9 && v < 1.5 {
+                c.plot(x, y, head.shade((v + 0.2) / 1.7))                                          // blade
+            } else if u <= -6.2 && u > -9.5 && v >= 1.5 && v < 5 {
+                c.plot(x, y, u < -8.4 ? head.light : head.shade((u + 7.85) / 1.6))                 // turned-down edge
+            }
+        }
+        let wrap = RGBA(hex: 0x3A2A22)
+        c.plot(22, 10, wrap); c.plot(23, 11, wrap)
+        c.plot(16, 6, head.spark); c.plot(17, 5, head.spark.withAlpha(0.7))
         c.outline()
         return c
     }
