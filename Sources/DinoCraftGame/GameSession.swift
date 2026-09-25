@@ -25,6 +25,8 @@ final class GameSession {
     private(set) var health: Double = 20
     private(set) var hunger: Double = 20
     private(set) var saturation: Double = 5
+    /// 1 right after eating, fading to 0: the hunger bar ripples.
+    private(set) var eatFlash = 0.0
     private(set) var air: Double = 10
     private var exhaustion = 0.0, regenTimer = 0.0, starveTimer = 0.0, drownTimer = 0.0, lavaTimer = 0.0, cactusTimer = 0.0
     private var hurtCooldown = 0.0
@@ -316,6 +318,7 @@ final class GameSession {
         world.renderDistance = settings.renderDistance
         world.update(focus: player.position)
         damageFlash = max(0, damageFlash - dt * 1.6)
+        eatFlash = max(0, eatFlash - dt * 1.2)
         hotbarNameTimer = max(0, hotbarNameTimer - dt)
         if paused || input == nil || isDead { zooming = false }
         zoomAmount += ((zooming ? zoomFactor : 1) - zoomAmount) * (1 - exp(-14 * dt))
@@ -878,6 +881,7 @@ final class GameSession {
             guard pressed, hunger < 20 else { return false }
             hunger = min(20, hunger + Double(food.hunger))
             saturation = min(hunger, saturation + Double(food.saturation))
+            eatFlash = 1
             inventory.consumeSelected()
             onSound?("eat", 0.7, 1)
             advancements.record("eat", info.name)

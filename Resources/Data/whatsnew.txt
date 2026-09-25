@@ -1,5 +1,16 @@
 DinoCraft - the Toonland update
 
+Fixes and controls
+- Fixed a crash while exploring cold seas: an iceberg next to land or a shallow bank crashed the game.
+  It happened more often with a big render distance, since more of the world is being built.
+- Updates: the launcher now tells you whether the last update worked. On Mac, if macOS blocks the launcher from
+  replacing the apps, nothing is left half-copied: the new apps' folder opens so you can drag them into Applications,
+  or allow DinoCraft Launcher in System Settings > Privacy & Security > App Management.
+- Windows: change your keys in Settings > Controls. Click an action, then press a key or mouse button.
+  Joined games use your keys too.
+- A better hunger bar: pixel drumsticks with a gold rim while you're still full, a shake when you're starving,
+  and a ripple when you eat.
+
 Life under the sea
 - Fish: schools of Cod and Salmon, and Clownfish and Blue Tang on the reefs. They swim all around you,
   dart away when you hit them and flop about on land. Catch them for Raw Fish and Tropical Fish; cook fish in a furnace.

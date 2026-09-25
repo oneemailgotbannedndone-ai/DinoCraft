@@ -85,6 +85,22 @@ struct UIBuilder {
         }
     }
 
+    /// The hunger bar: ten drumsticks filling from the right, a gold rim while you still have saturation,
+    /// shaking when you're starving and rippling after you eat.
+    mutating func hungerBar(right: Float, y: Float, small: Float, hunger: Double, saturation: Double, eatFlash: Double, time: Double) {
+        let unit = small * 7.6 / 9
+        for i in 0..<10 {
+            let x = right - Float(i + 1) * 8 * small
+            let dy = Float(HungerIcon.offset(index: i, hunger: hunger, eatFlash: eatFlash, time: time)) * unit
+            let glow = Float(max(0, eatFlash - Double(i) * 0.05)) * 0.35
+            for (col, row, hex) in HungerIcon.pixels(fill: HungerIcon.fill(index: i, hunger: hunger),
+                                                    saturated: HungerIcon.saturated(index: i, saturation: saturation)) {
+                func channel(_ shift: UInt32) -> Float { min(1, pow(Float((hex >> shift) & 255) / 255, 2.2) * (1 + glow)) }
+                rect(x + Float(col) * unit, y - small * 0.6 + Float(row) * unit + dy, unit, unit, SIMD4(channel(16), channel(8), channel(0), 1))
+            }
+        }
+    }
+
     static func textWidth(_ text: String, scale: Float) -> Float {
         text.isEmpty ? 0 : Float(text.count) * 6 * scale - scale
     }

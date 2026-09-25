@@ -9,6 +9,8 @@ import DinoCraftCore
 /// cosmetics, settings and Play (which goes on to the main menu underneath).
 final class LauncherScreen: Screen {
     private var installError: String?
+    /// How the last update went (shown once, the next time the launcher opens).
+    private var updateNote: (message: String, ok: Bool)?
     /// Shows the guide to beating DinoCraft instead of the news.
     private var showingGuide = false
     /// Reviews and friends' games are checked once, when the launcher first shows.
@@ -30,6 +32,7 @@ final class LauncherScreen: Screen {
             GameLinks.reviews.load()
             FriendList.shared.refreshStatuses()
             crash = CrashReport.fromLastRun()
+            updateNote = UpdateResult.take()
             PlayerStats.shared.submitNow()
         }
         d.opacity = intro
@@ -156,9 +159,17 @@ final class LauncherScreen: Screen {
             label = "Try Again"
             status = reason
         }
-        if ui.button("launcher.update", label, Rect(bx, by, bw, bh), style: style, enabled: enabled), let action { action() }
+        if ui.button("launcher.update", label, Rect(bx, by, bw, bh), style: style, enabled: enabled), let action {
+            updateNote = nil
+            action()
+        }
         by += bh + 12
-        d.text(installError ?? status, x: bx, y: by, size: 13.5, color: installError != nil ? Theme.danger : Theme.textMuted, maxWidth: bw)
+        if let note = updateNote, installError == nil, !(note.ok && e.updater.latestRelease.map { $0.build > BuildInfo.current.build } == true) {
+            // The last update's outcome (a failure stays until the next try).
+            d.text(note.message, x: bx, y: by, size: 13.5, color: note.ok ? Theme.amber : Theme.danger, maxWidth: bw)
+        } else {
+            d.text(installError ?? status, x: bx, y: by, size: 13.5, color: installError != nil ? Theme.danger : Theme.textMuted, maxWidth: bw)
+        }
         by += 30
         if ui.button("launcher.cosmetics", "Cosmetics", Rect(bx, by, bw, bh), style: .secondary) { e.pushScreen(CosmeticsScreen()) }
         by += bh + gap
@@ -638,18 +649,38 @@ enum MacUpdater {
         let pid = ProcessInfo.processInfo.processIdentifier
         let newLauncher = unpacked.appendingPathComponent("DinoCraft Launcher.app")
         let launcher = app.deletingLastPathComponent().appendingPathComponent("DinoCraft Launcher.app")
-        let launcherSteps = fm.fileExists(atPath: newLauncher.path) ? """
-        rm -rf \(quote(launcher.path))
-        /usr/bin/ditto \(quote(newLauncher.path)) \(quote(launcher.path))
-        /usr/bin/xattr -dr com.apple.quarantine \(quote(launcher.path)) 2>/dev/null
-        """ : ""
+        let build = BuildInfo.current.build
+        let newBuild = (try? Data(contentsOf: newApp.appendingPathComponent("Contents/Resources/Data/build.json")))
+            .flatMap { try? JSONDecoder().decode(BuildInfo.self, from: $0) }?.build ?? build + 1
+        let launcherStep = fm.fileExists(atPath: newLauncher.path) ? "replace \(quote(newLauncher.path)) \(quote(launcher.path)) || ok=0" : ""
+        // Each app is moved aside, the new one copied in, and the old one put back if anything fails, so a
+        // blocked update never leaves a half-copied app. macOS may block changing apps in Applications
+        // ("App Management"): then the new apps' folder opens so they can be dragged in by hand.
         let script = """
         #!/bin/sh
         while kill -0 \(pid) 2>/dev/null; do sleep 0.5; done
-        rm -rf \(quote(app.path))
-        /usr/bin/ditto \(quote(newApp.path)) \(quote(app.path))
-        /usr/bin/xattr -dr com.apple.quarantine \(quote(app.path)) 2>/dev/null
-        \(launcherSteps)
+        replace() {
+          rm -rf "$2.updating-old" 2>/dev/null
+          if [ -e "$2" ]; then mv "$2" "$2.updating-old" 2>/dev/null || return 1; fi
+          if /usr/bin/ditto "$1" "$2" 2>/dev/null && [ -n "$(ls "$2/Contents/MacOS" 2>/dev/null)" ]; then
+            rm -rf "$2.updating-old"
+            /usr/bin/xattr -dr com.apple.quarantine "$2" 2>/dev/null
+            return 0
+          fi
+          rm -rf "$2" 2>/dev/null
+          mv "$2.updating-old" "$2" 2>/dev/null
+          return 1
+        }
+        ok=1
+        replace \(quote(newApp.path)) \(quote(app.path)) || ok=0
+        \(launcherStep)
+        if [ "$ok" = 1 ]; then
+          echo "ok \(newBuild)" > \(quote(UpdateResult.file.path))
+        else
+          echo "blocked \(newBuild)" > \(quote(UpdateResult.file.path))
+          /usr/bin/open \(quote(unpacked.path))
+          /usr/bin/open "x-apple.systempreferences:com.apple.preference.security?Privacy_AppBundles"
+        fi
         /usr/bin/open \(quote(running.path))
 
         """

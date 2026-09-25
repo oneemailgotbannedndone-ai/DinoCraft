@@ -536,14 +536,14 @@ enum HUD {
                     }
                 }
             }
+            // Hunger: pixel drumsticks with a gold rim while saturated, shaking when starving, rippling after eating.
             for i in 0..<10 {
                 let x = hx + total - 20 - Float(i) * 22
-                let value = s.hunger / 2 - Double(i)
-                d.circle(center: SIMD2(x + 9, rowY + 12), radius: 7.5, Color(hex: 0x2A160A, alpha: 0.7))
-                if value > 0 {
-                    let rad: Float = value >= 1 ? 6.5 : 3.5
-                    d.circle(center: SIMD2(x + 9, rowY + 12), radius: rad, Color(hex: 0xE89A3C))
-                    d.circle(center: SIMD2(x + 7, rowY + 10), radius: rad * 0.35, Color(hex: 0xFFD08A))
+                let dy = Float(HungerIcon.offset(index: i, hunger: s.hunger, eatFlash: s.eatFlash, time: ui.time)) * 2.2
+                let glow = Float(max(0, s.eatFlash - Double(i) * 0.05)) * 0.35
+                for (col, row, hex) in HungerIcon.pixels(fill: HungerIcon.fill(index: i, hunger: s.hunger),
+                                                        saturated: HungerIcon.saturated(index: i, saturation: s.saturation)) {
+                    d.fill(Rect(x + Float(col) * 2.2, rowY + 3 + Float(row) * 2.2 + dy, 2.2, 2.2), Color(hex: hex).scaled(1 + glow))
                 }
             }
             if s.air < 10 {

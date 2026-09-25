@@ -3,6 +3,96 @@ import CSDL3
 import DinoCraftCore
 @testable import DinoCraftGame
 
+/// The Controls page of the settings: click an action, then press the key or mouse button to use for it.
+/// The title screen and the game both hand it their key and mouse presses while it's waiting for one.
+final class ControlsEditor {
+    static let shared = ControlsEditor()
+    /// The settings panel shows the key list instead of the usual settings.
+    var open = false
+    /// The action waiting for a new key.
+    var listening: GameAction?
+    var message: String?
+
+    /// A key press while waiting for one: binds it (Escape cancels). Returns true when the press was used.
+    func capture(scancode: Int, store: SettingsStore) -> Bool {
+        guard let action = listening else { return false }
+        listening = nil
+        if scancode == Int(SDL_SCANCODE_ESCAPE.rawValue) && action != .pause { message = nil; return true }
+        guard let key = SDLGameInput.macKey(forScancode: scancode) else {
+            message = "That key can't be used. Try another one."
+            return true
+        }
+        bind(.key(key), to: action, store: store)
+        return true
+    }
+
+    /// A mouse press while waiting for one (SDL numbering: 1 left, 2 middle, 3 right, 4+ side buttons).
+    func capture(mouseButton: UInt8, store: SettingsStore) -> Bool {
+        guard let action = listening, let button = SDLGameInput.macButton(mouseButton) else { return false }
+        listening = nil
+        bind(.mouse(button), to: action, store: store)
+        return true
+    }
+
+    private func bind(_ binding: InputBinding, to action: GameAction, store: SettingsStore) {
+        // A key does one thing: whatever used it before swaps to this action's old key.
+        let old = store.settings.binding(for: action)
+        store.update { settings in
+            for other in GameAction.allCases where other != action && settings.binding(for: other) == binding {
+                settings.setBinding(old, for: other)
+            }
+            settings.setBinding(binding, for: action)
+        }
+        message = "\(action.displayName): \(binding.displayName)"
+    }
+
+    /// Draws the key list; returns the y below it.
+    func build(_ ui: inout UIBuilder, input: MenuInput, width W: Float, top: Float, scale s: Float, store: SettingsStore,
+               click: () -> Void) -> Float {
+        let small = max(1, (2 * s).rounded())
+        let colW = min((W - 60 * s) / 2, 520 * s), gapX = 20 * s
+        let rowH = 34 * s, rowGap = 6 * s
+        let actions = GameAction.allCases
+        let perColumn = (actions.count + 1) / 2
+        var bottom = top
+        for (i, action) in actions.enumerated() {
+            let column = i / perColumn, index = i % perColumn
+            let x = column == 0 ? W / 2 - colW - gapX / 2 : W / 2 + gapX / 2
+            let y = top + Float(index) * (rowH + rowGap)
+            ui.rect(x, y, colW, rowH, SIMD4(0.123, 0.069, 0.03, 0.85))
+            let waiting = listening == action
+            let label = waiting ? "Press a key..." : store.settings.binding(for: action).displayName
+            let bw = min(190 * s, colW * 0.42)
+            // Long names (like the zoom's) are cut to fit beside the key.
+            let room = max(4, Int((colW - bw - 20 * s) / (6 * small)))
+            let name = action.displayName.count > room ? String(action.displayName.prefix(room - 1)) + "\u{2026}" : action.displayName
+            ui.text(name, x: x + 10 * s, y: y + rowH / 2 - 3.5 * small, scale: small, color: SIMD4(1, 1, 1, 1))
+            if ui.button(label, x: x + colW - bw - 4 * s, y: y + 3 * s, w: bw, h: rowH - 6 * s, scale: s, input: input, primary: waiting) {
+                click()
+                listening = waiting ? nil : action
+                message = nil
+            }
+            bottom = max(bottom, y + rowH + rowGap)
+        }
+        let hint = listening != nil ? "Press any key or mouse button (Escape cancels)." : (message ?? "Click an action, then press the key or mouse button you want.")
+        ui.centeredText(hint, centerX: W / 2, y: bottom + 4 * s, scale: small, color: SIMD4(1, 0.85, 0.55, 1))
+        bottom += 12 * small
+        let bw = 220 * s
+        if ui.button("Reset Keys", x: W / 2 - bw - 6 * s, y: bottom, w: bw, h: 40 * s, scale: s, input: input) {
+            click()
+            listening = nil
+            store.update { settings in for (action, binding) in GameAction.defaults { settings.setBinding(binding, for: action) } }
+            message = "Every key is back to normal."
+        }
+        if ui.button("Back", x: W / 2 + 6 * s, y: bottom, w: bw, h: 40 * s, scale: s, input: input, primary: true) {
+            click()
+            listening = nil
+            open = false
+        }
+        return bottom + 48 * s
+    }
+}
+
 /// The settings panel, shared by the title screen and the in-game pause menu: graphics on the
 /// left, sound and controls on the right. Changes apply and save straight away.
 struct SettingsPanel {
@@ -25,6 +115,10 @@ struct SettingsPanel {
 
     /// Draws the panel from `top`; returns the y just below it.
     func build(_ ui: inout UIBuilder, input: MenuInput, width W: Float, top: Float, scale s: Float) -> Float {
+        let controls = ControlsEditor.shared
+        if controls.open {
+            return controls.build(&ui, input: input, width: W, top: top, scale: s, store: store, click: click)
+        }
         let small = max(1, (2 * s).rounded())
         let settings = store.settings
         let colW = min((W - 60 * s) / 2, 520 * s), gapX = 20 * s
@@ -94,6 +188,13 @@ struct SettingsPanel {
         row(1, "Mouse sensitivity", "\(Int((settings.mouseSensitivity * 200).rounded()))%",
             minus: { step(\.mouseSensitivity, -0.05, 0, 1) }, plus: { step(\.mouseSensitivity, 0.05, 0, 1) })
         toggle(1, "Invert mouse", settings.invertY) { store.update { $0.invertY.toggle() } }
+        // Key bindings live on their own page.
+        if ui.button("Controls: Change Keys...", x: rightX, y: y[1], w: colW, h: rowH, scale: s, input: input) {
+            click()
+            ControlsEditor.shared.open = true
+            ControlsEditor.shared.message = nil
+        }
+        y[1] += rowH + rowGap
         let packs = TexturePackLibrary.all()
         let current = packs.firstIndex { $0.id == renderer.texturePack.id } ?? 0
         func choosePack(_ index: Int) {

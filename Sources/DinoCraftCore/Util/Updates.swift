@@ -192,3 +192,27 @@ public final class GameUpdater: @unchecked Sendable {
         task.resume()
     }
 }
+
+/// What happened to the last update: the installer script (which runs after the launcher quits) leaves a
+/// one-line note in `update-result.txt`, and the launcher shows it once when it opens again.
+public enum UpdateResult {
+    public static var file: URL { GamePaths.root.appendingPathComponent("update-result.txt") }
+
+    /// A message for the launcher (and forgets it), or nil if no update ran since last time.
+    public static func take() -> (message: String, ok: Bool)? {
+        guard let text = try? String(contentsOf: file, encoding: .utf8) else { return nil }
+        try? FileManager.default.removeItem(at: file)
+        let parts = text.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: " ", maxSplits: 1).map(String.init)
+        guard let kind = parts.first else { return nil }
+        let build = parts.count > 1 ? parts[1] : ""
+        switch kind {
+        case "ok":
+            return ("Updated to build \(build)!", true)
+        case "blocked":
+            return ("macOS stopped the update. Turn on DinoCraft Launcher in System Settings > Privacy & Security > App Management, then press Update again. "
+                    + "Or drag DinoCraft.app and DinoCraft Launcher.app from the folder that opened into Applications.", false)
+        default:
+            return ("The update couldn't copy its files (\(kind)). Close DinoCraft everywhere and press Update again, or download it from the website.", false)
+        }
+    }
+}

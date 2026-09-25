@@ -19,6 +19,12 @@ final class WinGame {
     private let renderer: WinRenderer
     private let audio: WinAudio?
     private let settings: SettingsStore
+
+    /// Is this key (an SDL scancode) the one bound to `action`?
+    private func isBound(_ action: GameAction, _ code: Int) -> Bool {
+        let b = settings.settings.binding(for: action)
+        return b.kind == .key && SDLGameInput.scancode(forMacKey: b.code) == code
+    }
     private let jobs: JobSystem
     private let world: World
     private let player: PlayerController
@@ -76,6 +82,7 @@ final class WinGame {
     // Hunger and air (Survival)
     private var hunger = 20.0
     private var saturation = 5.0
+    private var eatFlash = 0.0
     private var exhaustion = 0.0
     private var starveTimer = 0.0
     private var air = 10.0
@@ -241,15 +248,15 @@ final class WinGame {
                 }
                 guard !event.key.`repeat` else { continue }
                 if screen != .closed {
-                    if code == Int(SDL_SCANCODE_ESCAPE.rawValue) || code == Int(SDL_SCANCODE_E.rawValue) { closeScreen() }
+                    if code == Int(SDL_SCANCODE_ESCAPE.rawValue) || isBound(.inventory, code) { closeScreen() }
                     continue
                 }
-                if code == Int(SDL_SCANCODE_ESCAPE.rawValue) {
+                if code == Int(SDL_SCANCODE_ESCAPE.rawValue) || isBound(.pause, code) {
                     setMouseCaptured(!mouseCaptured || dead)
                     audio?.play(mouseCaptured ? "ui_close" : "ui_open", volume: 0.45)
-                } else if code == Int(SDL_SCANCODE_E.rawValue) {
+                } else if isBound(.inventory, code) {
                     if !dead && !spectating { openScreen(.inventory) }
-                } else if code == Int(SDL_SCANCODE_SPACE.rawValue) {
+                } else if isBound(.jump, code) || (dead && code == Int(SDL_SCANCODE_SPACE.rawValue)) {
                     if dead { respawn() } else { jumpPressed = true }
                 } else if code == Int(SDL_SCANCODE_T.rawValue) {
                     openChat()
@@ -329,18 +336,29 @@ final class WinGame {
             zooming = keys[scancode]
         }
         zoomAmount += ((zooming ? zoomFactor : 1) - zoomAmount) * (1 - exp(-14 * dt))
+        eatFlash = max(0, eatFlash - dt * 1.2)
         if controllable {
             let v = player.velocity
             PlayerStats.shared.tick(dt: dt, walked: player.onGround && !player.flying ? (v.x * v.x + v.z * v.z).squareRoot() * dt : 0)
         }
         var input = MovementInput()
         if controllable, let keys = SDL_GetKeyboardState(nil) {
-            func down(_ scancode: SDL_Scancode) -> Bool { keys[Int(scancode.rawValue)] }
-            input.forward = (down(SDL_SCANCODE_W) ? 1 : 0) - (down(SDL_SCANCODE_S) ? 1 : 0)
-            input.strafe = (down(SDL_SCANCODE_D) ? 1 : 0) - (down(SDL_SCANCODE_A) ? 1 : 0)
-            input.jump = down(SDL_SCANCODE_SPACE)
-            input.sprint = down(SDL_SCANCODE_LCTRL)
-            input.sneak = down(SDL_SCANCODE_LSHIFT)
+            // Your key bindings (Settings > Controls); mouse-button bindings are read from the mouse.
+            let mouse = SDL_GetMouseState(nil, nil)
+            func down(_ action: GameAction) -> Bool {
+                let b = settings.settings.binding(for: action)
+                switch b.kind {
+                case .key: return SDLGameInput.scancode(forMacKey: b.code).map { keys[$0] } ?? false
+                case .mouse:
+                    let sdl: UInt32 = b.code == 0 ? 1 : (b.code == 1 ? 3 : (b.code == 2 ? 2 : UInt32(b.code + 1)))
+                    return mouse & (1 << (sdl - 1)) != 0
+                }
+            }
+            input.forward = (down(.forward) ? 1 : 0) - (down(.backward) ? 1 : 0)
+            input.strafe = (down(.right) ? 1 : 0) - (down(.left) ? 1 : 0)
+            input.jump = down(.jump)
+            input.sprint = down(.sprint)
+            input.sneak = down(.crouch)
         }
         input.jumpPressed = jumpPressed && controllable
         jumpPressed = false
@@ -712,17 +730,8 @@ final class WinGame {
 
         // Hunger and air (Survival)
         if !creative {
-            let shown = hunger
-            for i in 0..<10 {
-                let fx = x0 + total - Float(i + 1) * 8 * small, fy = y0 - 12 * s - 7 * small
-                let value = shown / 2 - Double(i)
-                ui.text("\u{25CF}", x: fx, y: fy, scale: small, color: SIMD4(0.12, 0.06, 0.02, 0.85), shadow: false)
-                if value >= 1 {
-                    ui.text("\u{25CF}", x: fx, y: fy, scale: small, color: SIMD4(0.95, 0.55, 0.15, 1), shadow: false)
-                } else if value > 0 {
-                    ui.text("\u{25CF}", x: fx, y: fy, scale: small, color: SIMD4(0.7, 0.42, 0.2, 1), shadow: false)
-                }
-            }
+            ui.hungerBar(right: x0 + total, y: y0 - 12 * s - 7 * small, small: small, hunger: hunger, saturation: saturation,
+                         eatFlash: eatFlash, time: Date.timeIntervalSinceReferenceDate)
             if !creative && air < 10 {
                 for i in 0..<max(0, Int(ceil(air))) {
                     ui.text("o", x: x0 + total - Float(i + 1) * 8 * small, y: y0 - 12 * s - 17 * small, scale: small,
@@ -896,6 +905,7 @@ extension WinGame {
             guard hunger < 20 else { return }
             hunger = min(20, hunger + Double(food.hunger))
             saturation = min(hunger, saturation + Double(food.saturation))
+            eatFlash = 1
             inventory.consumeSelected()
             swingTimer = 0.25
             audio?.play("eat", volume: 0.7)

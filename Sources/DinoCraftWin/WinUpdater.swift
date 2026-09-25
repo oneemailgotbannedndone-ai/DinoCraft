@@ -31,6 +31,8 @@ enum WinUpdater {
         guard tar.terminationStatus == 0, let source = folderWithGame(in: unpacked) else {
             return "The update download was damaged. Try again."
         }
+        let newBuild = (try? Data(contentsOf: source.appendingPathComponent("Resources/Data/build.json")))
+            .flatMap { try? JSONDecoder().decode(BuildInfo.self, from: $0) }?.build ?? 0
         let pid = ProcessInfo.processInfo.processIdentifier
         // Reopen whichever program was running: DinoCraft or DinoCraft Launcher.
         let reopen = Bundle.main.executableURL?.lastPathComponent ?? "DinoCraft.exe"
@@ -44,7 +46,12 @@ enum WinUpdater {
           timeout /t 1 /nobreak >nul
           goto wait
         )
-        robocopy "\(native(source))" "\(native(installDir))" /E /R:5 /W:1 /NFL /NDL /NJH /NJS /NP >nul
+        robocopy "\(native(source))" "\(native(installDir))" /E /R:10 /W:1 /NFL /NDL /NJH /NJS /NP >nul
+        if errorlevel 8 (
+          echo copy-failed > "\(native(UpdateResult.file))"
+        ) else (
+          echo ok \(newBuild) > "\(native(UpdateResult.file))"
+        )
         start "" "\(native(installDir))\\\(reopen)"
         del "%~f0"
 

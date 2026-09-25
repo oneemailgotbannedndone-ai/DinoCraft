@@ -475,6 +475,26 @@ section("Ocean life") {
     check((counts[Blocks.seagrass] ?? 0) > 10, "seagrass grows on the sea floor (\(counts[Blocks.seagrass] ?? 0))")
 }
 
+section("World generation sweep") {
+    // Lots of chunks spread far apart, in deep and classic worlds, catch generator crashes such as the
+    // iceberg at the edge of land that used to crash while exploring cold seas.
+    var generated = 0
+    for seed in [UInt64(17), 42, 1337] {
+        for deep in [true, false] {
+            let gen = TerrainGenerator(seed: seed, deep: deep)
+            var positions: [ChunkPos] = []
+            for i in 0..<3600 {
+                let cx: Int = (i % 60 - 30) * 5
+                let cz: Int = (i / 60 - 30) * 5
+                positions.append(ChunkPos(Int32(cx), Int32(cz)))
+            }
+            DispatchQueue.concurrentPerform(iterations: positions.count) { i in _ = gen.generate(positions[i]) }
+            generated += positions.count
+        }
+    }
+    check(generated == 21600, "21600 chunks across 3 seeds generate without crashing")
+}
+
 section("Crash reports") {
     let log = URL(fileURLWithPath: "/tmp/logs/dinocraft-20260925-030000.log")
     check(CrashReport.companion(of: log).lastPathComponent == "dinocraft-20260925-030000.err.txt", "the error file sits beside its log")

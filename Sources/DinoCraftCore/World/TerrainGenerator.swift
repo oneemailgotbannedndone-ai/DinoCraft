@@ -769,6 +769,8 @@ public final class TerrainGenerator: @unchecked Sendable {
                 let t = 1 - r / (Double(radius) + 0.5)               // 1 at the middle, 0 at the rim
                 let top = sea + Int((Double(above) * pow(t, 1.3)).rounded())
                 let bottom = max(columns[z * 16 + x].height, sea - Int(Double(radius) * 2.2 * t) - 2)
+                // Land (or a shallow bank) can rise higher than the iceberg at its rim: nothing to add there.
+                guard bottom <= top else { continue }
                 for y in bottom...top {
                     let id: BlockID = y == top && top > sea ? Blocks.snow : (y >= sea - 1 ? Blocks.packedIce : Blocks.ice)
                     chunk.setRaw(x, y, z, id)

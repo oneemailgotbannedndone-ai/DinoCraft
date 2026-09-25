@@ -330,6 +330,7 @@ final class WinSolo: CommandHost {
                 if isPlaying { input.mouseMoved(dx: event.motion.xrel, dy: event.motion.yrel) }
             } else if type == UInt32(SDL_EVENT_MOUSE_BUTTON_DOWN.rawValue) {
                 mouse = SIMD2<Float>(event.button.x, event.button.y) * pixelScale()
+                if !isPlaying && ControlsEditor.shared.capture(mouseButton: event.button.button, store: store) { continue }
                 let keys = SDL_GetKeyboardState(nil)
                 shiftHeld = keys.map { $0[Int(SDL_SCANCODE_LSHIFT.rawValue)] || $0[Int(SDL_SCANCODE_RSHIFT.rawValue)] } ?? false
                 if isPlaying {
@@ -359,6 +360,8 @@ final class WinSolo: CommandHost {
 
     private func keyDown(_ key: SDL_KeyboardEvent) {
         let code = key.scancode
+        // Choosing a new key on the Controls page takes the press.
+        if !key.`repeat` && ControlsEditor.shared.capture(scancode: Int(code.rawValue), store: store) { return }
         func `is`(_ c: SDL_Scancode) -> Bool { code == c }
         func bound(_ action: GameAction) -> Bool {
             let b = settings.binding(for: action)
@@ -380,6 +383,7 @@ final class WinSolo: CommandHost {
             let typing: Bool
             if case .creative = screen { typing = paletteSearchFocused } else { typing = false }
             if case .settings = screen, `is`(SDL_SCANCODE_ESCAPE) {
+                if ControlsEditor.shared.open { ControlsEditor.shared.open = false; return }
                 screen = .pause
                 return
             }
@@ -808,6 +812,11 @@ final class WinSolo: CommandHost {
             openScreen(.creative)
         case "pause":
             openPause()
+        case "controls":
+            ControlsEditor.shared.open = true
+            ControlsEditor.shared.listening = .jump
+            screen = .settings
+            setMouseCaptured(false)
         case "settings":
             openPause()
             screen = .settings

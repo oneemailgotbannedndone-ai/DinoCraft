@@ -102,6 +102,8 @@ final class WinMenus {
     private var friendMessage: String?
     /// The last run crashed: the launcher offers to send the report.
     private var crashReport: CrashReport?
+    /// How the last update went, shown once on the launcher.
+    private var updateNote: (message: String, ok: Bool)?
     private var crashNote: String?
     private var leaderCategory = Leaderboard.Category.playtime
     private var leaderScroll = 0
@@ -151,6 +153,7 @@ final class WinMenus {
             if page == .launcher && (options.screenshotPath == nil || options.demoScreen == "crash") {
                 crashReport = CrashReport.fromLastRun()
             }
+            if options.screenshotPath == nil { updateNote = UpdateResult.take() }
             let online = options.screenshotPath == nil || options.online
             if store.settings.checkForUpdates && online { updater.check() }
             if online && !options.skipLauncher {
@@ -260,6 +263,9 @@ final class WinMenus {
             } else if type == UInt32(SDL_EVENT_MOUSE_MOTION.rawValue) {
                 lastMouse = SIMD2<Float>(event.motion.x, event.motion.y) * pixelScale()
                 input.mouse = lastMouse
+            } else if type == UInt32(SDL_EVENT_MOUSE_BUTTON_DOWN.rawValue),
+                      ControlsEditor.shared.capture(mouseButton: event.button.button, store: store) {
+                continue   // chosen as a key binding
             } else if type == UInt32(SDL_EVENT_MOUSE_BUTTON_DOWN.rawValue), event.button.button == 1 {
                 lastMouse = SIMD2<Float>(event.button.x, event.button.y) * pixelScale()
                 input.mouse = lastMouse
@@ -270,6 +276,9 @@ final class WinMenus {
                 input.typed += String(cString: raw)
             } else if type == UInt32(SDL_EVENT_KEY_DOWN.rawValue) {
                 let code = Int(event.key.scancode.rawValue)
+                let controls = ControlsEditor.shared
+                if !event.key.`repeat` && controls.capture(scancode: code, store: store) { continue }
+                if controls.open && code == Int(SDL_SCANCODE_ESCAPE.rawValue) { controls.open = false; continue }
                 if code == Int(SDL_SCANCODE_BACKSPACE.rawValue) { input.backspace = true }
                 if code == Int(SDL_SCANCODE_RETURN.rawValue) || code == Int(SDL_SCANCODE_KP_ENTER.rawValue) { input.enter = true }
                 if code == Int(SDL_SCANCODE_ESCAPE.rawValue) { input.escape = true }
@@ -334,7 +343,7 @@ final class WinMenus {
             }
             y += bh + gap
             if ui.button("Settings", x: cx - bw / 2, y: y, w: bw, h: bh, scale: s, input: input) {
-                click(); message = nil; focus = ""; settingsReturn = .title; page = .settings
+                click(); message = nil; focus = ""; settingsReturn = .title; page = .settings; ControlsEditor.shared.open = false
             }
             y += bh + gap
             if ui.button("Back to Launcher", x: cx - bw / 2, y: y, w: bw, h: bh, scale: s, input: input) || input.escape {
@@ -782,12 +791,16 @@ extension WinMenus {
         }
         if ui.button(label, x: bx, y: y, w: bw, h: bh, scale: s, input: input, enabled: enabled, primary: primary), let action {
             click()
+            updateNote = nil
             action()
         }
         y += bh + 8 * s
-        let statusText = updateError ?? status
-        for part in WinMenus.wrap(statusText, width: max(10, Int(bw / (6 * small)))).prefix(2) {
-            ui.text(part, x: bx, y: y, scale: small, color: updateError != nil ? SIMD4(1, 0.6, 0.5, 1) : muted, shadow: false)
+        // The last update's outcome shows once, until the Update button is used again.
+        let note = updateError == nil ? updateNote : nil
+        let statusText = updateError ?? note?.message ?? status
+        let statusColor: SIMD4<Float> = updateError != nil || note?.ok == false ? SIMD4(1, 0.6, 0.5, 1) : (note != nil ? amber : muted)
+        for part in WinMenus.wrap(statusText, width: max(10, Int(bw / (6 * small)))).prefix(3) {
+            ui.text(part, x: bx, y: y, scale: small, color: statusColor, shadow: false)
             y += 10 * small
         }
         y += gap
@@ -795,7 +808,7 @@ extension WinMenus {
         y += bh + gap
         if ui.button("Skin Creator", x: bx, y: y, w: bw, h: bh, scale: s, input: input) { click(); skinDraft = nil; page = .skin }
         y += bh + gap
-        if ui.button("Settings", x: bx, y: y, w: bw, h: bh, scale: s, input: input) { click(); settingsReturn = .launcher; page = .settings }
+        if ui.button("Settings", x: bx, y: y, w: bw, h: bh, scale: s, input: input) { click(); settingsReturn = .launcher; page = .settings; ControlsEditor.shared.open = false }
         y += bh + gap
         let guideW = (bw - gap) / 2
         if ui.button(showingGuide ? "What's New" : "Guide", x: bx, y: y, w: guideW, h: bh, scale: s, input: input) {

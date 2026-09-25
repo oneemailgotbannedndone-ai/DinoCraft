@@ -225,16 +225,8 @@ extension WinSolo {
                          hardcore: s.meta.isHardcore, brightness: pulse)
             }
             // Hunger
-            for i in 0..<10 {
-                let fx = x0 + total - Float(i + 1) * 8 * small
-                let value = s.hunger / 2 - Double(i)
-                ui.text("\u{25CF}", x: fx, y: rowY, scale: small, color: SIMD4(0.12, 0.06, 0.02, 0.85), shadow: false)
-                if value >= 1 {
-                    ui.text("\u{25CF}", x: fx, y: rowY, scale: small, color: SIMD4(0.95, 0.55, 0.15, 1), shadow: false)
-                } else if value > 0 {
-                    ui.text("\u{25CF}", x: fx, y: rowY, scale: small, color: SIMD4(0.7, 0.42, 0.2, 1), shadow: false)
-                }
-            }
+            ui.hungerBar(right: x0 + total, y: rowY, small: small, hunger: s.hunger, saturation: s.saturation,
+                         eatFlash: s.eatFlash, time: Date.timeIntervalSinceReferenceDate)
             // Armor above the hearts, air above the hunger
             let upperY = rowY - 10 * small
             let armor = s.armorPoints
@@ -373,6 +365,7 @@ extension WinSolo {
         if ui.button("Settings", x: W / 2 - bw / 2, y: y, w: bw, h: bh, scale: sc, input: input) {
             audio?.play("ui_click", volume: 0.5)
             screen = .settings
+            ControlsEditor.shared.open = false
             return
         }
         y += bh + gap
