@@ -710,6 +710,15 @@ section("Structures") {
     check(list.contains { $0.kind == .dungeon }, "dungeons generate near spawn")
     check(list.contains { $0.kind == .ruin || $0.kind == .desertRuin }, "ruins generate near spawn")
     check(list == TerrainGenerator(seed: 1234).structures(near: 0, z: 0, radius: 1200), "structure placement is deterministic")
+    let far = gen.structures(near: 0, z: 0, radius: 4000)
+    check(far.contains { $0.kind == .digSite }, "fossil dig sites generate")
+    check(far.contains { $0.kind == .volcano }, "volcanoes generate in the Volcanic Wastes")
+    if let site = far.first(where: { $0.kind == .digSite }) {
+        let c = gen.generate(ChunkPos(Int32(site.x >> 4), Int32(site.z >> 4)))
+        var deposits = 0
+        for y in 0..<WorldConst.height { for z in 0..<16 { for x in 0..<16 where c.block(x, y, z) == Blocks.fossilDeposit { deposits += 1 } } }
+        check(deposits > 0, "dig sites have fossil deposits (\(deposits) in the centre chunk)")
+    }
     if let d = list.first(where: { $0.kind == .dungeon }) {
         let c = gen.generate(ChunkPos(Int32(d.x >> 4), Int32(d.z >> 4)))
         let lx = d.x - Int(c.pos.originX), lz = d.z - Int(c.pos.originZ)

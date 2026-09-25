@@ -14,6 +14,7 @@ final class WinSolo: CommandHost {
         case trade(Mob)
         case enchanting(BlockPos)
         case questBook
+        case map
         case sleep(started: Double)
     }
 
@@ -140,6 +141,7 @@ final class WinSolo: CommandHost {
         s.onOpenTrade = { [weak self] mob in self?.openScreen(.trade(mob)) }
         s.onOpenEnchanting = { [weak self] pos in self?.openScreen(.enchanting(pos)) }
         s.onOpenQuestBook = { [weak self] in self?.openScreen(.questBook) }
+        s.onOpenMap = { [weak self] in self?.openScreen(.map) }
         s.onSleep = { [weak self] in
             guard let self else { return }
             self.openScreen(.sleep(started: self.clock))
@@ -767,6 +769,18 @@ final class WinSolo: CommandHost {
                 CreatureModels.appendBox(&v, m, SIMD3(-0.04, -0.04, 0.1), SIMD3(0.04, 0.04, 0.35), CreatureModels.c(0x5A3A1E), glow: false, tint: none)
             }
         }
+        for f in s.hazards.fireballs where !f.removed {
+            // Lava bombs and meteorites: a glowing, tumbling lump. Shooting stars: a bright white spark.
+            guard let r = rel(f.position) else { continue }
+            let size: Float = f.kind == .meteorite ? 0.55 : (f.kind == .lavaBomb ? 0.3 : 0.18)
+            let color: SIMD4<Float> = f.kind == .shootingStar ? SIMD4(0.9, 0.95, 1, 1) : SIMD4(1, 0.45, 0.08, 1)
+            let m = MathUtil.translation(r) * MathUtil.rotationY(Float(f.age * 5)) * MathUtil.rotationX(Float(f.age * 3.7))
+            CreatureModels.appendBox(&v, m, SIMD3(repeating: -size), SIMD3(repeating: size), color, glow: true, tint: none)
+            if f.kind == .meteorite {
+                CreatureModels.appendBox(&v, m, SIMD3(repeating: -size * 0.7), SIMD3(repeating: size * 1.05),
+                                         SIMD4(0.28, 0.2, 0.34, 1), glow: false, tint: none)
+            }
+        }
         for o in s.orbs where !o.removed {
             // Experience orbs: small glowing gems that bob and pulse between green and yellow.
             guard let r = rel(o.position + DVec3(0, 0.12 + sin(o.age * 4) * 0.05, 0)) else { continue }
@@ -947,6 +961,79 @@ final class WinSolo: CommandHost {
             s.mount(mount)
             s.followMount()
             s.player.pitch = -0.25
+            return
+        }
+        if ["digsite", "museum", "volcano", "meteors", "storm", "map"].contains(options.demoScreen ?? "") {
+            demoPlaced = true
+            let look = s.player.lookDirection
+            let forward = simd_normalize(DVec3(look.x, 0, look.z)), right = DVec3(-forward.z, 0, forward.x)
+            let generator = s.world.generator as? TerrainGenerator
+            func nearest(_ kind: StructureKind) -> StructureInfo? {
+                let p = s.player.position
+                return generator?.structures(near: Int(p.x), z: Int(p.z), radius: 4000).first { $0.kind == kind }
+            }
+            switch options.demoScreen {
+            case "digsite", "volcano":
+                // Automated check: fly to the nearest dig site (or volcano) and look at it.
+                guard !seaDemoMoved else {
+                    if options.demoScreen == "volcano" { s.startEruption() }
+                    break
+                }
+                seaDemoMoved = true
+                demoPlaced = false
+                framesSinceReady = 0
+                guard let site = nearest(options.demoScreen == "digsite" ? .digSite : .volcano) else {
+                    demoPlaced = true
+                    addChat(from: "", text: "Automated check: none found")
+                    return
+                }
+                s.player.gameMode = .creative
+                s.player.setFlying(true)
+                let back = options.demoScreen == "digsite" ? DVec3(-9, 9, 9) : DVec3(-48, 38, 48)
+                s.player.teleport(to: DVec3(Double(site.x), Double(site.y), Double(site.z)) + back)
+                s.player.yaw = atan2(back.x, back.z)
+                s.player.pitch = options.demoScreen == "digsite" ? -0.7 : -0.4
+                Log.info("Automated check: \(site.kind.displayName) at \(site.x), \(site.y), \(site.z)", category: "Game")
+                return
+            case "museum":
+                for (i, id) in ([Blocks.displayCase] + Blocks.displayCases).enumerated() {
+                    let p = s.player.position + forward * 3.2 + right * (Double(i) - 2.5) * 1.05
+                    let y = s.world.findStandingY(Int(floor(p.x)), Int(floor(p.z)), near: Int(s.player.position.y)) ?? Int(s.player.position.y)
+                    _ = s.world.setBlock(BlockPos(Int(floor(p.x)), y, Int(floor(p.z))), id)
+                }
+                if let deposit = blocks.id(named: Fossils.deposit) {
+                    let p = s.player.position + forward * 5.5
+                    let y = s.world.findStandingY(Int(floor(p.x)), Int(floor(p.z)), near: Int(s.player.position.y)) ?? Int(s.player.position.y)
+                    _ = s.world.setBlock(BlockPos(Int(floor(p.x)), y, Int(floor(p.z))), deposit)
+                }
+                for (i, name) in Fossils.all.enumerated() {
+                    if let id = items.id(named: name) { s.inventory.slots[i] = ItemStack(item: id, count: 1) }
+                }
+                s.player.pitch = -0.3
+            case "meteors":
+                s.debugSetTime(SkyModel.dayLength * 0.8)
+                s.startMeteorShower()
+                // One meteorite already on its way down in front of you.
+                let target = s.player.position + forward * 16
+                let start = target + DVec3(-20, 40, 10)
+                s.hazards.fireballs.append(Fireball(kind: .meteorite, position: start, velocity: simd_normalize(target - start) * 30))
+                for k in 0..<5 {
+                    let star = Fireball(kind: .shootingStar, position: s.player.position + forward * 60 + right * Double(k * 14 - 28) + DVec3(0, 45 + Double(k) * 4, 0),
+                                        velocity: simd_normalize(right + DVec3(0, -0.4, 0)) * 50)
+                    star.lifetime = 3
+                    s.hazards.fireballs.append(star)
+                }
+                s.player.pitch = 0.25
+            case "storm":
+                s.weather.set(.storm, duration: 600)
+                s.player.gameMode = .creative
+                s.player.setFlying(true)
+                s.player.teleport(to: s.player.position + DVec3(0, 14, 0))
+                s.player.pitch = -0.25
+            default:
+                if let id = items.id(named: WorldMap.item) { s.inventory.slots[0] = ItemStack(item: id, count: 1); s.inventory.selected = 0 }
+                openScreen(.map)
+            }
             return
         }
         if options.demoScreen == "enchanting" || options.demoScreen == "quests" || options.demoScreen == "questbook" || options.demoScreen == "xp" {

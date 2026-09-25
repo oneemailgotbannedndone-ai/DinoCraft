@@ -1,5 +1,22 @@
 DinoCraft - the Toonland update
 
+Fossils, volcanoes, meteorites, storms and maps
+- Fossil Dig Sites appear in plains, savannas and deserts: stepped pits with lantern posts, a supply chest and
+  Fossil Deposits. Mine a deposit for a fossil: a Tooth, Claw, Ribs, Fern or, rarely, a Skull.
+- Build a Display Case (glass over planks) and right-click it with a fossil to put it on show. Right-click it
+  again to take the fossil back. Put all five kinds on display for the Curator advancement. The Fossil Hunter
+  now buys fossil teeth too.
+- Volcanoes rise out of the Volcanic Wastes with a lava-filled crater. Now and then they erupt: smoke, spraying
+  lava and flying lava bombs that leave glowing rock where they land. Keep your distance!
+- Some nights bring a meteor shower. Shooting stars streak across the sky, and a few meteorites crash down
+  nearby, leaving a crater with Meteorite ore in the bottom. Mine it with an iron pickaxe or better for
+  Meteorite Shards, then craft a Starmetal Pickaxe (the fastest there is) or a Starmetal Sword.
+- New weather: storms. Heavier rain, darker skies, more lightning, and gusts of wind that slant the rain and
+  push you about when you're out in the open.
+- Paper (from 3 cattails) and a Map (8 paper around an iron ingot): right-click the map to see the land for
+  about 100 blocks around you, with villages, dig sites, ruins and volcanoes marked.
+- New commands: /locate dig_site, /locate volcano, /weather storm, and /event eruption or /event meteors.
+
 Experience, enchanting and villager quests
 - Defeating creatures, mining ore and taking smelted items out of a furnace now give glowing experience orbs.
   Walk near them to collect them. The green bar above your hotbar shows your level. When you die, some of it

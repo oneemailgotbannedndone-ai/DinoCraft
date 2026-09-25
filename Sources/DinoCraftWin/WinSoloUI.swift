@@ -67,6 +67,8 @@ extension WinSolo {
                 buildEnchanting(&ui, width: W, height: H, scale: sc)
             case .questBook:
                 buildQuestBook(&ui, width: W, height: H, scale: sc)
+            case .map:
+                buildPaperMap(&ui, width: W, height: H, scale: sc)
             case .inventory, .crafting, .container, .creative:
                 buildSlotScreen(&ui, width: W, height: H, scale: sc)
             }
@@ -743,6 +745,72 @@ extension WinSolo {
         }
         let footer = "Level \(s.xpLevel)  -  \(s.amberCount) amber  -  Esc to close"
         ui.text(footer, x: px + 20 * sc, y: py + ph - 28 * sc, scale: small, color: dim)
+    }
+
+    /// The paper map: the land around you, with villages, dig sites, ruins and volcanoes marked.
+    private func buildPaperMap(_ ui: inout UIBuilder, width W: Float, height H: Float, scale sc: Float) {
+        let s = game
+        let small = max(1, (2 * sc).rounded())
+        let map = s.paperMap
+        map.refresh(s)
+        let n = map.width
+        let size = (min(W, H) - 140 * sc).rounded()
+        let cell = size / Float(n)
+        let x0 = W / 2 - size / 2, y0 = H / 2 - size / 2 + 16 * sc
+        ui.rect(0, 0, W, H, SIMD4(0, 0, 0, 0.5))
+        ui.woodPanel(x0 - 18 * sc, y0 - 50 * sc, size + 36 * sc, size + 86 * sc, scale: sc)
+        ui.text("Map", x: x0, y: y0 - 38 * sc, scale: max(1, (3 * sc).rounded()), color: amber)
+        // Parchment under the terrain, then the terrain faded slightly toward the paper colour.
+        let parchment: UInt32 = 0xE6D8B0
+        ui.rect(x0, y0, size, size, linear(parchment))
+        for j in 0..<n {
+            let row = j * n
+            var i = 0
+            while i < n {
+                let color = map.cells[row + i]
+                var run = 1
+                while i + run < n && map.cells[row + i + run] == color { run += 1 }
+                if color != 0 {
+                    ui.rect(x0 + Float(i) * cell, y0 + Float(j) * cell, Float(run) * cell + 0.5, cell + 0.5, linear(Minimap.mix(color, parchment, 0.18)))
+                }
+                i += run
+            }
+        }
+        let cx = x0 + size / 2, cy = y0 + size / 2
+        for l in s.landmarks(radius: map.reach) {
+            let mx = cx + l.dx * cell, my = cy + l.dz * cell
+            let half = 4 * sc
+            ui.rect(mx - half - 1, my - half - 1, half * 2 + 2, half * 2 + 2, SIMD4(0, 0, 0, 0.85))
+            ui.rect(mx - half, my - half, half * 2, half * 2, linear(l.color))
+            let tw = UIBuilder.textWidth(l.label, scale: small)
+            ui.rect(mx - tw / 2 - small, my + 6 * sc, tw + 2 * small, 9 * small, SIMD4(0, 0, 0, 0.55))
+            ui.text(l.label, x: mx - tw / 2, y: my + 6 * sc + small, scale: small, color: white, shadow: false)
+        }
+        for m in map.markers(for: s, radius: map.reach) {
+            let mx = cx + m.dx * cell, my = cy + m.dz * cell
+            switch m.kind {
+            case .you:
+                let look = s.player.lookDirection
+                let flat = SIMD2<Float>(Float(look.x), Float(look.z))
+                let dir = simd_length(flat) > 0.01 ? simd_normalize(flat) : SIMD2(0, -1)
+                let u = max(2, 2.5 * sc)
+                for k in 0..<3 {
+                    let px = mx + dir.x * Float(k) * u * 1.4, py = my + dir.y * Float(k) * u * 1.4
+                    let half = u * (k == 0 ? 1.4 : 1)
+                    ui.rect(px - half - 1, py - half - 1, half * 2 + 2, half * 2 + 2, SIMD4(0, 0, 0, 0.8))
+                    ui.rect(px - half, py - half, half * 2, half * 2, k == 2 ? SIMD4(1, 0.3, 0.2, 1) : SIMD4(1, 1, 1, 1))
+                }
+            case .death:
+                ui.text("X", x: mx - 3 * small, y: my - 3.5 * small, scale: small, color: linear(m.color))
+            case .player, .pet:
+                let half = (m.kind == .pet ? 2 : 3) * max(1, sc)
+                ui.rect(mx - half - 1, my - half - 1, half * 2 + 2, half * 2 + 2, SIMD4(0, 0, 0, 0.85))
+                ui.rect(mx - half, my - half, half * 2, half * 2, linear(m.color))
+            }
+        }
+        ui.centeredText("N", centerX: cx, y: y0 + 4 * sc, scale: small, color: SIMD4(0.2, 0.12, 0.05, 1))
+        let p = s.player.position
+        ui.text("\(Int(floor(p.x))), \(Int(floor(p.z)))  -  Esc to close", x: x0, y: y0 + size + 12 * sc, scale: small, color: dim)
     }
 
     /// The Quest Book: what you've promised the villagers, and how far along you are.

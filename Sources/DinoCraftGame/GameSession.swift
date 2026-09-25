@@ -137,6 +137,11 @@ final class GameSession {
     /// Changes after each enchantment so the table offers something new.
     var enchantSeed = UInt64.random(in: 1...UInt64.max)
     var onOpenEnchanting: ((BlockPos) -> Void)?
+    /// Volcano eruptions, meteor showers and flying fireballs (see `Hazards`).
+    var hazards = HazardState()
+    var onOpenMap: (() -> Void)?
+    /// The paper map's view (built only while it's open).
+    let paperMap = Minimap(reach: Minimap.paperRadius)
     var onOpenQuestBook: (() -> Void)?
     var smelting: SmeltingRegistry?
     var onOpenContainer: ((BlockPos, ContainerKind) -> Void)?
@@ -415,6 +420,7 @@ final class GameSession {
         collectArrows()
         updateFishing(dt)
         updateOrbs(dt)
+        updateHazards(dt)
         updateNavigation(dt)
         updateHandAnimation(dt)
         survival(dt)
@@ -759,9 +765,51 @@ final class GameSession {
         if blocks[world.block(above)]?.needsSupport == true { breakBlock(at: above, harvest: harvest) }
     }
 
+    /// Changes a block for a natural event (a lava bomb, a meteorite), shared with anyone who joined.
+    func naturalPlace(_ pos: BlockPos, _ id: BlockID) {
+        _ = place(pos, id)
+    }
+
+    /// Right-clicking a display case: put the fossil in your hand on show, or take one back out.
+    private func useDisplayCase(_ pos: BlockPos, id: BlockID) -> Bool {
+        if id == Blocks.displayCase {
+            guard let held = inventory.selectedStack, let name = items[held.item]?.name,
+                  let index = Fossils.all.firstIndex(of: name) else {
+                onToast?("Hold a fossil and right-click to put it on display.")
+                return true
+            }
+            guard place(pos, Blocks.displayCases[index]) else { return false }
+            if player.gameMode == .survival { inventory.consumeSelected() }
+            swing()
+            onSound?("place_glass", 0.7, 1.1)
+            onToast?("Your \(items[held.item]?.displayName ?? "fossil") is on display.")
+            advancements.record("display", name)
+            return true
+        }
+        guard let index = Blocks.displayCases.firstIndex(of: id), let fossil = items.id(named: Fossils.all[index]) else { return false }
+        guard place(pos, Blocks.displayCase) else { return false }
+        swing()
+        let left = inventory.add(ItemStack(item: fossil, count: 1))
+        if left > 0 { dropStack(ItemStack(item: fossil, count: left), thrown: false) }
+        onSound?("pickup", 0.5, 1)
+        return true
+    }
+
     /// Spawns a block's drops as item entities that pop out of the broken block.
     private func giveDrops(_ info: BlockInfo, at pos: BlockPos) {
         let center = DVec3(Double(pos.x) + 0.5, Double(pos.y) + 0.25, Double(pos.z) + 0.5)
+        if info.name == Fossils.deposit {
+            // A fossil deposit always gives up one fossil (the rarer the better), sometimes with a bone.
+            let fossil = Fossils.roll()
+            if let item = items.id(named: fossil) {
+                entities.spawnItem(ItemStack(item: item, count: 1), at: center, velocity: DVec3(0, 3.5, 0), pickupDelay: 0.3)
+                advancements.record("dig", fossil)
+            }
+            if Double.random(in: 0..<1) < 0.3, let bone = items.id(named: "dino_bone") {
+                entities.spawnItem(ItemStack(item: bone, count: 1), at: center, velocity: DVec3(0.8, 3, 0), pickupDelay: 0.3)
+            }
+            return
+        }
         for drop in info.drops {
             if let chance = drop.chance, Float.random(in: 0..<1) >= chance { continue }
             let lo = drop.min ?? 1, hi = max(lo, drop.max ?? lo)
@@ -835,6 +883,9 @@ final class GameSession {
             swing()
             onOpenCrafting?()
             return true
+        }
+        if pressed, let hit = target, !player.isSneaking, hit.id == Blocks.displayCase || Blocks.displayCases.contains(hit.id) {
+            return useDisplayCase(hit.block, id: hit.id)
         }
         if pressed, let hit = target, !player.isSneaking {
             if hit.id == Blocks.bed {
@@ -1579,7 +1630,7 @@ final class GameSession {
     private func useBed(at pos: BlockPos) {
         guard dimension == .overworld else { onToast?("Beds only work in the Overworld"); return }
         setSpawnPoint(DVec3(Double(pos.x) + 0.5, Double(pos.y) + 1, Double(pos.z) + 0.5))
-        guard isNight || weather.kind == .thunder else {
+        guard isNight || weather.kind.stormy else {
             onToast?("Respawn point set. You can sleep at night or during thunderstorms")
             return
         }

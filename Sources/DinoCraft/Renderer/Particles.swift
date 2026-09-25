@@ -148,6 +148,16 @@ final class ParticleRenderer {
             }
         }
 
+        // Lava bombs, meteorites and shooting stars.
+        for f in s.hazards.fireballs where !f.removed {
+            let r = SIMD3<Float>(Float(f.position.x - camera.position.x), Float(f.position.y - camera.position.y), Float(f.position.z - camera.position.z))
+            let size: Float = f.kind == .meteorite ? 0.6 : (f.kind == .lavaBomb ? 0.34 : 0.2)
+            let hot: SIMD4<Float> = f.kind == .shootingStar ? SIMD4(0.9, 0.95, 1, 1) : SIMD4(1, 0.45, 0.08, 1)
+            quad(r, right * size, up * size, uv: .zero, uvSize: 1, color: hot, layer: -1, sky: 1, block: 1, emissive: true)
+            quad(r, right * size * 0.5, up * size * 0.5, uv: .zero, uvSize: 1, color: SIMD4(1, 0.95, 0.7, 1), layer: -2,
+                 sky: 1, block: 1, emissive: true)
+        }
+
         // Experience orbs: small glowing gems that bob and pulse between green and yellow.
         for o in s.orbs where !o.removed {
             let p = o.position + DVec3(0, 0.12 + sin(o.age * 4) * 0.05, 0)
@@ -193,7 +203,8 @@ final class ParticleRenderer {
             let light = world.light(at: camera.position)
             let radius = precipitation == .snow ? 12 : 14
             let cx = Int(floor(camera.position.x)), cz = Int(floor(camera.position.z))
-            let density = strength * (precipitation == .snow ? 0.5 : 0.85)
+            let density = strength * (precipitation == .snow ? 0.5 : 0.85) * s.weather.downpour
+            let wind = s.weather.wind
             for dz in -radius...radius {
                 for dx in -radius...radius where dx * dx + dz * dz <= radius * radius {
                     let x = cx + dx, z = cz + dz
@@ -208,9 +219,12 @@ final class ParticleRenderer {
                         let jx = Double(ParticleRenderer.hash(x, z, 20 + k)), jz = Double(ParticleRenderer.hash(x, z, 30 + k))
                         let wx = Double(x) + jx - camera.position.x, wz = Double(z) + jz - camera.position.z
                         if precipitation == .rain {
-                            let y = top - (time * 15 + phase).truncatingRemainder(dividingBy: span)
-                            let c = SIMD3<Float>(Float(wx), Float(y - camera.position.y), Float(wz))
-                            quad(c, flatRight * 0.032, SIMD3(0, 0.5, 0), uv: .zero, uvSize: 1,
+                            let fallen = (time * 15 + phase).truncatingRemainder(dividingBy: span)
+                            let y = top - fallen
+                            // Storm wind blows the drops sideways as they fall.
+                            let drift = Float(fallen / 15) - 0.5
+                            let c = SIMD3<Float>(Float(wx) + wind.x * drift, Float(y - camera.position.y), Float(wz) + wind.y * drift)
+                            quad(c, flatRight * 0.032, SIMD3(wind.x / 30, 0.5, wind.y / 30), uv: .zero, uvSize: 1,
                                  color: SIMD4(0.78, 0.84, 0.95, 0.72 * strength), layer: -2, sky: light.sky, block: light.block, emissive: false)
                         } else {
                             let y = top - (time * 1.7 + phase).truncatingRemainder(dividingBy: span)

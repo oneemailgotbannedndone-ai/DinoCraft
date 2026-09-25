@@ -159,6 +159,12 @@ public enum Blocks {
     public static let coralBlock: BlockID = 253
     public static let coral: BlockID = 254
     public static let seaLantern: BlockID = 255
+    public static let enchantingTable: BlockID = 256
+    public static let fossilDeposit: BlockID = 257
+    public static let displayCase: BlockID = 258
+    /// Display cases with a fossil inside: skull, claw, rib, tooth, fern.
+    public static let displayCases: [BlockID] = [259, 260, 261, 262, 263]
+    public static let meteoriteOre: BlockID = 264
 
     /// Water, or a plant growing in it (you can drown there, and breaking the plant leaves water).
     @inlinable public static func holdsWater(_ id: BlockID, _ registry: BlockRegistry) -> Bool {
@@ -169,7 +175,8 @@ public enum Blocks {
         ("pink_leaves", pinkLeaves), ("silver_log", silverLog), ("silver_leaves", silverLeaves), ("mushroom_cap", mushroomCap), ("mushroom_stem", mushroomStem), ("bed", bed), ("farmland", farmland), ("wheat_stage0", wheat[0]), ("wheat_stage3", wheat[3]), ("carrots_stage0", carrots[0]), ("carrots_stage3", carrots[3]),
         ("toon_grass", toonGrass), ("toon_soil", toonSoil), ("toon_stone", toonStone), ("smile_flower", smileFlower), ("toon_log", toonLog),
         ("toon_leaves", toonLeaves), ("checker_block", checkerBlock), ("toonland_portal", toonlandPortal), ("deep_slate", deepSlate),
-        ("kelp", kelp), ("seagrass", seagrass), ("coral_block", coralBlock), ("coral", coral), ("sea_lantern", seaLantern),
+        ("kelp", kelp), ("seagrass", seagrass), ("coral_block", coralBlock), ("coral", coral), ("sea_lantern", seaLantern), ("enchanting_table", enchantingTable), ("fossil_deposit", fossilDeposit),
+        ("display_case", displayCase), ("display_case_skull", displayCases[0]), ("display_case_fern", displayCases[4]), ("meteorite_ore", meteoriteOre),
         ("terracotta", terracotta), ("dyed_clay_white", dyedClay[0]), ("dyed_clay_pink", dyedClay[9]),
         ("air", air), ("stone", stone), ("grass", grass), ("dirt", dirt), ("cobblestone", cobblestone),
         ("planks", planks), ("sand", sand), ("gravel", gravel), ("log", log), ("leaves", leaves),

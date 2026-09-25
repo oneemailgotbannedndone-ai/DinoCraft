@@ -21,6 +21,7 @@ enum NewTextures {
         ArmorTextures.add(to: &t)
         CropTextures.add(to: &t)
         MagicTextures.add(to: &t)
+        DigTextures.add(to: &t)
         t["basalt_side"] = basaltSide()
         t["basalt_top"] = basaltTop()
         t["ash"] = T.paintSand(75, palette: ash)
@@ -186,6 +187,7 @@ enum NewTextures {
         if let ocean = OceanTextures.item(name) { return ocean }
         if let pet = PetTextures.item(name) { return pet }
         if let magic = MagicTextures.item(name) { return magic }
+        if let dig = DigTextures.item(name) { return dig }
         if let more = MoreTextures.item(name) { return more }
         let c = Canvas(S)
         switch name {

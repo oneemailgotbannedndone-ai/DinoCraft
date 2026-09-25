@@ -52,7 +52,8 @@ enum Commands {
              args: [.choices(["set", "add"]), .choices(["day", "noon", "sunset", "night", "midnight"])]),
         Spec("day", "/day", "Jump to morning"),
         Spec("night", "/night", "Jump to nightfall"),
-        Spec("weather", "/weather <clear|rain|thunder> [seconds]", "Change the weather", args: [.choices(["clear", "rain", "thunder"]), .number]),
+        Spec("weather", "/weather <clear|rain|thunder|storm> [seconds]", "Change the weather", args: [.choices(["clear", "rain", "thunder", "storm"]), .number]),
+        Spec("event", "/event <eruption|meteors>", "Start a volcano eruption or a meteor shower", args: [.choices(["eruption", "meteors"])]),
         Spec("gamemode", "/gamemode <survival|creative>", "Switch game mode", args: [.choices(["survival", "creative"])], aliases: ["gm"]),
         Spec("difficulty", "/difficulty <peaceful|easy|normal|hard>", "Change difficulty", args: [.choices(Difficulty.allCases.map { $0.rawValue })]),
         Spec("gamerule", "/gamerule <rule> [true|false]", "Show or change a world rule", args: [.choices(gameRules), .choices(["true", "false"])]),
@@ -66,8 +67,8 @@ enum Commands {
         Spec("setblock", "/setblock <x> <y> <z> <block>", "Place a block", args: coord3 + [.blocks]),
         Spec("fill", "/fill <x1> <y1> <z1> <x2> <y2> <z2> <block> [replace <block>]", "Fill a box (air clears)",
              args: coord3 + coord3 + [.blocks, .choices(["replace"]), .blocks]),
-        Spec("locate", "/locate <village|dungeon|ruin|desert_ruin|biome> [biome]", "Find the nearest structure or biome",
-             args: [.choices(["village", "dungeon", "ruin", "desert_ruin", "biome"]), .biomes], readOnly: true),
+        Spec("locate", "/locate <village|dungeon|ruin|desert_ruin|dig_site|volcano|biome> [biome]", "Find the nearest structure or biome",
+             args: [.choices(["village", "dungeon", "ruin", "desert_ruin", "dig_site", "volcano", "biome"]), .biomes], readOnly: true),
         Spec("biome", "/biome", "Show which biome you're in", readOnly: true),
         Spec("coords", "/coords", "Show your position and facing", aliases: ["pos"], readOnly: true),
         Spec("list", "/list", "Show who's playing", readOnly: true),
@@ -238,7 +239,21 @@ enum Commands {
                 return reply("Usage: \(command.usage)")
             }
             s.weather.set(kind, duration: rest.count > 1 ? Double(rest[1]) : nil)
-            reply(kind == .clear ? "The skies clear." : (kind == .rain ? "It starts to rain." : "A thunderstorm rolls in!"))
+            switch kind {
+            case .clear: reply("The skies clear.")
+            case .rain: reply("It starts to rain.")
+            case .thunder: reply("A thunderstorm rolls in!")
+            case .storm: reply("A howling storm blows in! Hold on to your hat.")
+            }
+
+        case "event":
+            guard let what = choice(0, ["eruption", "meteors"]) else { return reply("Usage: \(command.usage)") }
+            if what == "meteors" {
+                s.startMeteorShower()
+                reply("Meteors incoming!")
+            } else {
+                reply(s.startEruption() ? "The nearest volcano rumbles to life!" : "There's no volcano within \(Int(Hazards.volcanoRange)) blocks. Try /locate volcano.")
+            }
 
         case "gamemode":
             let aliases = ["s": "survival", "0": "survival", "c": "creative", "1": "creative"]
@@ -358,7 +373,7 @@ enum Commands {
                 return reply("Only the Overworld can be searched.")
             }
             let px = Int(floor(s.player.position.x)), pz = Int(floor(s.player.position.z))
-            guard let what = choice(0, ["village", "dungeon", "ruin", "desert_ruin", "biome"]) else { return reply("Usage: \(command.usage)") }
+            guard let what = choice(0, ["village", "dungeon", "ruin", "desert_ruin", "dig_site", "volcano", "biome"]) else { return reply("Usage: \(command.usage)") }
             if what == "biome" {
                 guard rest.count >= 2, let biome = resolveBiome(rest.dropFirst().joined(separator: "_"), note: reply) else {
                     return reply("Which biome? \(biomeNames.joined(separator: ", "))")
@@ -378,7 +393,14 @@ enum Commands {
             if what == "village" {
                 found = generator.villages(near: px, z: pz, radius: 4000).first.map { ($0.x, $0.y, $0.z, "village") }
             } else {
-                let kind: StructureKind = what == "dungeon" ? .dungeon : (what == "ruin" ? .ruin : .desertRuin)
+                let kind: StructureKind
+                switch what {
+                case "dungeon": kind = .dungeon
+                case "ruin": kind = .ruin
+                case "dig_site", "digsite", "fossils": kind = .digSite
+                case "volcano": kind = .volcano
+                default: kind = .desertRuin
+                }
                 found = generator.structures(near: px, z: pz, radius: 3000).first(where: { $0.kind == kind })
                     .map { ($0.x, $0.y, $0.z, kind.displayName.lowercased()) }
             }

@@ -139,6 +139,16 @@
     {"name": "spear", "displayName": "Spear", "tool": {"kind": "spear", "level": 1, "speed": 1.0, "durability": 180, "damage": 5}},
     {"name": "crossbow", "displayName": "Crossbow", "maxStack": 1},
     {"name": "quest_book", "displayName": "Quest Book", "maxStack": 1},
+    {"name": "fossil_skull", "displayName": "Fossil Skull", "maxStack": 16},
+    {"name": "fossil_claw", "displayName": "Fossil Claw", "maxStack": 16},
+    {"name": "fossil_rib", "displayName": "Fossil Ribs", "maxStack": 16},
+    {"name": "fossil_tooth", "displayName": "Fossil Tooth", "maxStack": 16},
+    {"name": "fossil_fern", "displayName": "Fossil Fern", "maxStack": 16},
+    {"name": "meteorite_shard", "displayName": "Meteorite Shard"},
+    {"name": "paper", "displayName": "Paper"},
+    {"name": "map", "displayName": "Map", "maxStack": 1},
+    {"name": "starmetal_pickaxe", "displayName": "Starmetal Pickaxe", "tool": {"kind": "pickaxe", "level": 4, "speed": 14.0, "durability": 2600, "damage": 6}},
+    {"name": "starmetal_sword", "displayName": "Starmetal Sword", "tool": {"kind": "sword", "level": 4, "speed": 1.5, "durability": 2600, "damage": 9}},
     {"name": "shield", "displayName": "Shield", "tool": {"kind": "shield", "level": 1, "speed": 1.0, "durability": 336, "damage": 1}}
   ]
 }

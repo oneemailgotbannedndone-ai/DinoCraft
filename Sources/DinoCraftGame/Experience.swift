@@ -51,6 +51,7 @@ enum Experience {
         case "gold_ore", "deepslate_gold_ore", "amber_ore": return Int.random(in: 1...3)
         case "redstone_ore", "lapis_ore": return Int.random(in: 2...5)
         case "diamond_ore", "deepslate_diamond_ore", "emerald_ore", "meteorite_ore": return Int.random(in: 3...7)
+        case "fossil_deposit": return Int.random(in: 1...3)
         default: return name.hasSuffix("_ore") ? Int.random(in: 1...3) : 0
         }
     }

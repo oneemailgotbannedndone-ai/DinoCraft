@@ -116,7 +116,7 @@ jobs:
           $p4 = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--screenshot `"$shot4`" --demo-screen worlds --hide-console" -PassThru -Wait -NoNewWindow
           Write-Host "World list check exit code: $($p4.ExitCode)"
           if (-not (Test-Path $shot4)) { throw "The game did not produce the world list screenshot" }
-          foreach ($screen in @("creative", "furnace", "pause", "settings", "controls", "crafting", "double-chest", "villagers", "dinos", "pets", "boat", "mining", "chat", "nursery", "armory", "sky", "enchanting", "quests", "questbook", "xp")) {
+          foreach ($screen in @("creative", "furnace", "pause", "settings", "controls", "crafting", "double-chest", "villagers", "dinos", "pets", "boat", "mining", "chat", "nursery", "armory", "sky", "enchanting", "quests", "questbook", "xp", "digsite", "museum", "meteors", "storm", "map")) {
             $shotN = "$PWD/screenshot-$screen.png"
             $pN = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--screenshot `"$shotN`" --frames 5 --render-distance 4 --seed dino --demo-entities --demo-screen $screen" -PassThru -Wait -NoNewWindow
             Write-Host "$screen check exit code: $($pN.ExitCode)"
@@ -184,6 +184,11 @@ jobs:
             screenshot-quests.png
             screenshot-questbook.png
             screenshot-xp.png
+            screenshot-digsite.png
+            screenshot-museum.png
+            screenshot-meteors.png
+            screenshot-storm.png
+            screenshot-map.png
             screenshot-join.png
             screenshot-online-menu.png
             screenshot-online-leaderboard.png

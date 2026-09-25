@@ -247,7 +247,8 @@ extension WinSolo {
         if s.dimension == .overworld, strength > 0.02, precipitation != .none {
             let radius = precipitation == .snow ? 12 : 14
             let cx = Int(floor(camera.position.x)), cz = Int(floor(camera.position.z))
-            let density = strength * (precipitation == .snow ? 0.5 : 0.85)
+            let density = strength * (precipitation == .snow ? 0.5 : 0.85) * s.weather.downpour
+            let wind = s.weather.wind
             for dz in -radius...radius {
                 for dx in -radius...radius where dx * dx + dz * dz <= radius * radius {
                     let x = cx + dx, z = cz + dz
@@ -261,9 +262,12 @@ extension WinSolo {
                         let wx = Double(x) + Double(WinSolo.hash(x, z, 20 + k)) - camera.position.x
                         let wz = Double(z) + Double(WinSolo.hash(x, z, 30 + k)) - camera.position.z
                         if precipitation == .rain {
-                            let y = top - (time * 15 + phase).truncatingRemainder(dividingBy: span)
-                            let c = SIMD3<Float>(Float(wx), Float(y - camera.position.y), Float(wz))
-                            blended.billboard(c, right: flatRight * 0.03, up: SIMD3(0, 0.5, 0), layer: -1,
+                            let fallen = (time * 15 + phase).truncatingRemainder(dividingBy: span)
+                            let y = top - fallen
+                            // Storm wind blows the drops sideways as they fall.
+                            let drift = Float(fallen / 15) - 0.5
+                            let c = SIMD3<Float>(Float(wx) + wind.x * drift, Float(y - camera.position.y), Float(wz) + wind.y * drift)
+                            blended.billboard(c, right: flatRight * 0.03, up: SIMD3(wind.x / 30, 0.5, wind.y / 30), layer: -1,
                                               color: SIMD4(0.72, 0.78, 0.9, 0.6 * strength))
                         } else {
                             let y = top - (time * 1.7 + phase).truncatingRemainder(dividingBy: span)

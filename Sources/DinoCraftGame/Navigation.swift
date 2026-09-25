@@ -29,9 +29,15 @@ final class Minimap {
     /// Blocks from the centre to the edge of the map.
     static let radius = 48
     static let size = radius * 2 + 1
+    /// The paper map's reach (see `WorldMap`).
+    static let paperRadius = 96
+
+    /// This map's reach and width in cells (the HUD minimap uses `Minimap.radius`).
+    let reach: Int
+    var width: Int { reach * 2 + 1 }
 
     /// sRGB hex per cell, row by row from the north-west corner; 0 means not loaded yet.
-    private(set) var cells = [UInt32](repeating: 0, count: Minimap.size * Minimap.size)
+    private(set) var cells: [UInt32]
     private(set) var centerX = 0, centerZ = 0
     private(set) var caveMode = false
     private var builtAt = -100.0
@@ -49,10 +55,16 @@ final class Minimap {
         var clamped: Bool
     }
 
-    /// Redraws the map when you've moved a block, and every half second for changes around you.
+    init(reach: Int = Minimap.radius) {
+        self.reach = reach
+        cells = [UInt32](repeating: 0, count: (reach * 2 + 1) * (reach * 2 + 1))
+    }
+
+    /// Redraws the map when you've moved a block, and every half second (bigger maps: every second) for changes around you.
     func refresh(_ s: GameSession) {
         let cx = Int(floor(s.player.position.x)), cz = Int(floor(s.player.position.z))
-        guard abs(s.clock - builtAt) > 0.5 || cx != lastCenter.0 || cz != lastCenter.1 else { return }
+        let interval = reach > Minimap.radius ? 1.0 : 0.5
+        guard abs(s.clock - builtAt) > interval || cx != lastCenter.0 || cz != lastCenter.1 else { return }
         builtAt = s.clock
         lastCenter = (cx, cz)
         rebuild(s, cx: cx, cz: cz)
@@ -64,7 +76,7 @@ final class Minimap {
         if blockColors == nil { blockColors = Minimap.loadColors(reg) }
         let colors = blockColors!
         centerX = cx; centerZ = cz
-        let r = Minimap.radius, n = Minimap.size
+        let r = reach, n = width
         let py = Int(floor(s.player.position.y))
         // Underground (or in the Underworld, under its roof), map the cave floor around you instead.
         let surface = columnTop(world, cx, cz) ?? py
@@ -163,6 +175,15 @@ final class Minimap {
 
     // MARK: Colours
 
+    /// Blends two sRGB colours: `t` of the way from `a` to `b`.
+    static func mix(_ a: UInt32, _ b: UInt32, _ t: Double) -> UInt32 {
+        func ch(_ shift: UInt32) -> UInt32 {
+            let x = Double((a >> shift) & 255), y = Double((b >> shift) & 255)
+            return UInt32(max(0, min(255, x + (y - x) * t)))
+        }
+        return max(1, ch(16) << 16 | ch(8) << 8 | ch(0))
+    }
+
     static func shade(_ hex: UInt32, _ k: Double) -> UInt32 {
         func ch(_ shift: UInt32) -> UInt32 { UInt32(max(0, min(255, Double((hex >> shift) & 255) * k))) }
         return max(1, ch(16) << 16 | ch(8) << 8 | ch(0))
@@ -186,6 +207,43 @@ final class Minimap {
             }
             cache[name] = max(1, color)
             out[Int(b.id)] = max(1, color)
+        }
+        return out
+    }
+}
+
+/// The paper map: a big view of the land around you with villages, dig sites, ruins and volcanoes marked.
+enum WorldMap {
+    static let item = "map"
+
+    struct Landmark {
+        /// Offset from you in blocks (east, south).
+        var dx: Float, dz: Float
+        var label: String
+        var color: UInt32
+    }
+}
+
+extension GameSession {
+    /// Places worth knowing about within `radius` blocks, for the paper map.
+    func landmarks(radius: Int) -> [WorldMap.Landmark] {
+        guard dimension == .overworld, let generator = world.generator as? TerrainGenerator else { return [] }
+        let p = player.position
+        let x = Int(floor(p.x)), z = Int(floor(p.z))
+        var out: [WorldMap.Landmark] = []
+        func add(_ lx: Int, _ lz: Int, _ label: String, _ color: UInt32) {
+            let dx = Float(Double(lx) + 0.5 - p.x), dz = Float(Double(lz) + 0.5 - p.z)
+            guard abs(dx) < Float(radius), abs(dz) < Float(radius) else { return }
+            out.append(WorldMap.Landmark(dx: dx, dz: dz, label: label, color: color))
+        }
+        for v in generator.villages(near: x, z: z, radius: radius) { add(v.x, v.z, "Village", 0x8BE07A) }
+        for st in generator.structures(near: x, z: z, radius: radius) {
+            switch st.kind {
+            case .digSite: add(st.x, st.z, "Dig Site", 0xF2E6C4)
+            case .volcano: add(st.x, st.z, "Volcano", 0xFF6A2A)
+            case .ruin, .desertRuin: add(st.x, st.z, "Ruins", 0xC8B89A)
+            case .dungeon: break   // hidden underground
+            }
         }
         return out
     }

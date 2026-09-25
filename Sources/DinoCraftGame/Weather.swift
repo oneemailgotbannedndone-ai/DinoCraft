@@ -5,7 +5,10 @@ import simd
 import DinoCraftCore
 
 enum WeatherKind: String, Codable, CaseIterable {
-    case clear, rain, thunder
+    case clear, rain, thunder, storm
+
+    /// Thunderstorms and full storms: lightning, darker skies, monsters about.
+    var stormy: Bool { self == .thunder || self == .storm }
 }
 
 enum Precipitation {
@@ -25,6 +28,12 @@ final class WeatherSystem {
     private var strikeTimer = 6.0
     /// Called on each lightning strike with a 0…1 closeness.
     var onThunder: ((Float) -> Void)?
+    /// Storm wind (east, south) in blocks per second: slants the rain and pushes you about in gusts.
+    private(set) var wind = SIMD2<Float>(0, 0)
+    private var windAngle = Float.random(in: 0..<(2 * .pi))
+    private var gustPhase = 0.0
+    /// How much heavier than normal rain falls (storms pour).
+    var downpour: Float { kind == .storm ? 1.35 : 1 }
 
     func set(_ kind: WeatherKind, duration: Double? = nil) {
         self.kind = kind
@@ -39,7 +48,8 @@ final class WeatherSystem {
         if authoritative && cycle {
             timer -= dt
             if timer <= 0 {
-                set(kind == .clear ? (Double.random(in: 0..<1) < 0.25 ? .thunder : .rain) : .clear)
+                let roll = Double.random(in: 0..<1)
+                set(kind == .clear ? (roll < 0.1 ? .storm : (roll < 0.3 ? .thunder : .rain)) : .clear)
                 Log.info("Weather changed to \(kind.rawValue)", category: "Game")
             }
         }
@@ -47,10 +57,16 @@ final class WeatherSystem {
         intensity += (target - intensity) * Float(min(1, dt * 0.3))
         if intensity < 0.001 { intensity = 0 }
         flash = max(0, flash - Float(dt) * 2.4)
-        if kind == .thunder && intensity > 0.5 {
+        // Storm wind: a slowly turning direction with gusts.
+        gustPhase += dt
+        windAngle += Float(dt) * 0.02
+        let gust = Float(0.6 + 0.4 * sin(gustPhase * 0.7) * sin(gustPhase * 0.23 + 1))
+        let targetWind = kind == .storm ? SIMD2(cos(windAngle), sin(windAngle)) * 7 * gust * intensity : SIMD2<Float>(0, 0)
+        wind += (targetWind - wind) * Float(min(1, dt * 0.8))
+        if kind.stormy && intensity > 0.5 {
             strikeTimer -= dt
             if strikeTimer <= 0 {
-                strikeTimer = Double.random(in: 7...20)
+                strikeTimer = kind == .storm ? Double.random(in: 3...9) : Double.random(in: 7...20)
                 flash = 1
                 onThunder?(Float.random(in: 0.2...1))
             }
@@ -67,7 +83,7 @@ final class WeatherSystem {
 
     /// Greys and darkens the sky during rain; brightens it during lightning.
     func apply(to sky: inout SkyState) {
-        let k = intensity * (kind == .thunder ? 1 : 0.7)
+        let k = intensity * (kind == .storm ? 1.1 : (kind == .thunder ? 1 : 0.7))
         if k > 0.001 {
             let luma = simd_dot(sky.horizon, SIMD3(0.3, 0.59, 0.11))
             sky.horizon = simd_mix(sky.horizon, SIMD3(repeating: luma * 0.8), SIMD3(repeating: k * 0.8))

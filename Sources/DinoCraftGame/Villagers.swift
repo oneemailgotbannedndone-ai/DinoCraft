@@ -40,6 +40,7 @@ struct VillagerProfession {
             Trade(cost: "emerald", costCount: 1, result: "amber", resultCount: 4),
             Trade(cost: "emerald", costCount: 6, result: "diamond", resultCount: 1),
             Trade(cost: "emerald", costCount: 2, result: "ember_lighter", resultCount: 1),
+            Trade(cost: "fossil_tooth", costCount: 2, result: "emerald", resultCount: 3),
         ]),
     ]
 

@@ -167,6 +167,60 @@ final class ParticleSystem {
                 p.fade = true
                 emit(p)
             }
+        case .smoke:
+            // A volcano's plume: big dark puffs billowing up and spreading.
+            for _ in 0..<6 {
+                var p = Particle(center + DVec3(Double.random(in: -2...2), Double.random(in: 0...1.5), Double.random(in: -2...2)),
+                                 DVec3(Double.random(in: -1.2...1.2), Double.random(in: 4...8), Double.random(in: -1.2...1.2)),
+                                 life: Float.random(in: 3.5...6), size: Float.random(in: 0.9...1.6), color: SIMD4(0.2, 0.18, 0.18, 0.7))
+                p.drag = 0.35
+                emit(p)
+            }
+        case .lavaSpray:
+            for _ in 0..<24 {
+                var p = Particle(center, DVec3(Double.random(in: -5...5), Double.random(in: 6...14), Double.random(in: -5...5)),
+                                 life: Float.random(in: 1...2), size: Float.random(in: 0.08...0.16), color: SIMD4(1, Float.random(in: 0.35...0.7), 0.1, 1))
+                p.layer = -2
+                p.gravity = 14
+                p.emissive = true
+                p.shrink = true
+                emit(p)
+            }
+        case .impact:
+            // A fireball hitting the ground: sparks, rock chips and a smoke ring.
+            for k in 0..<70 {
+                let a = Double(k) / 70 * 2 * .pi
+                var p = Particle(center, DVec3(cos(a) * Double.random(in: 3...9), Double.random(in: 3...10), sin(a) * Double.random(in: 3...9)),
+                                 life: Float.random(in: 0.6...1.4), size: Float.random(in: 0.06...0.14),
+                                 color: k % 3 == 0 ? SIMD4(0.3, 0.26, 0.24, 1) : SIMD4(1, Float.random(in: 0.4...0.85), 0.15, 1))
+                p.layer = -2
+                p.gravity = 16
+                p.emissive = k % 3 != 0
+                p.collide = true
+                emit(p)
+            }
+            for k in 0..<24 {
+                let a = Double(k) / 24 * 2 * .pi
+                var p = Particle(center + DVec3(0, 0.3, 0), DVec3(cos(a) * 4, Double.random(in: 0.5...2), sin(a) * 4),
+                                 life: 2.2, size: 0.7, color: SIMD4(0.3, 0.28, 0.27, 0.6))
+                p.drag = 1.5
+                emit(p)
+            }
+        case .trail:
+            // Behind a lava bomb or meteorite: a glowing ember and a wisp of smoke.
+            var ember = Particle(center, DVec3(Double.random(in: -0.4...0.4), Double.random(in: -0.2...0.6), Double.random(in: -0.4...0.4)),
+                                 life: 0.5, size: 0.22, color: SIMD4(1, 0.55, 0.12, 1))
+            ember.emissive = true
+            ember.shrink = true
+            emit(ember)
+            var smoke = Particle(center, DVec3(0, 0.8, 0), life: 1.6, size: 0.35, color: SIMD4(0.25, 0.22, 0.22, 0.45))
+            smoke.drag = 0.8
+            emit(smoke)
+        case .starTrail:
+            var p = Particle(center, .zero, life: 0.7, size: 0.35, color: SIMD4(0.85, 0.9, 1, 1))
+            p.emissive = true
+            p.shrink = true
+            emit(p)
         case .ink:
             for _ in 0..<80 {
                 var p = Particle(center + DVec3(Double.random(in: -1...1), Double.random(in: 0...3), Double.random(in: -1...1)),

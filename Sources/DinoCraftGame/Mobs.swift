@@ -14,7 +14,7 @@ enum MobKind: String, CaseIterable, Codable {
 }
 
 /// Kinds of particle burst the game can ask for.
-enum EffectBurst { case dust, confetti, ink, crumbs, splash }
+enum EffectBurst { case dust, confetti, ink, crumbs, splash, smoke, lavaSpray, impact, trail, starTrail }
 
 struct MobDrop {
     let item: String
@@ -1049,7 +1049,7 @@ final class MobManager {
             return herd.first(where: { roll < $0.0 })?.1 ?? .dodo
         case .overworld:
             let dark = light.sky < 0.35 && light.block < 0.3
-            let nightSurface = (s.isNight || s.weather.kind == .thunder) && light.sky > 0.5 && light.block < 0.4
+            let nightSurface = (s.isNight || s.weather.kind.stormy) && light.sky > 0.5 && light.block < 0.4
             let biome = s.world.generator.biome(x: x, z: z)
             if allowHostile && (biome == .mountains || biome == .snowyPeaks) && light.sky > 0.6 && roll < 0.12 { return .ptero }
             if allowHostile && (dark || nightSurface) {

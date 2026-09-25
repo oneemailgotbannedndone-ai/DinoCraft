@@ -119,3 +119,79 @@ final class QuestBookScreen: Screen {
         if ui.input.wasPressed(e.settings.binding(for: .inventory)) && age > 0.1 { back(e) }
     }
 }
+
+/// The paper map: the land around you, with villages, dig sites, ruins and volcanoes marked.
+final class MapScreen: Screen {
+    override var scene: GameActivityState.Scene { .playing }
+
+    override func back(_ engine: GameEngine) {
+        engine.audio.play("ui_close", volume: 0.45)
+        engine.popScreen()
+    }
+
+    override func draw(_ ui: UIContext, _ e: GameEngine) {
+        guard let s = e.session else { back(e); return }
+        let d = ui.draw
+        let W = ui.size.x, H = ui.size.y
+        ui.dim(0.5)
+        let map = s.paperMap
+        map.refresh(s)
+        let n = map.width
+        let size = (min(W, H) - 150).rounded()
+        let cell = size / Float(n)
+        let a = appear(0, duration: 0.22)
+        let box = Rect(W / 2 - size / 2, H / 2 - size / 2 + 18 + (1 - a) * 12, size, size)
+        d.opacity = a
+        ui.panel(Rect(box.x - 24, box.y - 70, box.w + 48, box.h + 112), title: "Map")
+        let parchment: UInt32 = 0xE6D8B0
+        d.fill(box, Color(hex: parchment))
+        for j in 0..<n {
+            let row = j * n
+            var i = 0
+            while i < n {
+                let color = map.cells[row + i]
+                var run = 1
+                while i + run < n && map.cells[row + i + run] == color { run += 1 }
+                if color != 0 {
+                    d.fill(Rect(box.x + Float(i) * cell, box.y + Float(j) * cell, Float(run) * cell + 0.4, cell + 0.4),
+                           Color(hex: Minimap.mix(color, parchment, 0.18)))
+                }
+                i += run
+            }
+        }
+        let cx = box.x + size / 2, cy = box.y + size / 2
+        for l in s.landmarks(radius: map.reach) {
+            let mx = cx + l.dx * cell, my = cy + l.dz * cell
+            d.fill(Rect(mx - 5, my - 5, 10, 10), Color(linear: 0, 0, 0, 0.85), radius: 3)
+            d.fill(Rect(mx - 4, my - 4, 8, 8), Color(hex: l.color), radius: 2)
+            d.text(l.label, x: mx, y: my + 7, size: 12, color: .white, face: .display, align: .center, shadow: Color(linear: 0, 0, 0, 0.95))
+        }
+        for m in map.markers(for: s, radius: map.reach) {
+            let mx = cx + m.dx * cell, my = cy + m.dz * cell
+            switch m.kind {
+            case .you:
+                let look = s.player.lookDirection
+                let flat = SIMD2<Float>(Float(look.x), Float(look.z))
+                let dir = simd_length(flat) > 0.01 ? simd_normalize(flat) : SIMD2(0, -1)
+                for k in 0..<3 {
+                    let px = mx + dir.x * Float(k) * 4, py = my + dir.y * Float(k) * 4
+                    let half: Float = k == 0 ? 4 : 3
+                    d.fill(Rect(px - half - 1, py - half - 1, half * 2 + 2, half * 2 + 2), Color(linear: 0, 0, 0, 0.8), radius: half + 1)
+                    d.fill(Rect(px - half, py - half, half * 2, half * 2), k == 2 ? Color(hex: 0xFF5A3C) : .white, radius: half)
+                }
+            case .death:
+                d.text("X", x: mx, y: my - 9, size: 16, color: Color(hex: m.color), face: .display, align: .center,
+                       shadow: Color(linear: 0, 0, 0, 0.9))
+            case .player, .pet:
+                let half: Float = m.kind == .pet ? 3 : 4
+                d.fill(Rect(mx - half - 1, my - half - 1, half * 2 + 2, half * 2 + 2), Color(linear: 0, 0, 0, 0.85))
+                d.fill(Rect(mx - half, my - half, half * 2, half * 2), Color(hex: m.color))
+            }
+        }
+        d.text("N", x: cx, y: box.y + 4, size: 13, color: Color(hex: 0x3A2410), face: .display, align: .center)
+        let p = s.player.position
+        d.text("\(Int(floor(p.x))), \(Int(floor(p.z)))", x: cx, y: box.maxY + 12, size: 14, color: Theme.text, face: .display, align: .center)
+        d.opacity = 1
+        if ui.input.wasPressed(e.settings.binding(for: .inventory)) && age > 0.1 { back(e) }
+    }
+}

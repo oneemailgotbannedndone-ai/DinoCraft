@@ -16,6 +16,7 @@ enum BetterTextures {
         "stone": (0x4A4C54, 0x7E818C, 0xA9ACB6, 0xCDD0D8),
         "iron": (0x7C8591, 0xC4CAD3, 0xE8ECF1, 0xFFFFFF),
         "diamond": (0x138A84, 0x3FD9CE, 0x9BF6EE, 0xE8FFFD),
+        "starmetal": (0x3A2458, 0x7A4ED8, 0xB89AF8, 0xFFE8A0),
     ]
 
     /// A pickaxe drawn pixel by pixel: a curved two-pointed head with a bevel and

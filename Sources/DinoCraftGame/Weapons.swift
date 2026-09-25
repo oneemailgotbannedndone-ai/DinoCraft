@@ -36,6 +36,13 @@ extension GameSession {
             blocking = false
             if input.wasPressed(use) { onOpenQuestBook?() }
             return true
+        case WorldMap.item:
+            blocking = false
+            if input.wasPressed(use) {
+                onOpenMap?()
+                advancements.record("map")
+            }
+            return true
         case "bow", Weapons.spear:
             blocking = false
             // Hold to draw (full power after a second), release to shoot or throw.
