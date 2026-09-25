@@ -191,10 +191,10 @@ final class GameServer: SessionNetwork {
             broadcast(.playerJoined, PlayerInfo(id: peer.id, name: name, playerID: hello.playerID, look: hello.look), except: peer.id)
             onChat?("", "\(name) joined the game")
             onMet?(hello.playerID, name, hello.look)
+            Log.info("\(name) joined (player \(peer.id))", category: "Net")
 
         case .status:
             peer.connection.send(.status, Wire.Status(hostID: hostID, hostName: hostName, world: s.meta.name, players: playerCount))
-            Log.info("\(name) joined (player \(peer.id))", category: "Net")
 
         case .chunkRequest:
             guard peer.joined, let request = NetConnection.decode(ChunkRequestMessage.self, data) else { return }
