@@ -50,6 +50,11 @@ public final class ReviewBoard: @unchecked Sendable {
         return list.isEmpty ? 0 : Double(list.reduce(0) { $0 + $1.stars }) / Double(list.count)
     }
 
+    /// "Reviews", or "Reviews ★4.8" once they've loaded.
+    public var buttonLabel: String {
+        reviews.isEmpty ? "Reviews" : String(format: "Reviews \u{2605}%.1f", average)
+    }
+
     public func load() {
         if case .loading = state { return }
         set(.loading)

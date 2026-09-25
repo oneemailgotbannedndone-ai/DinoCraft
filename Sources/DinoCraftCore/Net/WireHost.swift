@@ -11,10 +11,14 @@ public final class WireHost: @unchecked Sendable {
         public var difficulty: String
         public var hostName: String
         public var deep: Bool
+        /// The host's `PlayerIdentity` ID and look, shared with players who join.
+        public var hostID: String?
+        public var hostLook: String?
 
-        public init(worldName: String, seed: String, gameMode: String, difficulty: String, hostName: String, deep: Bool = true) {
+        public init(worldName: String, seed: String, gameMode: String, difficulty: String, hostName: String, deep: Bool = true,
+                    hostID: String? = nil, hostLook: String? = nil) {
             self.worldName = worldName; self.seed = seed; self.gameMode = gameMode; self.difficulty = difficulty; self.hostName = hostName
-            self.deep = deep
+            self.deep = deep; self.hostID = hostID; self.hostLook = hostLook
         }
     }
 
@@ -28,6 +32,8 @@ public final class WireHost: @unchecked Sendable {
         let id: Int
         let connection: WireConnection
         var name = "?"
+        var playerID: String?
+        var look: String?
         var joined = false
         var state: Wire.PlayerState?
         init(id: Int, connection: WireConnection) { self.id = id; self.connection = connection }
@@ -45,6 +51,8 @@ public final class WireHost: @unchecked Sendable {
     public var onBlockChange: (BlockPos, BlockID) -> Bool = { _, _ in true }
     public var onChat: (String, String) -> Void = { _, _ in }
     public var onEvent: (String) -> Void = { _ in }
+    /// A player joined: their ID (if their version sends one), name and look.
+    public var onMet: (_ playerID: String?, _ name: String, _ look: String?) -> Void = { _, _, _ in }
 
     private let listener: NetSocket
     private let acceptLock = NSLock()
@@ -179,16 +187,23 @@ public final class WireHost: @unchecked Sendable {
                 n += 1
             }
             peer.name = name
+            peer.playerID = hello.playerID
+            peer.look = hello.look
             peer.joined = true
             let spawn = spawnPoint()
-            let others = [Wire.PlayerInfo(id: 0, name: settings.hostName)]
-                + peers.values.filter { $0.joined && $0.id != peer.id }.map { Wire.PlayerInfo(id: $0.id, name: $0.name) }
+            let others = [Wire.PlayerInfo(id: 0, name: settings.hostName, playerID: settings.hostID, look: settings.hostLook)]
+                + peers.values.filter { $0.joined && $0.id != peer.id }.map { Wire.PlayerInfo(id: $0.id, name: $0.name, playerID: $0.playerID, look: $0.look) }
             peer.connection.send(.welcome, Wire.Welcome(playerID: peer.id, worldName: settings.worldName, seed: settings.seed, dimension: "overworld",
                                                         gameMode: settings.gameMode, difficulty: settings.difficulty, hardcore: false,
                                                         x: spawn.x, y: spawn.y, z: spawn.z, worldTime: worldTime(), players: others, deep: settings.deep))
-            broadcast(.playerJoined, Wire.PlayerInfo(id: peer.id, name: name), except: peer.id)
+            broadcast(.playerJoined, Wire.PlayerInfo(id: peer.id, name: name, playerID: hello.playerID, look: hello.look), except: peer.id)
             Log.info("\(name) joined (player \(peer.id))", category: "Net")
             onEvent("\(name) joined the game")
+            onMet(hello.playerID, name, hello.look)
+
+        case .status:
+            peer.connection.send(.status, Wire.Status(hostID: settings.hostID, hostName: settings.hostName, world: settings.worldName,
+                                                      players: playerCount + 1))
 
         case .chunkRequest:
             guard peer.joined, let request = try? decoder.decode(Wire.ChunkRequest.self, from: data) else { return }

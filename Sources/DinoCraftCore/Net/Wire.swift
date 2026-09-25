@@ -16,19 +16,45 @@ public enum Wire {
     public enum Kind: UInt8 {
         case hello = 1, welcome, reject, chunkRequest, chunkData, blockChange, playerState, playerJoined, playerLeft, chat,
              mobSnapshot, itemSnapshot, attackPlayer, attackMob, dropItem, giveItem, damage, worldTime, dimensionChange,
-             disconnect, containerOpen, containerData, containerSet, spawnMob
+             disconnect, containerOpen, containerData, containerSet, spawnMob,
+             /// "What are you playing?" — answered without joining, for the friends list.
+             status
     }
 
     public struct Hello: Codable {
         public var version: Int
         public var username: String
-        public init(version: Int, username: String) { self.version = version; self.username = username }
+        /// The player's one-of-a-kind ID (`PlayerIdentity`) and look; older versions leave them out.
+        public var playerID: String?
+        public var look: String?
+        public init(version: Int, username: String, playerID: String? = nil, look: String? = nil) {
+            self.version = version; self.username = username; self.playerID = playerID; self.look = look
+        }
     }
 
     public struct PlayerInfo: Codable {
         public var id: Int
         public var name: String
-        public init(id: Int, name: String) { self.id = id; self.name = name }
+        public var playerID: String?
+        public var look: String?
+        public init(id: Int, name: String, playerID: String? = nil, look: String? = nil) {
+            self.id = id; self.name = name; self.playerID = playerID; self.look = look
+        }
+    }
+
+    public struct StatusRequest: Codable {
+        public init() {}
+    }
+
+    /// A host's answer to `status`.
+    public struct Status: Codable, Equatable {
+        public var hostID: String?
+        public var hostName: String
+        public var world: String
+        public var players: Int
+        public init(hostID: String?, hostName: String, world: String, players: Int) {
+            self.hostID = hostID; self.hostName = hostName; self.world = world; self.players = players
+        }
     }
 
     public struct Welcome: Codable {

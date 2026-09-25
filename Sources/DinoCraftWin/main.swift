@@ -91,12 +91,12 @@ func fail(_ message: String, window: OpaquePointer? = nil) -> Never {
 
 /// Player names follow the host's rules: letters, numbers and underscores, up to 16 characters.
 /// DinoCraft Launcher's Play: starts DinoCraft.exe from the same folder, straight to the title screen.
-func launchGame() {
+func launchGame(join address: String? = nil) {
     let here = URL(fileURLWithPath: CommandLine.arguments.first ?? "").deletingLastPathComponent()
     let game = here.appendingPathComponent("DinoCraft.exe")
     let process = Process()
     process.executableURL = game
-    process.arguments = ["--skip-launcher"]
+    process.arguments = ["--skip-launcher"] + (address.map { ["--join", $0] } ?? [])
     process.currentDirectoryURL = here
     do {
         try process.run()
@@ -145,6 +145,7 @@ guard let context = SDL_GL_CreateContext(window) else {
 }
 _ = SDL_GL_MakeCurrent(window, context)
 let settingsStore = SettingsStore()
+PlayerLook.settle(settingsStore)
 _ = SDL_GL_SetSwapInterval(options.screenshotPath == nil && settingsStore.settings.vsync ? 1 : 0)
 
 do {
@@ -188,14 +189,15 @@ do {
         let username = cleanName(options.name ?? settingsStore.settings.username)
         let joined: WinNetwork
         do {
-            joined = try WinNetwork.join(address: address, username: username)
+            joined = try WinNetwork.join(address: address, username: username, playerID: settingsStore.settings.playerID,
+                                         look: settingsStore.settings.cosmetics)
         } catch {
             fail("Couldn't join the game:\n\n\(error)", window: window)
         }
         if let message = join(joined).message {
             Log.info(message, category: "Net")
         }
-    } else if options.hostName != nil || (options.screenshotPath != nil && !["menu", "worlds", "create", "cosmetics", "skin", "skin-arm", "reviews"].contains(options.demoScreen ?? "")) {
+    } else if options.hostName != nil || (options.screenshotPath != nil && !["menu", "worlds", "create", "cosmetics", "skin", "skin-arm", "reviews", "friends"].contains(options.demoScreen ?? "")) {
         let storage = WorldStorage()
         if let existing = storage.listWorlds().first(where: { $0.name == "Windows World" }) {
             _ = play(existing, isNew: false, hostName: options.hostName.map(cleanName))
@@ -215,8 +217,8 @@ do {
                 result = (play(meta, isNew: isNew, hostName: hostName), nil)
             case .join(let network):
                 result = join(network)
-            case .launchGame:
-                launchGame()
+            case .launchGame(let address):
+                launchGame(join: address)
                 break menuLoop
             }
             if result.quit || options.screenshotPath != nil { break }

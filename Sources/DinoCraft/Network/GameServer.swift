@@ -39,6 +39,8 @@ final class GameServer: SessionNetwork {
         let id: Int
         let connection: NetConnection
         var name = "?"
+        var playerID: String?
+        var look: String?
         var joined = false
         var player: RemotePlayer?
         init(id: Int, connection: NetConnection) {
@@ -59,6 +61,11 @@ final class GameServer: SessionNetwork {
 
     var onEvent: ((String) -> Void)?
     var onChat: ((String, String) -> Void)?
+    /// The host's `PlayerIdentity` ID and look, shared with players who join.
+    var hostID: String?
+    var hostLook: String?
+    /// A player joined: their ID (if their version sends one), name and look.
+    var onMet: ((_ playerID: String?, _ name: String, _ look: String?) -> Void)?
 
     var remotePlayers: [RemotePlayer] { peers.values.filter { $0.joined }.compactMap { $0.player } }
     var playerCount: Int { remotePlayers.count + 1 }
@@ -169,17 +176,24 @@ final class GameServer: SessionNetwork {
             var n = 2
             while taken.contains(name.lowercased()) { name = "\(base)\(n)"; n += 1 }
             peer.name = name
+            peer.playerID = hello.playerID
+            peer.look = hello.look
             peer.joined = true
             let spawn = s.player.position + DVec3(Double.random(in: -1.5...1.5), 0.1, Double.random(in: -1.5...1.5))
             peer.player = RemotePlayer(id: peer.id, name: name, position: spawn)
-            let others = [PlayerInfo(id: 0, name: hostName)] + peers.values.filter { $0.joined && $0.id != peer.id }.map { PlayerInfo(id: $0.id, name: $0.name) }
+            let others = [PlayerInfo(id: 0, name: hostName, playerID: hostID, look: hostLook)]
+                + peers.values.filter { $0.joined && $0.id != peer.id }.map { PlayerInfo(id: $0.id, name: $0.name, playerID: $0.playerID, look: $0.look) }
             peer.connection.send(.welcome, WelcomeMessage(playerID: peer.id, worldName: s.meta.name, seed: s.meta.seed,
                                                           dimension: s.dimension.rawValue, gameMode: s.meta.gameMode.rawValue,
                                                           difficulty: s.meta.difficulty.rawValue, hardcore: false,
                                                           x: spawn.x, y: spawn.y, z: spawn.z, worldTime: s.worldTime, players: others,
                                                           deep: s.meta.isDeep))
-            broadcast(.playerJoined, PlayerInfo(id: peer.id, name: name), except: peer.id)
+            broadcast(.playerJoined, PlayerInfo(id: peer.id, name: name, playerID: hello.playerID, look: hello.look), except: peer.id)
             onChat?("", "\(name) joined the game")
+            onMet?(hello.playerID, name, hello.look)
+
+        case .status:
+            peer.connection.send(.status, Wire.Status(hostID: hostID, hostName: hostName, world: s.meta.name, players: playerCount))
             Log.info("\(name) joined (player \(peer.id))", category: "Net")
 
         case .chunkRequest:

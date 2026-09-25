@@ -407,8 +407,83 @@ func persistenceTests() throws {
     check(store.settings.renderDistance == 8, "settings keep valid values")
     check(store.settings.binding(for: .jump) == .key(36), "custom keybind loads")
     check(store.settings.binding(for: .forward) == .key(13), "missing keybinds use defaults")
+    check(PlayerIdentity.isValid(store.settings.playerID), "settings get a player ID")
+    check(SettingsStore(url: settingsURL).settings.playerID == store.settings.playerID, "the player ID is kept between launches")
 }
 section("Persistence", persistenceTests)
+
+section("Friends") {
+    let a = PlayerIdentity.newID(), b = PlayerIdentity.newID()
+    check(a != b && PlayerIdentity.isValid(a), "player IDs are random and valid")
+    check(PlayerIdentity.tag(for: a).count == 4 && PlayerIdentity.tag(for: a) == PlayerIdentity.tag(for: a), "tags are four stable characters")
+    var tags = Set<String>()
+    for _ in 0..<2000 { tags.insert(PlayerIdentity.tag(for: PlayerIdentity.newID())) }
+    check(tags.count > 1990, "tags rarely repeat (\(tags.count) of 2000)")
+    let code = FriendCode.encode(name: "Rex!", id: a, address: "DINO-3M4KA-9QX2B")
+    check(FriendCode.decode("hey add me " + code + "\nthanks") == FriendCode.Contents(name: "Rex", id: a, address: "DINO-3M4KA-9QX2B"),
+          "friend codes round-trip (\(code))")
+    check(FriendCode.decode(FriendCode.encode(name: "Mo", id: b, address: nil))?.address == nil, "friend codes work without an address")
+    check(FriendCode.decode("FRIEND:Rex:nothex") == nil && FriendCode.decode("DINO-3M4KA-9QX2B") == nil, "bad friend codes are refused")
+    check(Wire.parseAddress("10.0.0.5:1234") == ("10.0.0.5", 1234) && Wire.parseAddress("10.0.0.5").port == Wire.defaultPort, "addresses parse")
+
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("dinocraft-friends-\(UUID().uuidString).json")
+    let list = FriendList(url: url)
+    let me = PlayerIdentity.newID()
+    check(list.add(code: FriendCode.encode(name: "Me", id: me, address: nil), myID: me).contains("own"), "you can't add yourself")
+    list.add(code: code, myID: me)
+    check(list.isFriend(a) && list.friends.first?.address == "DINO-3M4KA-9QX2B", "adding a friend code")
+    check(!list.met(id: b, name: "Mo", look: "hat=cap", address: nil, myID: me) && list.recent.first?.id == b, "players you meet go in recent")
+    check(list.met(id: a, name: "Rex", look: "hat=crown", address: "1.2.3.4:25650", myID: me), "meeting a friend is noticed")
+    list.befriend(b)
+    list.remove(a)
+    let reloaded = FriendList(url: url)
+    check(reloaded.isFriend(b) && !reloaded.isFriend(a) && reloaded.recent.first?.id == a && reloaded.recent.first?.look == "hat=crown",
+          "the friends list saves and loads")
+    try? FileManager.default.removeItem(at: url)
+
+    // A live host answers the status question without anyone joining.
+    let hostID = PlayerIdentity.newID()
+    let host = try WireHost(settings: WireHost.Settings(worldName: "Friendly Plains", seed: "1", gameMode: "survival", difficulty: "normal",
+                                                        hostName: "Rex", hostID: hostID),
+                            port: 0, loopbackOnly: true) { TerrainGenerator(seed: 1).generate($0) }
+    var met: String?
+    host.onMet = { id, _, _ in met = id }
+    final class Reply: @unchecked Sendable {
+        let lock = NSLock()
+        var status: Wire.Status?
+        var finished = false
+    }
+    let reply = Reply(), port = host.port
+    DispatchQueue(label: "probe").async {
+        let answer = StatusProbe.check(address: "127.0.0.1:\(port)")
+        reply.lock.lock(); reply.status = answer; reply.finished = true; reply.lock.unlock()
+    }
+    let deadline = Date().addingTimeInterval(5)
+    while Date() < deadline {
+        host.poll()
+        reply.lock.lock(); let done = reply.finished; reply.lock.unlock()
+        if done { break }
+        Thread.sleep(forTimeInterval: 0.02)
+    }
+    let status = reply.status
+    check(status == Wire.Status(hostID: hostID, hostName: "Rex", world: "Friendly Plains", players: 1), "status check sees the hosted world (\(String(describing: status)))")
+    let joiner = try WireConnection.connect(host: "127.0.0.1", port: host.port)
+    joiner.send(.hello, Wire.Hello(version: Wire.protocolVersion, username: "Mo", playerID: b, look: "hat=cap"))
+    var welcome: Wire.Welcome?
+    let joinDeadline = Date().addingTimeInterval(5)
+    while Date() < joinDeadline && welcome == nil {
+        host.poll()
+        for event in joiner.poll() {
+            if case .message(.welcome, let data) = event { welcome = try? JSONDecoder().decode(Wire.Welcome.self, from: data) }
+        }
+        Thread.sleep(forTimeInterval: 0.02)
+    }
+    check(met == b, "the host learns who joined")
+    check(welcome?.players.first?.playerID == hostID, "joiners learn who the host is")
+    check(StatusProbe.check(address: "127.0.0.1:1", timeout: 1) == nil, "nobody hosting reads as offline")
+    joiner.close()
+    host.stop()
+}
 
 section("Villages") {
     let gen = TerrainGenerator(seed: 1234)

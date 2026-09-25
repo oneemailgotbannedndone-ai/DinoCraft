@@ -58,10 +58,11 @@ final class WinMenus {
         case join(WinNetwork)
         case quit
         /// DinoCraft Launcher: start DinoCraft.exe and close the launcher.
-        case launchGame
+        /// Launcher only: start DinoCraft.exe, joining a friend's game if an address is given.
+        case launchGame(join: String?)
     }
 
-    private enum Page { case launcher, cosmetics, skin, title, worlds, create, multiplayer, settings, connecting, reviews }
+    private enum Page { case launcher, cosmetics, skin, title, worlds, create, multiplayer, settings, connecting, reviews, friends }
 
     private let window: OpaquePointer
     private let renderer: WinRenderer
@@ -92,6 +93,9 @@ final class WinMenus {
     /// Stars picked on the Reviews page before writing a review.
     private var reviewStars = 5
     private var reviewWords = ""
+    private var friendMessage: String?
+    private var launchJoin: String?
+    private var friendScroll = 0
     /// The side being painted (a `SkinRegion` id); "hf" is the face.
     private var skinRegionID = "hf"
     private var skinColor: UInt8 = 1
@@ -134,6 +138,10 @@ final class WinMenus {
             launched = true
             page = options.skipLauncher ? .title : .launcher
             if store.settings.checkForUpdates && options.screenshotPath == nil { updater.check() }
+            if options.screenshotPath == nil && !options.skipLauncher {
+                GameLinks.reviews.load()
+                FriendList.shared.refreshStatuses()
+            }
         }
         focus = ""
         address = store.settings.lastServerAddress
@@ -143,6 +151,17 @@ final class WinMenus {
         if options.demoScreen == "create" { page = .create; focus = "name" }
         if options.demoScreen == "cosmetics" { page = .cosmetics }
         if options.demoScreen == "reviews" { GameLinks.reviews.load(); page = .reviews }
+        if options.demoScreen == "friends" {
+            // Automated check: a friend, a recent player and a friend code to paste.
+            let list = FriendList.shared
+            if list.friends.isEmpty {
+                list.add(code: FriendCode.encode(name: "Tuneful", id: "1d2c3b4a59687706", address: "127.0.0.1:1"), myID: store.settings.playerID)
+                list.met(id: "a1b2c3d4e5f60718", name: "Rexy", look: PlayerLook.oneOfOne(id: "a1b2c3d4e5f60718").encoded, address: nil,
+                         myID: store.settings.playerID)
+            }
+            list.refreshStatuses()
+            page = .friends
+        }
         if options.demoScreen == "skin" {
             page = .skin
             var demo = PlayerLook(encoded: store.settings.cosmetics) ?? PlayerLook()
@@ -313,9 +332,16 @@ final class WinMenus {
         case .reviews:
             buildReviews(&ui, input: input, width: W, height: H, scale: s)
 
+        case .friends:
+            buildFriends(&ui, input: input, width: W, height: H, scale: s, now: now)
+            if let target = launchJoin {
+                launchJoin = nil
+                return .launchGame(join: target)
+            }
+
         case .skin:
             buildSkinCreator(&ui, input: input, width: W, height: H, scale: s, now: now)
-            if options.launcherOnly && page == .title { return .launchGame }
+            if options.launcherOnly && page == .title { return .launchGame(join: nil) }
 
         case .worlds:
             header("Your Worlds")
@@ -533,10 +559,11 @@ final class WinMenus {
         joinToken = token
         joinResult = nil
         joinLock.unlock()
+        let identity = (id: store.settings.playerID, look: store.settings.cosmetics)
         Thread { [weak self] in
             let result: Result<WinNetwork, Error>
             do {
-                result = .success(try WinNetwork.join(address: target, username: name))
+                result = .success(try WinNetwork.join(address: target, username: name, playerID: identity.id, look: identity.look))
             } catch {
                 result = .failure(error)
             }
@@ -635,7 +662,7 @@ extension WinMenus {
         var y = panelY
         if ui.button("Play", x: bx, y: y, w: bw, h: bh + 10 * s, scale: s, input: input, primary: true) || input.enter {
             click(); message = nil
-            if options.launcherOnly { return .launchGame }
+            if options.launcherOnly { return .launchGame(join: nil) }
             page = .title
         }
         y += bh + 10 * s + gap
@@ -704,7 +731,11 @@ extension WinMenus {
             click(); showingGuide.toggle()
         }
         y += bh + gap
-        if ui.button("Player Reviews", x: bx, y: y, w: bw, h: bh, scale: s, input: input) {
+        let halfW = (bw - gap) / 2
+        if ui.button(FriendList.shared.buttonLabel, x: bx, y: y, w: halfW, h: bh, scale: s, input: input) {
+            click(); friendMessage = nil; FriendList.shared.refreshStatuses(); page = .friends
+        }
+        if ui.button(GameLinks.reviews.buttonLabel, x: bx + halfW + gap, y: y, w: halfW, h: bh, scale: s, input: input) {
             click(); GameLinks.reviews.load(); page = .reviews
         }
         y += bh + gap
@@ -728,6 +759,157 @@ extension WinMenus {
                 x: panelX, y: panelY + panelH + 10 * s, scale: small, color: muted)
         if quitForUpdate { return .quit }
         return nil
+    }
+
+    /// Your one-of-a-kind player card, your friends (and whether they're hosting right now) and the
+    /// players you've recently been in a game with.
+    fileprivate func buildFriends(_ ui: inout UIBuilder, input: MenuInput, width W: Float, height H: Float, scale s: Float, now: Double) {
+        let small = max(1, (2 * s).rounded())
+        let head = max(1, (4 * s).rounded())
+        let friends = FriendList.shared
+        let me = store.settings
+        ui.rect(0, 0, W, H, SIMD4(0.02, 0.01, 0.05, 0.45))
+        ui.centeredText("Friends", centerX: W / 2, y: H * 0.05, scale: head, color: amber)
+        ui.centeredText("Add friends with their friend code. Play together once and they show up here too.",
+                        centerX: W / 2, y: H * 0.05 + 10 * head, scale: small, color: muted)
+
+        // Your card: a spinning preview, your one-of-a-kind name tag and your friend code.
+        let cardX = 40 * s, cardW = min(W * 0.3, 380 * s), cardY = H * 0.17, cardH = H * 0.66
+        let infoY = cardY + cardH * 0.46
+        ui.rect(cardX, infoY, cardW, cardY + cardH - infoY, SIMD4(0.06, 0.04, 0.1, 0.9))
+        // Stand the preview on top of the card: turn the card's screen position into the preview camera's space.
+        let depth: Float = 5.6, tanHalf: Float = 0.766
+        let ndcX = (cardX + cardW / 2) / W * 2 - 1, ndcFeet = 1 - 2 * (infoY - 6 * s) / H
+        CreatureModels.appendPlayer(&previewModels, name: me.username, look: me.cosmetics,
+                                    at: SIMD3(ndcX * depth * tanHalf * W / H, ndcFeet * depth * tanHalf + 0.05, -depth),
+                                    yaw: Float(now * 0.8), pitch: 0, walk: 0, moving: 0, sneaking: false, swing: 0, hurt: 0)
+        var y = infoY + 14 * s
+        let big = max(1, (3 * s).rounded())
+        ui.centeredText(PlayerIdentity.display(name: me.username, id: me.playerID), centerX: cardX + cardW / 2, y: y, scale: big, color: amber)
+        y += 10 * big + 2 * s
+        ui.centeredText("1 of 1", centerX: cardX + cardW / 2, y: y, scale: big, color: SIMD4(0.6, 1, 0.7, 1))
+        y += 10 * big
+        ui.centeredText("Nobody else has your tag", centerX: cardX + cardW / 2, y: y, scale: small, color: muted)
+        y += 14 * small
+        let bx = cardX + 16 * s, bw = cardW - 32 * s, bh = 40 * s
+        if ui.button("Copy My Friend Code", x: bx, y: y, w: bw, h: bh, scale: s, input: input, primary: true) {
+            click()
+            let code = friends.myCode(name: me.username, id: me.playerID)
+            friendMessage = SDL_SetClipboardText(code) ? "Friend code copied! Send it to a friend." : "Couldn't copy your friend code."
+        }
+        y += bh + 8 * s
+        if ui.button("Add Friend (Paste Code)", x: bx, y: y, w: bw, h: bh, scale: s, input: input) {
+            click()
+            if let raw = SDL_GetClipboardText() {
+                let text = String(cString: raw)
+                SDL_free(raw)
+                friendMessage = friends.add(code: text, myID: me.playerID)
+                friends.refreshStatuses()
+            } else {
+                friendMessage = "Copy your friend's code first, then press this."
+            }
+        }
+        y += bh + 10 * s
+        if let friendMessage {
+            for part in WinMenus.wrap(friendMessage, width: max(10, Int(bw / (6 * small)))).prefix(3) {
+                ui.text(part, x: bx, y: y, scale: small, color: SIMD4(1, 0.9, 0.6, 1), shadow: false)
+                y += 10 * small
+            }
+        }
+
+        // Friends and recent players
+        let listX = cardX + cardW + 24 * s, listW = W - listX - 40 * s, listY = cardY
+        ui.rect(listX, listY, listW, cardH, SIMD4(0.06, 0.04, 0.1, 0.9))
+        let rowH = 52 * s
+        struct Row { let person: FriendList.Person; let isFriend: Bool }
+        let rows = friends.friends.map { Row(person: $0, isFriend: true) } + friends.recent.map { Row(person: $0, isFriend: false) }
+        let visible = max(1, Int((cardH - 70 * s) / rowH))
+        if input.wheel != 0 { friendScroll = max(0, min(max(0, rows.count - visible), friendScroll - Int(input.wheel))) }
+        friendScroll = min(friendScroll, max(0, rows.count - visible))
+        y = listY + 14 * s
+        if rows.isEmpty {
+            ui.centeredText("No friends yet.", centerX: listX + listW / 2, y: y + 40 * s, scale: big, color: SIMD4(1, 1, 1, 0.9))
+            ui.centeredText("Copy your friend code and send it to someone, or join a friend's game.", centerX: listX + listW / 2, y: y + 40 * s + 12 * big,
+                            scale: small, color: muted)
+        }
+        var shownRecentHeader = false
+        ui.text("Friends (\(friends.friends.count))", x: listX + 16 * s, y: y, scale: small, color: amber)
+        y += 12 * small
+        for (index, row) in rows.enumerated().dropFirst(friendScroll).prefix(visible) {
+            if !row.isFriend && !shownRecentHeader {
+                shownRecentHeader = true
+                ui.text("Played with recently", x: listX + 16 * s, y: y, scale: small, color: amber)
+                y += 12 * small
+            }
+            guard y + rowH < listY + cardH else { break }
+            let p = row.person
+            WinMenus.portrait(&ui, look: PlayerLook.resolve(p.look, name: p.name), x: listX + 16 * s, y: y + 4 * s, size: rowH - 14 * s)
+            let textX = listX + 16 * s + rowH
+            ui.text(p.display, x: textX, y: y + 6 * s, scale: small, color: SIMD4(1, 1, 1, 1))
+            let status = friends.status(p.id)
+            var line: String
+            var lineColor = muted
+            switch status {
+            case .hosting(let world, let players):
+                line = "Playing \(world) - \(players) player\(players == 1 ? "" : "s") - you can join!"
+                lineColor = SIMD4(0.55, 1, 0.6, 1)
+            case .checking: line = "Checking..."
+            case .offline: line = "Not hosting right now"
+            case .unknown: line = p.address == nil ? "Hasn't shared where they host yet" : "Press Refresh to check"
+            }
+            if !row.isFriend { line = p.lastPlayed.map { "Played together " + WinMenus.relative($0) } ?? "Played together" }
+            ui.text(line, x: textX, y: y + 6 * s + 11 * small, scale: small, color: lineColor, shadow: false)
+            let btnW = 130 * s, btnH = 34 * s, btnY = y + (rowH - 8 * s - btnH) / 2
+            if row.isFriend {
+                let canJoin: Bool
+                if case .hosting = status { canJoin = true } else { canJoin = false }
+                if ui.button("Join", x: listX + listW - 2 * btnW - 24 * s, y: btnY, w: btnW, h: btnH, scale: s, input: input,
+                             enabled: canJoin && p.address != nil, primary: true), let target = p.address {
+                    click()
+                    if options.launcherOnly {
+                        launchJoin = target
+                    } else {
+                        address = target
+                        playerName = me.username
+                        startJoin()
+                    }
+                }
+                if ui.button("Remove", x: listX + listW - btnW - 16 * s, y: btnY, w: btnW, h: btnH, scale: s, input: input) {
+                    click(); friends.remove(p.id); friendMessage = "Removed \(p.display)."
+                }
+            } else if ui.button("Add Friend", x: listX + listW - btnW - 16 * s, y: btnY, w: btnW, h: btnH, scale: s, input: input, primary: true) {
+                click(); friends.befriend(p.id); friendMessage = "\(p.display) is now your friend!"; friends.refreshStatuses()
+            }
+            _ = index
+            y += rowH
+        }
+
+        if ui.button("Refresh", x: W / 2 - 250 * s, y: H - 60 * s, w: 240 * s, h: 44 * s, scale: s, input: input) {
+            click(); friends.refreshStatuses()
+        }
+        if ui.button("Back", x: W / 2 + 10 * s, y: H - 60 * s, w: 240 * s, h: 44 * s, scale: s, input: input) || input.escape {
+            click(); page = .launcher
+        }
+    }
+
+    /// A tiny flat portrait of an explorer: hat, face and shirt.
+    static func portrait(_ ui: inout UIBuilder, look: PlayerLook, x: Float, y: Float, size: Float) {
+        func color(_ hex: UInt32) -> SIMD4<Float> {
+            SIMD4(Float((hex >> 16) & 255) / 255, Float((hex >> 8) & 255) / 255, Float(hex & 255) / 255, 1)
+        }
+        let u = size / 8
+        ui.rect(x, y, size, size, SIMD4(0.12, 0.1, 0.18, 1))
+        ui.rect(x + 2 * u, y + 1 * u, 4 * u, 4 * u, color(PlayerLook.skinTones[look.skin]))                       // face
+        ui.rect(x + 3 * u, y + 2.5 * u, 0.7 * u, 0.7 * u, SIMD4(0.1, 0.08, 0.1, 1))                              // eyes
+        ui.rect(x + 4.3 * u, y + 2.5 * u, 0.7 * u, 0.7 * u, SIMD4(0.1, 0.08, 0.1, 1))
+        if look.hat != .none { ui.rect(x + 1.6 * u, y + 0.4 * u, 4.8 * u, 1.3 * u, color(PlayerLook.accentColors[look.accent])) }  // hat
+        ui.rect(x + 1.5 * u, y + 5.2 * u, 5 * u, 2.8 * u, color(PlayerLook.shirtColors[look.shirt]))            // shirt
+    }
+
+    /// "today", "yesterday" or "3 days ago".
+    static func relative(_ date: Date) -> String {
+        let days = Int(Date().timeIntervalSince(date) / 86_400)
+        return days <= 0 ? "today" : days == 1 ? "yesterday" : "\(days) days ago"
     }
 
     /// Everyone's reviews (read from GitHub), the average rating, and a star picker that opens
@@ -819,7 +1001,7 @@ extension WinMenus {
         ui.centeredText("Friends see your look in multiplayer, on Mac and Windows.", centerX: W / 2, y: H * 0.06 + 10 * head,
                         scale: small, color: muted)
 
-        var look = PlayerLook(encoded: store.settings.cosmetics) ?? PlayerLook.defaultLook(for: store.settings.username)
+        var look = PlayerLook(encoded: store.settings.cosmetics) ?? PlayerLook.oneOfOne(id: store.settings.playerID)
         let before = look
 
         // Spinning preview on the left half of the screen
@@ -871,7 +1053,7 @@ extension WinMenus {
         }
         if ui.button("Reset", x: x + half + 12 * s, y: y, w: half, h: 46 * s, scale: s, input: input) {
             click()
-            look = PlayerLook.defaultLook(for: store.settings.username)
+            look = PlayerLook.oneOfOne(id: store.settings.playerID)
         }
         if look != before { store.update { $0.cosmetics = look.encoded } }
         if ui.button("Done", x: W / 2 - 200 * s, y: H - 46 * s - 24 * s, w: 400 * s, h: 46 * s, scale: s, input: input, primary: true) || input.escape {
@@ -920,7 +1102,7 @@ extension WinMenus {
         ui.centeredText("Left-click paints, right-click rubs out. Friends see your skin in multiplayer.", centerX: W / 2,
                         y: H * 0.04 + 10 * head, scale: small, color: muted)
 
-        var look = skinDraft ?? PlayerLook(encoded: store.settings.cosmetics) ?? PlayerLook.defaultLook(for: store.settings.username)
+        var look = skinDraft ?? PlayerLook(encoded: store.settings.cosmetics) ?? PlayerLook.oneOfOne(id: store.settings.playerID)
         let region = SkinRegion.byID[skinRegionID] ?? SkinRegion.all[0]
         let face = region.id == "hf", shirtFront = region.id == "bf"
 

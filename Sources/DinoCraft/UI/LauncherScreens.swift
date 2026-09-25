@@ -11,6 +11,8 @@ final class LauncherScreen: Screen {
     private var installError: String?
     /// Shows the guide to beating DinoCraft instead of the news.
     private var showingGuide = false
+    /// Reviews and friends' games are checked once, when the launcher first shows.
+    private var primed = false
 
     override var scene: GameActivityState.Scene { .mainMenu }
     override func back(_ engine: GameEngine) {}
@@ -20,6 +22,11 @@ final class LauncherScreen: Screen {
         let d = ui.draw
         let W = ui.size.x, H = ui.size.y
         let intro = appear(0, duration: 0.6)
+        if !primed {
+            primed = true
+            GameLinks.reviews.load()
+            FriendList.shared.refreshStatuses()
+        }
         d.opacity = intro
 
         let titleY = max(30, H * 0.06)
@@ -157,7 +164,12 @@ final class LauncherScreen: Screen {
             showingGuide.toggle()
         }
         by += bh + gap
-        if ui.button("launcher.reviews", "Player Reviews", Rect(bx, by, bw, bh), style: .secondary) {
+        let halfW = (bw - gap) / 2
+        if ui.button("launcher.friends", FriendList.shared.buttonLabel, Rect(bx, by, halfW, bh), style: .secondary) {
+            FriendList.shared.refreshStatuses()
+            e.pushScreen(FriendsScreen())
+        }
+        if ui.button("launcher.reviews", GameLinks.reviews.buttonLabel, Rect(bx + halfW + gap, by, halfW, bh), style: .secondary) {
             GameLinks.reviews.load()
             e.pushScreen(ReviewsScreen())
         }
@@ -185,6 +197,126 @@ final class LauncherScreen: Screen {
 // MARK: - Cosmetics
 
 /// Choose a hat, outfit colours and something to wear on your back. Friends see it in multiplayer.
+/// Your one-of-a-kind player card, your friends (and whether they're hosting right now) and the
+/// players you've recently been in a game with.
+final class FriendsScreen: Screen {
+    private var note: String?
+    private var scroll = 0
+
+    override var scene: GameActivityState.Scene { .mainMenu }
+
+    override func draw(_ ui: UIContext, _ e: GameEngine) {
+        MenuBackdrop.draw(ui)
+        let d = ui.draw
+        let W = ui.size.x, H = ui.size.y
+        let friends = FriendList.shared
+        let me = e.settings
+        let panel = Rect(max(30, W / 2 - 560), max(30, H / 2 - 350), min(1120, W - 60), min(700, H - 60))
+        ui.panel(panel, title: "Friends")
+        d.text("Add friends with their friend code. Play together once and they show up here too.", x: panel.midX, y: panel.y + 66,
+               size: 14, color: Theme.textMuted, align: .center)
+
+        // Your card
+        let card = Rect(panel.x + 30, panel.y + 100, 300, panel.h - 190)
+        d.fill(card, Color(linear: 0, 0, 0, 0.25), radius: 18)
+        let look = PlayerLook(encoded: me.cosmetics) ?? PlayerLook.oneOfOne(id: me.playerID)
+        CosmeticsScreen.drawFront(d, look, in: Rect(card.x + 60, card.y + 10, card.w - 120, card.h * 0.45))
+        var y = card.y + card.h * 0.47
+        d.text(PlayerIdentity.display(name: me.username, id: me.playerID), x: card.midX, y: y, size: 22, color: Theme.amber, align: .center)
+        y += 34
+        d.text("1 of 1", x: card.midX, y: y, size: 20, color: Theme.jungle, align: .center)
+        y += 28
+        d.text("Nobody else has your tag", x: card.midX, y: y, size: 13.5, color: Theme.textMuted, align: .center)
+        y += 30
+        if ui.button("friends.copy", "Copy My Friend Code", Rect(card.x + 16, y, card.w - 32, 44), style: .primary, fontSize: 15) {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(friends.myCode(name: me.username, id: me.playerID), forType: .string)
+            note = "Friend code copied! Send it to a friend."
+        }
+        y += 54
+        if ui.button("friends.add", "Add Friend (Paste Code)", Rect(card.x + 16, y, card.w - 32, 44), style: .secondary, fontSize: 15) {
+            if let text = NSPasteboard.general.string(forType: .string) {
+                note = friends.add(code: text, myID: me.playerID)
+                friends.refreshStatuses()
+            } else {
+                note = "Copy your friend's code first, then press this."
+            }
+        }
+        y += 56
+        if let note { d.text(note, x: card.x + 16, y: y, size: 13.5, color: Theme.amber, maxWidth: card.w - 32) }
+
+        // Friends and recent players
+        let list = Rect(card.maxX + 24, card.y, panel.maxX - 30 - card.maxX - 24, card.h)
+        d.fill(list, Color(linear: 0, 0, 0, 0.25), radius: 18)
+        let rowH: Float = 62
+        let rows = friends.friends.map { ($0, true) } + friends.recent.map { ($0, false) }
+        let visible = max(1, Int((list.h - 70) / rowH))
+        if list.contains(ui.mouse) && ui.input.scroll != 0 { scroll -= Int(ui.input.scroll.rounded()) }
+        scroll = max(0, min(max(0, rows.count - visible), scroll))
+        y = list.y + 16
+        if rows.isEmpty {
+            d.text("No friends yet.", x: list.midX, y: y + 60, size: 20, color: Theme.text, align: .center)
+            d.text("Copy your friend code and send it to someone, or join a friend's game.", x: list.midX, y: y + 92, size: 14,
+                   color: Theme.textMuted, align: .center)
+        }
+        d.text("Friends (\(friends.friends.count))", x: list.x + 18, y: y, size: 15, color: Theme.amber)
+        y += 26
+        var shownRecent = false
+        for (person, isFriend) in rows.dropFirst(scroll).prefix(visible) {
+            if !isFriend && !shownRecent {
+                shownRecent = true
+                d.text("Played with recently", x: list.x + 18, y: y, size: 15, color: Theme.amber)
+                y += 26
+            }
+            guard y + rowH < list.maxY else { break }
+            let face = Rect(list.x + 18, y, 40, rowH - 10)
+            d.fill(face, Color(linear: 0, 0, 0, 0.3), radius: 6)
+            CosmeticsScreen.drawFront(d, PlayerLook.resolve(person.look, name: person.name), in: face)
+            d.text(person.display, x: face.maxX + 14, y: y + 4, size: 16, color: Theme.text)
+            let status = friends.status(person.id)
+            var line: String
+            var lineColor = Theme.textMuted
+            switch status {
+            case .hosting(let world, let players):
+                line = "Playing \(world) · \(players) player\(players == 1 ? "" : "s") · you can join!"
+                lineColor = Theme.jungle
+            case .checking: line = "Checking…"
+            case .offline: line = "Not hosting right now"
+            case .unknown: line = person.address == nil ? "Hasn't shared where they host yet" : "Press Refresh to check"
+            }
+            if !isFriend { line = person.lastPlayed.map { "Played together " + FriendsScreen.relative($0) } ?? "Played together" }
+            d.text(line, x: face.maxX + 14, y: y + 28, size: 13.5, color: lineColor)
+            let bw: Float = 120, bh: Float = 38, by = y + (rowH - 10 - bh) / 2
+            if isFriend {
+                var canJoin = false
+                if case .hosting = status { canJoin = person.address != nil }
+                if ui.button("friends.join.\(person.id)", "Join", Rect(list.maxX - 2 * bw - 28, by, bw, bh), style: .primary,
+                             enabled: canJoin, fontSize: 15), let address = person.address {
+                    if e.options.launcherOnly { e.launchGameApp(join: address) } else { e.joinGame(address: address) }
+                }
+                if ui.button("friends.remove.\(person.id)", "Remove", Rect(list.maxX - bw - 18, by, bw, bh), style: .secondary, fontSize: 15) {
+                    friends.remove(person.id)
+                    note = "Removed \(person.display)."
+                }
+            } else if ui.button("friends.befriend.\(person.id)", "Add Friend", Rect(list.maxX - bw - 18, by, bw, bh), style: .primary, fontSize: 15) {
+                friends.befriend(person.id)
+                friends.refreshStatuses()
+                note = "\(person.display) is now your friend!"
+            }
+            y += rowH
+        }
+
+        if ui.button("friends.refresh", "Refresh", Rect(panel.midX - 250, panel.maxY - 64, 240, 46), style: .secondary) { friends.refreshStatuses() }
+        if ui.button("friends.back", "Back", Rect(panel.midX + 10, panel.maxY - 64, 240, 46), style: .secondary) { e.popScreen() }
+    }
+
+    /// "today", "yesterday" or "3 days ago".
+    static func relative(_ date: Date) -> String {
+        let days = Int(Date().timeIntervalSince(date) / 86_400)
+        return days <= 0 ? "today" : days == 1 ? "yesterday" : "\(days) days ago"
+    }
+}
+
 /// Everyone's reviews (read from GitHub), the average rating, and a star picker that opens a
 /// pre-filled page for writing your own.
 final class ReviewsScreen: Screen {
@@ -269,7 +401,7 @@ final class CosmeticsScreen: Screen {
         d.text("Friends see your look in multiplayer, on Mac and Windows.", x: panel.midX, y: panel.y + 66, size: 14,
                color: Theme.textMuted, align: .center)
 
-        var look = PlayerLook(encoded: e.settings.cosmetics) ?? PlayerLook.defaultLook(for: e.settings.username)
+        var look = PlayerLook(encoded: e.settings.cosmetics) ?? PlayerLook.oneOfOne(id: e.settings.playerID)
         let before = look
 
         // Front view of the explorer, drawn from the same boxes the 3D model uses.
@@ -317,7 +449,7 @@ final class CosmeticsScreen: Screen {
             look.accent = Int.random(in: 0..<PlayerLook.accentColors.count)
         }
         if ui.button("cos.reset", "Reset", Rect(x + half + 12, y + 6, half, 50), style: .secondary) {
-            look = PlayerLook.defaultLook(for: e.settings.username)
+            look = PlayerLook.oneOfOne(id: e.settings.playerID)
         }
         if look != before { e.settingsStore.update { $0.cosmetics = look.encoded } }
         if ui.button("cos.done", "Done", Rect(panel.midX - 160, panel.maxY - 74, 320, 52), style: .primary) { back(e) }
@@ -438,7 +570,7 @@ final class SkinCreatorScreen: Screen {
         d.text("Left-click paints, right-click rubs out. Friends see your skin in multiplayer.", x: panel.midX, y: panel.y + 66,
                size: 14, color: Theme.textMuted, align: .center)
 
-        var look = draft ?? PlayerLook(encoded: e.settings.cosmetics) ?? PlayerLook.defaultLook(for: e.settings.username)
+        var look = draft ?? PlayerLook(encoded: e.settings.cosmetics) ?? PlayerLook.oneOfOne(id: e.settings.playerID)
         let region = SkinRegion.byID[regionID] ?? SkinRegion.all[0]
         let isFace = region.id == "hf", isShirt = region.id == "bf"
 

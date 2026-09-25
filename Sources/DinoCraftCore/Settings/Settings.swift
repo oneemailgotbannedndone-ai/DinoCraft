@@ -102,6 +102,8 @@ public struct GameSettings: Codable, Equatable, Sendable {
 
     // Profile & multiplayer
     public var username = ""
+    /// This player's one-of-a-kind ID (see `PlayerIdentity`), made on first launch.
+    public var playerID = PlayerIdentity.newID()
     public var lastServerAddress = ""
     public var texturePack = "dino"
     /// How your explorer looks to friends (see `PlayerLook` in DinoCraftGame); empty means the default look.
@@ -166,6 +168,7 @@ public struct GameSettings: Codable, Equatable, Sendable {
         showFPS = v(.showFPS, showFPS)
         showGuide = v(.showGuide, showGuide)
         username = v(.username, username)
+        playerID = v(.playerID, playerID)
         lastServerAddress = v(.lastServerAddress, lastServerAddress)
         texturePack = v(.texturePack, texturePack)
         cosmetics = v(.cosmetics, cosmetics)
@@ -186,6 +189,7 @@ public struct GameSettings: Codable, Equatable, Sendable {
     }
 
     public mutating func sanitize() {
+        if !PlayerIdentity.isValid(playerID) { playerID = PlayerIdentity.newID() }
         windowWidth = max(960, min(7680, windowWidth))
         windowHeight = max(540, min(4320, windowHeight))
         renderDistance = max(2, min(32, renderDistance))
@@ -212,6 +216,8 @@ public final class SettingsStore {
             do {
                 settings = try JSONDecoder().decode(GameSettings.self, from: data)
                 Log.info("Loaded settings from \(url.path)", category: "Settings")
+                // Settings from before player IDs: keep the new ID so this player stays the same person.
+                if !(String(data: data, encoding: .utf8) ?? "").contains("\"playerID\"") { save() }
             } catch {
                 Log.error("Settings file is unreadable (\(error)); using defaults and backing up the old file", category: "Settings")
                 try? FileManager.default.moveItem(at: url, to: url.appendingPathExtension("corrupt-\(Int(Date().timeIntervalSince1970))"))
@@ -220,6 +226,7 @@ public final class SettingsStore {
         } else {
             settings = GameSettings()
             Log.info("No settings file yet; using defaults", category: "Settings")
+            save()
         }
     }
 

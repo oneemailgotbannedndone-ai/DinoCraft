@@ -123,6 +123,26 @@ struct PlayerLook: Equatable {
         return look
     }
 
+    /// A one-of-a-kind starting look made from a player's ID: hat, colours and back item all come
+    /// from it, so no two players start out the same.
+    static func oneOfOne(id: String) -> PlayerLook {
+        var rng = SplitMix64(seed: Hashing.seed(from: "look-" + id))
+        var look = PlayerLook()
+        look.hat = Hat.allCases[rng.nextInt(Hat.allCases.count)]
+        look.shirt = rng.nextInt(shirtColors.count)
+        look.pants = rng.nextInt(pantsColors.count)
+        look.skin = rng.nextInt(skinTones.count)
+        look.back = Back.allCases[rng.nextInt(Back.allCases.count)]
+        look.accent = rng.nextInt(accentColors.count)
+        return look
+    }
+
+    /// Gives a player who hasn't picked a look yet their one-of-a-kind one (call at startup).
+    static func settle(_ store: SettingsStore) {
+        guard PlayerLook(encoded: store.settings.cosmetics) == nil else { return }
+        store.update { $0.cosmetics = PlayerLook.oneOfOne(id: $0.playerID).encoded }
+    }
+
     /// The look a player sent, or their default one.
     static func resolve(_ encoded: String?, name: String) -> PlayerLook {
         encoded.flatMap(PlayerLook.init(encoded:)) ?? defaultLook(for: name)

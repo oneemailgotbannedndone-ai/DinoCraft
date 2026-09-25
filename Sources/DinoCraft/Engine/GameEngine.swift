@@ -324,7 +324,8 @@ final class GameEngine: NSObject, MTKViewDelegate {
     func quitGame() { NSApp.terminate(nil) }
 
     /// DinoCraft Launcher's Play: opens DinoCraft.app (next to the launcher) and closes the launcher.
-    func launchGameApp() {
+    /// Opens DinoCraft.app from the launcher (joining `address` straight away if given) and quits the launcher.
+    func launchGameApp(join address: String? = nil) {
         let here = Bundle.main.bundleURL
         let sibling = here.deletingLastPathComponent().appendingPathComponent("DinoCraft.app")
         // Next to the launcher, or wherever macOS knows DinoCraft is installed.
@@ -333,18 +334,18 @@ final class GameEngine: NSObject, MTKViewDelegate {
         guard let game = found, game.standardizedFileURL != here.standardizedFileURL else {
             // No separate game app to open: play right here instead.
             Log.info("DinoCraft.app not found; playing in the launcher window", category: "App")
-            popScreen()
+            if let address { joinGame(address: address) } else { popScreen() }
             return
         }
         let config = NSWorkspace.OpenConfiguration()
-        config.arguments = ["--skip-launcher"]
+        config.arguments = ["--skip-launcher"] + (address.map { ["--join", $0] } ?? [])
         config.createsNewApplicationInstance = true
         NSWorkspace.shared.openApplication(at: game, configuration: config) { _, error in
             DispatchQueue.main.async {
                 if let error {
                     // Couldn't open the game app: play right here instead.
                     Log.warning("Couldn't open DinoCraft.app (\(error.localizedDescription)); playing in the launcher window", category: "App")
-                    self.popScreen()
+                    if let address { self.joinGame(address: address) } else { self.popScreen() }
                 } else {
                     NSApp.terminate(nil)
                 }
@@ -396,11 +397,20 @@ final class GameEngine: NSObject, MTKViewDelegate {
         let srv = GameServer(session: s, hostName: host)
         srv.onEvent = { [weak self] text in self?.showToast(text) }
         srv.onChat = { [weak self] from, text in self?.addChat(from: from, text: text) }
+        srv.hostID = settings.playerID
+        srv.hostLook = settings.cosmetics
+        srv.onMet = { [weak self] id, name, look in
+            guard let self else { return }
+            if FriendList.shared.met(id: id, name: name, look: look, address: nil, myID: self.settings.playerID) {
+                self.addChat(from: "", text: "Your friend \(name) is here!")
+            }
+        }
         do {
             try srv.start()
             server = srv
             s.network = srv
             let ip = NetworkInfo.localIPv4() ?? "this Mac's IP address"
+            if let local = NetworkInfo.localIPv4(), let code = InviteCode.encode(ip: local, port: NetConfig.port) { FriendList.shared.myAddress = code }
             showToast("Open to LAN on \(ip):\(NetConfig.port)")
             addChat(from: "", text: "Your world is open! Friends can join at \(ip):\(NetConfig.port)")
         } catch {
@@ -425,6 +435,7 @@ final class GameEngine: NSObject, MTKViewDelegate {
                     self.internetRenewTimer = 45 * 60
                     let code = InviteCode.encode(ip: ip, port: mapping.port)
                     self.inviteCode = code
+                    if let code { FriendList.shared.myAddress = code }
                     self.addChat(from: "", text: "Open to the internet! Invite code \(code ?? "?") (address \(ip):\(mapping.port)). Press Esc to copy it.")
                     self.showToast("Invite code \(code ?? "\(ip):\(mapping.port)")")
                 } else {
@@ -460,30 +471,24 @@ final class GameEngine: NSObject, MTKViewDelegate {
     }
 
     func joinGame(address: String) {
-        if let invite = InviteCode.decode(address) {
-            connect(NetConnection(host: invite.ip, port: invite.port), label: "invite code \(address.uppercased())")
-            return
-        }
-        var host = address.trimmingCharacters(in: .whitespaces)
-        var port = NetConfig.port
-        if let colon = host.lastIndex(of: ":"), let p = UInt16(host[host.index(after: colon)...]) {
-            port = p
-            host = String(host[..<colon])
-        }
-        connect(NetConnection(host: host, port: port), label: "\(host):\(port)")
+        let (host, port) = Wire.parseAddress(address)
+        let label = InviteCode.decode(address) != nil ? "invite code \(address.uppercased())" : "\(host):\(port)"
+        connect(NetConnection(host: host, port: port), label: label, address: address.trimmingCharacters(in: .whitespaces))
     }
 
     func joinGame(lanHost: LANDiscovery.Host) {
         connect(NetConnection(connection: NWConnection(to: lanHost.endpoint, using: .tcp), label: lanHost.name), label: lanHost.name)
     }
 
-    private func connect(_ connection: NetConnection, label: String) {
+    private func connect(_ connection: NetConnection, label: String, address: String? = nil) {
         guard session == nil, client == nil else { return }
         guard Username.validate(settings.username) == nil else {
             pushScreen(UsernameScreen(current: settings.username, firstRun: false))
             return
         }
         let c = GameClient(connection: connection, username: settings.username, label: label)
+        c.playerIdentity = (settings.playerID, settings.cosmetics)
+        c.address = address
         c.onWelcome = { [weak self, weak c] welcome in
             guard let self, let c else { return }
             self.startRemoteSession(welcome, client: c)

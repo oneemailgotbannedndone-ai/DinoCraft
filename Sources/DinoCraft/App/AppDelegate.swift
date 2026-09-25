@@ -35,6 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         Log.info("Metal device: \(device.name) · unified memory: \(device.hasUnifiedMemory) · recommended working set: \(device.recommendedMaxWorkingSetSize / 1_048_576) MB", category: "App")
 
         let settings = SettingsStore()
+        PlayerLook.settle(settings)
         let s = settings.settings
         let window = GameWindow(size: NSSize(width: s.windowWidth, height: s.windowHeight))
         window.delegate = self

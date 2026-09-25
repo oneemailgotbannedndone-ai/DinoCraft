@@ -752,7 +752,8 @@ final class WinSolo: CommandHost {
         let server: WireHost
         do {
             server = try WireHost(settings: .init(worldName: meta.name, seed: meta.seed, gameMode: meta.gameMode.rawValue,
-                                                  difficulty: meta.difficulty.rawValue, hostName: hostName, deep: meta.isDeep),
+                                                  difficulty: meta.difficulty.rawValue, hostName: hostName, deep: meta.isDeep,
+                                                  hostID: settings.playerID, hostLook: settings.cosmetics),
                                   makeChunk: { [storage, generator, id = meta.id] pos in
                                       storage.loadChunk(worldID: id, pos: pos) ?? generator.generate(pos)
                                   })
@@ -779,11 +780,18 @@ final class WinSolo: CommandHost {
         server.worldTime = { [weak self] in self?.session?.worldTime ?? 0 }
         server.onChat = { [weak self] from, text in self?.addChat(from: from, text: text) }
         server.onEvent = { [weak self] text in self?.addChat(from: "", text: text) }
+        server.onMet = { [weak self] id, name, look in
+            guard let self else { return }
+            if FriendList.shared.met(id: id, name: name, look: look, address: nil, myID: self.settings.playerID) {
+                self.addChat(from: "", text: "Your friend \(name) is here!")
+            }
+        }
         host = server
 
         let port = server.port
         if let ip = NetSocket.localIPv4(), let code = InviteCode.encode(ip: ip, port: port) {
             lanCode = code
+            FriendList.shared.myAddress = code
             addChat(from: "", text: "Your world is open! Friends on the same Wi-Fi can join with \(code)")
         } else {
             addChat(from: "", text: "Your world is open on port \(port).")
@@ -814,6 +822,7 @@ final class WinSolo: CommandHost {
             mapping = m
             if let ip = m.externalIP, !PortMapping.isPrivate(ip), let code = InviteCode.encode(ip: ip, port: m.port) {
                 internetCode = code
+                FriendList.shared.myAddress = code
                 addChat(from: "", text: "Friends anywhere can join with \(code)")
             } else {
                 addChat(from: "", text: "Your router opened the port, but your internet provider shares one address between homes, so only same-Wi-Fi friends can join (or use Tailscale).")

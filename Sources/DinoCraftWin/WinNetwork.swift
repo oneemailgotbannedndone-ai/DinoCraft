@@ -105,6 +105,8 @@ final class WinNetwork {
     let connection: WireConnection
     let welcome: Wire.Welcome
     let username: String
+    /// This player's `PlayerIdentity` ID, for spotting friends.
+    private var myID = ""
     private(set) var players: [Int: RemoteEntity] = [:]
     private(set) var mobs: [Int: RemoteEntity] = [:]
     private var names: [Int: String] = [:]
@@ -119,21 +121,11 @@ final class WinNetwork {
         for p in welcome.players { names[p.id] = p.name }
     }
 
-    /// Accepts an invite code (DINO-XXXXX-XXXXX), "host:port" or a plain address.
-    static func parseAddress(_ text: String) -> (host: String, port: UInt16) {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let code = InviteCode.decode(trimmed) { return (code.ip, code.port) }
-        if let colon = trimmed.lastIndex(of: ":"), let port = UInt16(trimmed[trimmed.index(after: colon)...]) {
-            return (String(trimmed[..<colon]), port)
-        }
-        return (trimmed, Wire.defaultPort)
-    }
-
-    static func join(address: String, username: String, timeout: Double = 20) throws -> WinNetwork {
-        let (host, port) = parseAddress(address)
+    static func join(address: String, username: String, playerID: String, look: String, timeout: Double = 20) throws -> WinNetwork {
+        let (host, port) = Wire.parseAddress(address)
         Log.info("Connecting to \(host):\(port) as \(username)", category: "Net")
         let connection = try WireConnection.connect(host: host, port: port)
-        connection.send(.hello, Wire.Hello(version: Wire.protocolVersion, username: username))
+        connection.send(.hello, Wire.Hello(version: Wire.protocolVersion, username: username, playerID: playerID, look: look))
         let deadline = Date().addingTimeInterval(timeout)
         var early: [WireConnection.Event] = []
         while Date() < deadline {
@@ -142,7 +134,12 @@ final class WinNetwork {
                 case .message(.welcome, let data):
                     let welcome = try JSONDecoder().decode(Wire.Welcome.self, from: data)
                     Log.info("Joined '\(welcome.worldName)' as player \(welcome.playerID) (\(welcome.gameMode), \(welcome.difficulty))", category: "Net")
-                    return WinNetwork(connection: connection, welcome: welcome, username: username, pending: early)
+                    let network = WinNetwork(connection: connection, welcome: welcome, username: username, pending: early)
+                    network.myID = playerID
+                    for p in welcome.players {
+                        FriendList.shared.met(id: p.playerID, name: p.name, look: p.look, address: p.id == 0 ? address : nil, myID: playerID)
+                    }
+                    return network
                 case .message(.reject, let data):
                     let reason = (try? JSONDecoder().decode(Wire.Reject.self, from: data))?.reason ?? "The host refused the connection."
                     connection.close()
@@ -185,7 +182,8 @@ final class WinNetwork {
                     guard let info = try? decoder.decode(Wire.PlayerInfo.self, from: data) else { continue }
                     names[info.id] = info.name
                     players[info.id]?.name = info.name
-                    out.append(.notice("\(info.name) joined the game"))
+                    let friend = FriendList.shared.met(id: info.playerID, name: info.name, look: info.look, address: nil, myID: myID)
+                    out.append(.notice(friend ? "Your friend \(info.name) joined the game!" : "\(info.name) joined the game"))
                 case .playerLeft:
                     guard let info = try? decoder.decode(Wire.PlayerInfo.self, from: data) else { continue }
                     players.removeValue(forKey: info.id)

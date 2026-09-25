@@ -44,6 +44,30 @@ enum TexturePackForge {
                   title: "DinoCraft", titleTop: "EAFBFF", titleBottom: "5AB8F0", restyle: frostbite),
         PackStyle(id: "neon", name: "Neon Nights", description: "Dark blocks with glowing neon edges.",
                   title: "DinoCraft", titleTop: "7AF8FF", titleBottom: "FF3AD8", restyle: neon),
+        PackStyle(id: "tunefulremix", name: "TunefulCraft Remix", description: "TunefulCraft after dark: glowing equalizers and deep purple shadows. For our first reviewer!",
+                  title: "TunefulCraft", titleTop: "C9A2FF", titleBottom: "3AF0D8", restyle: tunefulRemix),
+        PackStyle(id: "candy", name: "Candy Land", description: "Sugary pinks and sprinkles on everything.",
+                  title: "DinoCraft", titleTop: "FFD1EC", titleBottom: "FF6AB8", restyle: candy),
+        PackStyle(id: "desert", name: "Desert Sun", description: "Sun-bleached, sandy and warm.",
+                  title: "DinoCraft", titleTop: "FFF0C8", titleBottom: "E0923A", restyle: desert),
+        PackStyle(id: "midnight", name: "Midnight", description: "A moonlit world in deep blues, with silver edges.",
+                  title: "DinoCraft", titleTop: "DDE6FF", titleBottom: "5A6AD8", restyle: midnight),
+        PackStyle(id: "deepsea", name: "Deep Sea", description: "Everything underwater: teal light and rippling caustics.",
+                  title: "DinoCraft", titleTop: "B8FFF4", titleBottom: "1A8AA0", restyle: deepSea),
+        PackStyle(id: "inferno", name: "Inferno", description: "Charred blocks with glowing lava cracks.",
+                  title: "DinoCraft", titleTop: "FFD27A", titleBottom: "E0301A", restyle: inferno),
+        PackStyle(id: "gameboy", name: "Pocket Green", description: "Four shades of green, like an old handheld.",
+                  title: "DinoCraft", titleTop: "C4DC5A", titleBottom: "306230", restyle: pocketGreen),
+        PackStyle(id: "sketchbook", name: "Sketchbook", description: "Coloured pencil on paper, with hatching in the shadows.",
+                  title: "DinoCraft", titleTop: "FFFFFF", titleBottom: "8A8A8A", restyle: sketchbook),
+        PackStyle(id: "stainedglass", name: "Stained Glass", description: "Glowing panes of colour held in dark lead lines.",
+                  title: "DinoCraft", titleTop: "FFE08A", titleBottom: "7A3AE0", restyle: stainedGlass),
+        PackStyle(id: "blueprint", name: "Blueprint", description: "Every block drawn as an architect's plan.",
+                  title: "DinoCraft", titleTop: "FFFFFF", titleBottom: "7AB8FF", restyle: blueprint),
+        PackStyle(id: "watercolor", name: "Watercolour", description: "Soft washes of paint that pool at the edges.",
+                  title: "DinoCraft", titleTop: "FFE6F0", titleBottom: "7AB8E0", restyle: watercolor),
+        PackStyle(id: "gilded", name: "Gilded", description: "Everything cast in shining gold.",
+                  title: "DinoCraft", titleTop: "FFF6B8", titleBottom: "C8901A", restyle: gilded),
     ]
 
     /// Writes every pack into `root` (Resources/TexturePacks). Returns the texture count per pack.
@@ -189,6 +213,194 @@ enum TexturePackForge {
                 v *= 0.28
             }
             return rgb(h, s, v)
+        }
+    }
+
+    /// TunefulCraft's colours in the dark, with glowing equalizer bars and neon tile edges.
+    static func tunefulRemix(_ src: Canvas, tile: Bool) -> Canvas {
+        let purple = RGBA(hex: 0x2A1248)
+        return map(src) { p, x, y, size in
+            var (h, s, v) = hsv(p)
+            s = min(1, s * 1.4 + 0.1)
+            v = (v * 5).rounded() / 5 * 0.62 + 0.08
+            var c = rgb(h, s, v).mix(purple, 0.28)
+            guard tile else { return c.mix(RGBA(hex: 0xC9A2FF), 0.1) }
+            let bar = Double(size - y) / Double(size) < hash01(9, x / 6, 0) * 0.7 + 0.15
+            if x % 6 == 2 && bar { c = rgb(0.5 + Double(x) / Double(size) * 0.35, 0.8, 1) }
+            if x == 0 || y == 0 { c = RGBA(hex: 0xFF8AE0) } else if x == size - 1 || y == size - 1 { c = RGBA(hex: 0x3AF0D8) }
+            return c
+        }
+    }
+
+    /// Bright and sugary, tinted pink, with sprinkles on block faces.
+    static func candy(_ src: Canvas, tile: Bool) -> Canvas {
+        let sprinkles: [RGBA] = [RGBA(hex: 0xFF5AA8), RGBA(hex: 0x6AD8FF), RGBA(hex: 0xFFE45A), RGBA(hex: 0x8AF07A), RGBA(hex: 0xFFFFFF)]
+        return map(src) { p, x, y, _ in
+            let (h, s, v) = hsv(p)
+            let c = rgb(h, min(1, s * 0.85 + 0.1), 0.45 + v * 0.55).mix(RGBA(hex: 0xFFB8DC), 0.16)
+            if tile && hash01(21, x, y) < 0.035 { return sprinkles[Int(hash01(22, x, y) * 5) % 5] }
+            return c
+        }
+    }
+
+    /// Warm, sandy and faded, a little lighter towards the top of each block.
+    static func desert(_ src: Canvas, tile: Bool) -> Canvas {
+        let sand = RGBA(hex: 0xE8C890)
+        return map(src) { p, x, y, size in
+            let (h, s, v) = hsv(p)
+            var c = rgb(h, s * 0.72, min(1, v * 1.02 + 0.04)).mix(sand, 0.2)
+            if tile { c = c.lighten(0.12 * (1 - Double(y) / Double(size))) }
+            if hash01(31, x, y) < 0.05 { c = c.shade(0.9) }
+            return c
+        }
+    }
+
+    /// Dark and blue, lit from above by moonlight, with the odd star-like fleck.
+    static func midnight(_ src: Canvas, tile: Bool) -> Canvas {
+        let night = RGBA(hex: 0x14204A)
+        return map(src) { p, x, y, size in
+            let (h, s, v) = hsv(p)
+            var c = rgb(h, s * 0.8, v * 0.62).mix(night, 0.3)
+            if tile && (y == 0 || (y == 1 && hash01(41, x, 0) < 0.5)) { c = c.mix(RGBA(hex: 0xC8D4FF), 0.45) }
+            if tile && (x == size - 1 || y == size - 1) { c = c.shade(0.7) }
+            if hash01(42, x, y) < 0.012 { c = RGBA(hex: 0xEEF2FF) }
+            return c
+        }
+    }
+
+    /// A teal underwater tint with rippling bands of light.
+    static func deepSea(_ src: Canvas, tile: Bool) -> Canvas {
+        let sea = RGBA(hex: 0x10687A)
+        return map(src) { p, x, y, size in
+            let (h, s, v) = hsv(p)
+            var c = rgb(h, s * 0.85, v * 0.82).mix(sea, 0.3)
+            let fx = Double(x) / Double(size) * 2 * .pi, fy = Double(y) / Double(size) * 2 * .pi
+            let ripple = sin(fx * 2 + sin(fy * 3) * 1.4) + sin(fy * 2 - fx)
+            if ripple > 1.35 { c = c.mix(RGBA(hex: 0xB8FFF4), 0.3) }
+            if hash01(51, x, y) < 0.01 { c = RGBA(hex: 0xDFFFFA) }   // bubbles
+            return c
+        }
+    }
+
+    /// Charred and dark, with lava glowing in the cracks between colours.
+    static func inferno(_ src: Canvas, tile: Bool) -> Canvas {
+        let size = src.size
+        let ash = RGBA(hex: 0x2A0C08)
+        return map(src) { p, x, y, _ in
+            let (h, s, v) = hsv(p)
+            let right = src.px[y * size + (x + 1) % size], down = src.px[((y + 1) % size) * size + x]
+            let crack = abs(v - hsv(right).2) + abs(v - hsv(down).2)
+            if tile && crack > 0.42 && v < 0.6 {
+                return RGBA(hex: 0xFF7A1A).mix(RGBA(hex: 0xFFD27A), min(1, (crack - 0.42) * 2))
+            }
+            var c = rgb(h, s * 0.9, v * 0.5).mix(ash, 0.32)
+            if tile && hash01(61, x, y) < 0.02 { c = RGBA(hex: 0xFF5A14) }   // embers
+            return c
+        }
+    }
+
+    /// Brightness in four shades of green, like an old handheld's screen.
+    static func pocketGreen(_ src: Canvas, tile: Bool) -> Canvas {
+        let shades = [RGBA(hex: 0x0F380F), RGBA(hex: 0x306230), RGBA(hex: 0x8BAC0F), RGBA(hex: 0xC4DC5A)]
+        return map(src) { p, x, y, _ in
+            let l = 0.3 * p.r + 0.59 * p.g + 0.11 * p.b
+            // A little ordered dither keeps gradients from banding.
+            let dither = ((x % 2) * 2 + (y % 2) * 3) % 4
+            let level = min(3, max(0, Int(l * 4.2 + Double(dither) * 0.08 - 0.1)))
+            return shades[level]
+        }
+    }
+
+    /// Coloured pencil on cream paper: soft colour, hatching in the shadows and pencil tile edges.
+    static func sketchbook(_ src: Canvas, tile: Bool) -> Canvas {
+        let paper = RGBA(hex: 0xF4EFE2), pencil = RGBA(hex: 0x3A3A44)
+        return map(src) { p, x, y, size in
+            let (h, s, v) = hsv(p)
+            var c = paper.mix(rgb(h, s * 0.8, v), 0.62)
+            if v < 0.55 && (x + y) % 4 == 0 { c = c.mix(pencil, 0.55) }
+            if v < 0.32 && (x - y + size) % 4 == 0 { c = c.mix(pencil, 0.6) }
+            if tile && (x == 0 || y == 0) && hash01(71, x, y) < 0.8 { c = c.mix(pencil, 0.7) }
+            if hash01(72, x, y) < 0.08 { c = c.lighten(0.15) }   // paper grain
+            return c
+        }
+    }
+
+    /// Glowing panes of colour (each 4×4 area's average) held in dark lead lines.
+    static func stainedGlass(_ src: Canvas, tile: Bool) -> Canvas {
+        map(src) { (_: RGBA, x: Int, y: Int, _: Int) -> RGBA in pane(src, x, y, tile: tile) }
+    }
+
+    private static func pane(_ src: Canvas, _ x: Int, _ y: Int, tile: Bool) -> RGBA {
+        let size = src.size
+        let lead = RGBA(hex: 0x1A1620)
+        // Panes are 8×8 with jittered corners so they don't look like a plain grid.
+        let cx = x / 8, cy = y / 8
+        let jx = Int(hash01(81, cx, cy) * 3) - 1, jy = Int(hash01(82, cx, cy) * 3) - 1
+        let lx = (x + jx + 8) % 8, ly = (y + jy + 8) % 8
+        if tile && (lx == 0 || ly == 0) { return lead }
+        var r = 0.0, g = 0.0, b = 0.0, n = 0.0
+        let x0 = x / 4 * 4, y0 = y / 4 * 4
+        for dy in 0..<4 {
+            for dx in 0..<4 {
+                let row: Int = (y0 + dy) % size, col: Int = (x0 + dx) % size
+                let q = src.px[row * size + col]
+                guard q.a > 0.01 else { continue }
+                r += q.r; g += q.g; b += q.b; n += 1
+            }
+        }
+        guard n > 0 else { return lead }
+        let (h, s, v) = hsv(RGBA(r / n, g / n, b / n))
+        let offCentre: Double = abs(Double(lx) - 3.5) + abs(Double(ly) - 3.5)
+        let glow: Double = 1 - offCentre / 14
+        let value: Double = min(1, v * 0.85 + 0.12) * (0.8 + glow * 0.25)
+        return rgb(h, min(1, s * 1.35 + 0.1), value)
+    }
+
+    /// Blue paper with white lines wherever the picture changes, and a faint drafting grid.
+    static func blueprint(_ src: Canvas, tile: Bool) -> Canvas {
+        let size = src.size
+        let paper = RGBA(hex: 0x1E4E8C), ink = RGBA(hex: 0xE4F0FF)
+        return map(src) { p, x, y, _ in
+            let v = hsv(p).2
+            let right = src.px[y * size + (x + 1) % size], down = src.px[((y + 1) % size) * size + x]
+            let edge = abs(v - hsv(right).2) + abs(v - hsv(down).2) > 0.38 || (!tile && (right.a < 0.5 || down.a < 0.5))
+            if edge || (tile && (x == 0 || y == 0)) { return ink }
+            var c = paper.mix(RGBA(hex: 0x3A78C0), v * 0.6)
+            if tile && (x % 8 == 4 || y % 8 == 4) { c = c.mix(ink, 0.15) }
+            return c
+        }
+    }
+
+    /// Softened colour on paper, with pigment pooling darker where colours meet.
+    static func watercolor(_ src: Canvas, tile: Bool) -> Canvas {
+        let size = src.size
+        let paper = RGBA(hex: 0xFBF7EE)
+        return map(src) { p, x, y, _ in
+            var sum = RGBA(0, 0, 0, 0), n = 0.0
+            for dy in -1...1 { for dx in -1...1 {
+                let q = src.px[((y + dy + size) % size) * size + (x + dx + size) % size]
+                guard q.a > 0.01 else { continue }
+                sum = RGBA(sum.r + q.r, sum.g + q.g, sum.b + q.b); n += 1
+            } }
+            let blur = RGBA(sum.r / n, sum.g / n, sum.b / n)
+            let (h, s, v) = hsv(blur)
+            var c = rgb(h, s * 0.8, min(1, v * 0.95 + 0.08)).mix(paper, 0.18)
+            let pool = abs(hsv(p).2 - v)
+            if pool > 0.1 { c = c.shade(1 - min(0.25, pool)) }
+            if hash01(91, x / 2, y / 2) < 0.12 { c = c.mix(paper, 0.2) }   // paper showing through
+            return c
+        }
+    }
+
+    /// Brightness mapped onto a gold ramp, keeping a hint of each block's colour, with a diagonal shine.
+    static func gilded(_ src: Canvas, tile: Bool) -> Canvas {
+        let dark = RGBA(hex: 0x4A2C06), mid = RGBA(hex: 0xC8901A), bright = RGBA(hex: 0xFFF2A8)
+        return map(src) { p, x, y, size in
+            let v = hsv(p).2
+            var c = v < 0.5 ? dark.mix(mid, v * 2) : mid.mix(bright, (v - 0.5) * 2)
+            c = c.mix(p, 0.22)
+            if tile && (x + y) % size < 3 { c = c.lighten(0.3) }
+            return c
         }
     }
 

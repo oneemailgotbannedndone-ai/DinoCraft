@@ -17,6 +17,10 @@ final class GameClient: SessionNetwork {
     private(set) var chunksReceived = 0
     weak var session: GameSession?
 
+    /// This player's `PlayerIdentity` ID and look, sent in the hello.
+    var playerIdentity: (id: String, look: String) = ("", "")
+    /// Where the host was reached, remembered for the friends list.
+    var address: String?
     var onWelcome: ((WelcomeMessage) -> Void)?
     var onDisconnect: ((String) -> Void)?
     var onChat: ((String, String) -> Void)?
@@ -33,7 +37,8 @@ final class GameClient: SessionNetwork {
         connection.onReady = { [weak self] in
             guard let self else { return }
             Log.info("Connected to \(self.label); saying hello as \(self.username)", category: "Net")
-            self.connection.send(.hello, HelloMessage(version: NetConfig.protocolVersion, username: self.username))
+            self.connection.send(.hello, HelloMessage(version: NetConfig.protocolVersion, username: self.username,
+                                                      playerID: self.playerIdentity.id, look: self.playerIdentity.look))
         }
         connection.onMessage = { [weak self] type, data in self?.handle(type, data) }
         connection.onChunk = { [weak self] chunk in
@@ -51,7 +56,10 @@ final class GameClient: SessionNetwork {
         case .welcome:
             guard let w = NetConnection.decode(WelcomeMessage.self, data) else { return }
             playerID = w.playerID
-            for p in w.players { players[p.id] = RemotePlayer(id: p.id, name: p.name, position: DVec3(w.x, w.y, w.z)) }
+            for p in w.players {
+                players[p.id] = RemotePlayer(id: p.id, name: p.name, position: DVec3(w.x, w.y, w.z))
+                FriendList.shared.met(id: p.playerID, name: p.name, look: p.look, address: p.id == 0 ? address : nil, myID: playerIdentity.id)
+            }
             Log.info("Joined '\(w.worldName)' as player \(w.playerID) with \(w.players.count) other player(s)", category: "Net")
             onWelcome?(w)
         case .reject:
@@ -61,7 +69,8 @@ final class GameClient: SessionNetwork {
         case .playerJoined:
             guard let p = NetConnection.decode(PlayerInfo.self, data) else { return }
             players[p.id] = RemotePlayer(id: p.id, name: p.name, position: session?.player.position ?? .zero)
-            onChat?("", "\(p.name) joined the game")
+            let friend = FriendList.shared.met(id: p.playerID, name: p.name, look: p.look, address: nil, myID: playerIdentity.id)
+            onChat?("", friend ? "Your friend \(p.name) joined the game!" : "\(p.name) joined the game")
         case .playerLeft:
             guard let p = NetConnection.decode(PlayerInfo.self, data) else { return }
             players.removeValue(forKey: p.id)

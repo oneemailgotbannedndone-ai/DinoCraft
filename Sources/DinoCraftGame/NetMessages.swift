@@ -38,11 +38,16 @@ enum MessageType: UInt8 {
     case containerData
     case containerSet
     case spawnMob
+    /// "What are you playing?" — answered without joining, for the friends list.
+    case status
 }
 
 struct HelloMessage: Codable {
     var version: Int
     var username: String
+    /// The player's one-of-a-kind ID (`PlayerIdentity`) and look; older versions leave them out.
+    var playerID: String? = nil
+    var look: String? = nil
 }
 
 struct WelcomeMessage: Codable {
@@ -63,6 +68,8 @@ struct WelcomeMessage: Codable {
 struct PlayerInfo: Codable {
     var id: Int
     var name: String
+    var playerID: String? = nil
+    var look: String? = nil
 }
 
 struct RejectMessage: Codable { var reason: String }

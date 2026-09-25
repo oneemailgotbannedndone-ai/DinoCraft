@@ -636,6 +636,8 @@ enum TexturePainter {
         default:
             if let special = NewTextures.item(name) { return special }
             if name.hasSuffix("_pickaxe"), let pick = BetterTextures.pickaxe(String(name.dropLast("_pickaxe".count))) { return pick }
+            if name.hasSuffix("_axe"), !name.hasSuffix("_pickaxe"), let axe = BetterTextures.axe(String(name.dropLast("_axe".count))) { return axe }
+            if name.hasSuffix("_sword"), let sword = BetterTextures.sword(String(name.dropLast("_sword".count))) { return sword }
             let parts = name.split(separator: "_")
             guard parts.count == 2, let mat = materials[String(parts[0])] else {
                 c.disc(16, 16, 10, RGBA(hex: 0xFF00FF))   // missing-texture magenta

@@ -9,6 +9,24 @@ King Grumblesaurus
 - Toonland's boss: ink splatters, ground-shaking stomps and a boss health bar.
 - Cheer him up to beat the game, win the Smile Trophy and hear his own theme, "Grumble Stomp".
 
+Friends
+- A new Friends page in the launcher. Press Copy My Friend Code and send it to a friend; they press Add Friend (Paste Code).
+- See which friends are playing right now and join their world in one click.
+- Anyone you play with shows up under "Played with recently", ready to add.
+- The game tells you when a friend joins your world.
+
+Every player is 1 of 1
+- Everyone gets their own tag, like Rex#K7Q2, so no two players are the same, even with the same name.
+- New players start with a one-of-a-kind look made just for them.
+
+12 new texture packs
+- TunefulCraft Remix (for our very first reviewer - thank you, Tuneful!), Candy Land, Desert Sun, Midnight, Deep Sea, Inferno,
+  Pocket Green, Sketchbook, Stained Glass, Blueprint, Watercolour and Gilded. That's 19 packs to choose from.
+
+Better tools
+- Hand-drawn axes with a curved, bevelled blade and swords with a crossguard, wrapped grip and pommel.
+- The launcher's Friends and Reviews buttons show who's playing and the average star rating.
+
 Draw your whole skin
 - The Skin Creator now paints every side of every body part: head (even the top), body, both arms and both legs.
 - The preview turns to show the side you're painting, and "Copy Other Arm/Leg" matches your limbs in one click.
