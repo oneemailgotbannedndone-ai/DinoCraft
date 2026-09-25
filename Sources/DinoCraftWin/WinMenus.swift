@@ -92,7 +92,8 @@ final class WinMenus {
     /// Stars picked on the Reviews page before writing a review.
     private var reviewStars = 5
     private var reviewWords = ""
-    private var skinTab = 0
+    /// The side being painted (a `SkinRegion` id); "hf" is the face.
+    private var skinRegionID = "hf"
     private var skinColor: UInt8 = 1
     private var skinMirror = true
     private var skinFill = false
@@ -148,6 +149,21 @@ final class WinMenus {
             demo.face = PlayerLook.presetPixels(PlayerLook.facePresets[0].pixels, count: 64)
             demo.chest = PlayerLook.presetPixels(PlayerLook.chestPresets[3].pixels, count: 80)
             skinDraft = demo
+        }
+        if options.demoScreen == "skin-arm" {
+            // Automated check: a painted left arm (a stripe down its outer side) and a star on the back
+            page = .skin
+            var demo = PlayerLook()
+            demo.hat = .wizard
+            demo.back = .dragonwings
+            if let arm = SkinRegion.byID["lal"] {
+                demo.setPixels((0..<arm.count).map { ($0 % 4 == 1 || $0 % 4 == 2) ? 5 : 0 }, for: arm)
+            }
+            if let back = SkinRegion.byID["bb"] {
+                demo.setPixels(PlayerLook.presetPixels(PlayerLook.chestPresets[2].pixels, count: back.count), for: back)
+            }
+            skinDraft = demo
+            skinRegionID = "lal"
         }
         _ = SDL_SetWindowRelativeMouseMode(window, false)
         _ = SDL_StartTextInput(window)
@@ -905,30 +921,50 @@ extension WinMenus {
                         y: H * 0.04 + 10 * head, scale: small, color: muted)
 
         var look = skinDraft ?? PlayerLook(encoded: store.settings.cosmetics) ?? PlayerLook.defaultLook(for: store.settings.username)
-        if look.face.count != 64 { look.face = Array(repeating: 0, count: 64) }
-        if look.chest.count != 80 { look.chest = Array(repeating: 0, count: 80) }
+        let region = SkinRegion.byID[skinRegionID] ?? SkinRegion.all[0]
+        let face = region.id == "hf", shirtFront = region.id == "bf"
 
-        // Preview, turning gently so the front stays in view
+        // Preview, turned to show the side you're painting (and swaying a little)
+        let sideYaw: Float
+        switch region.side {
+        case .front, .top: sideYaw = .pi
+        case .back: sideYaw = 0
+        case .left: sideYaw = .pi / 2
+        case .right: sideYaw = -.pi / 2
+        }
         CreatureModels.appendPlayer(&previewModels, name: store.settings.username, look: look.encoded,
-                                    at: SIMD3(-1.9, -1.05, -4.0), yaw: .pi + Float(sin(now * 0.7)) * 0.6, pitch: 0,
+                                    at: SIMD3(-2.0, -1.05, -4.0), yaw: sideYaw + Float(sin(now * 0.7)) * 0.35, pitch: region.side == .top ? -0.6 : 0,
                                     walk: 0, moving: 0, sneaking: false, swing: 0, hurt: 0)
 
-        // Face / shirt tabs
-        let face = skinTab == 0
-        let cols = face ? PlayerLook.faceWidth : PlayerLook.chestWidth, rows = face ? PlayerLook.faceHeight : PlayerLook.chestHeight
-        let cell = min(34 * s, (H * 0.56) / Float(rows))
+        // Which part and which side
+        let cols = region.width, rows = region.height
+        let canvasX = W * 0.36, canvasY = H * 0.3
+        let partW = 110 * s, partH = 32 * s
+        for (i, part) in SkinRegion.parts.enumerated() {
+            let x = W * 0.36 - 20 * s + Float(i % 3) * (partW + 6 * s) - 0 * s, y = H * 0.115 + Float(i / 3) * (partH + 6 * s)
+            if ui.button(part, x: x, y: y, w: partW, h: partH, scale: s, input: input, primary: region.part == part) {
+                click()
+                let sides = SkinRegion.regions(part: part)
+                skinRegionID = (sides.first { $0.side == region.side } ?? sides[0]).id
+            }
+        }
+        let sides = SkinRegion.regions(part: region.part)
+        let sideW = 86 * s
+        for (i, side) in sides.enumerated() {
+            let x = W * 0.36 - 20 * s + Float(i) * (sideW + 6 * s), y = H * 0.115 + 2 * (partH + 6 * s) + 4 * s
+            if ui.button(side.side.rawValue.capitalized, x: x, y: y, w: sideW, h: partH, scale: s, input: input, primary: side.id == region.id) {
+                click(); skinRegionID = side.id
+            }
+        }
+        let cell = min(30 * s, (H * 0.5) / Float(rows), (W * 0.26) / Float(cols))
         let canvasW = cell * Float(cols), canvasH = cell * Float(rows)
-        let canvasX = W * 0.36, canvasY = H * 0.24
-        let tabW = (canvasW - 8 * s) / 2
-        if ui.button("Face", x: canvasX, y: canvasY - 48 * s, w: tabW, h: 38 * s, scale: s, input: input, primary: face) { click(); skinTab = 0 }
-        if ui.button("Shirt", x: canvasX + tabW + 8 * s, y: canvasY - 48 * s, w: tabW, h: 38 * s, scale: s, input: input, primary: !face) { click(); skinTab = 1 }
 
         // Canvas: unpainted cells show the model's own colour.
-        let base = PlayerAvatar.color(face ? PlayerLook.skinTones[look.skin] : PlayerLook.shirtColors[look.shirt])
+        let base = PlayerAvatar.color(region.baseColor(look))
         func srgb(_ c: SIMD4<Float>) -> SIMD4<Float> { SIMD4(pow(c.x, 1 / 2.2), pow(c.y, 1 / 2.2), pow(c.z, 1 / 2.2), 1) }
         func paintColor(_ i: UInt8) -> SIMD4<Float> { srgb(PlayerAvatar.color(PlayerLook.paintColors[Int(i)])) }
         ui.rect(canvasX - 4 * s, canvasY - 4 * s, canvasW + 8 * s, canvasH + 8 * s, SIMD4(0.05, 0.03, 0.08, 1))
-        var pixels = face ? look.face : look.chest
+        var pixels = look.pixels(region)
         for r in 0..<rows {
             for c in 0..<cols {
                 let v = pixels[r * cols + c]
@@ -953,9 +989,11 @@ extension WinMenus {
         }
 
         // Palette
-        let swatch = 40 * s, px = canvasX + canvasW + 40 * s
+        // The palette stays put while the canvas changes shape between parts.
+        let widest = 8 * min(30 * s, (H * 0.5) / 8, (W * 0.26) / 8)
+        let swatch = 40 * s, px = canvasX + max(canvasW, widest) + 40 * s
         var py = canvasY
-        ui.text("Colours", x: px, y: py - 16 * s, scale: small, color: muted)
+        ui.text("Colours", x: px, y: py - 22 * s, scale: small, color: muted)
         for i in 0..<16 {
             let x = px + Float(i % 4) * (swatch + 6 * s), y = py + Float(i / 4) * (swatch + 6 * s)
             if UInt8(i) == skinColor { ui.rect(x - 3 * s, y - 3 * s, swatch + 6 * s, swatch + 6 * s, SIMD4(1, 0.85, 0.55, 1)) }
@@ -980,12 +1018,16 @@ extension WinMenus {
         if tool(skinFill ? "Fill" : "Brush", 0, primary: skinFill) { click(); skinFill.toggle() }
         if tool(skinMirror ? "Mirror On" : "Mirror Off", 1, primary: skinMirror) { click(); skinMirror.toggle() }
         py += th + 8 * s
-        let presets = face ? PlayerLook.facePresets : PlayerLook.chestPresets
-        let presetIndex = face ? skinFacePreset : skinChestPreset
-        if tool("Idea: \(presets[presetIndex].name)", 0) {
-            click()
-            pixels = PlayerLook.presetPixels(presets[presetIndex].pixels, count: cols * rows)
-            if face { skinFacePreset = (skinFacePreset + 1) % presets.count } else { skinChestPreset = (skinChestPreset + 1) % presets.count }
+        if face || shirtFront {
+            let presets = face ? PlayerLook.facePresets : PlayerLook.chestPresets
+            let presetIndex = face ? skinFacePreset : skinChestPreset
+            if tool("Idea: \(presets[presetIndex].name)", 0) {
+                click()
+                pixels = PlayerLook.presetPixels(presets[presetIndex].pixels, count: cols * rows)
+                if face { skinFacePreset = (skinFacePreset + 1) % presets.count } else { skinChestPreset = (skinChestPreset + 1) % presets.count }
+            }
+        } else if let twin = region.twin, tool(region.copyTwinLabel, 0) {
+            click(); pixels = look.pixels(twin)
         }
         if tool("Clear", 1) { click(); pixels = Array(repeating: 0, count: cols * rows) }
         py += th + 8 * s
@@ -1000,9 +1042,7 @@ extension WinMenus {
                 SDL_free(raw)
                 if let pasted = PlayerLook(shareCode: text) {
                     look = pasted
-                    if look.face.count != 64 { look.face = Array(repeating: 0, count: 64) }
-                    if look.chest.count != 80 { look.chest = Array(repeating: 0, count: 80) }
-                    pixels = face ? look.face : look.chest
+                    pixels = look.pixels(region)
                     skinMessage = "Skin pasted!"
                 } else {
                     skinMessage = "The clipboard doesn't hold a DinoCraft skin code."
@@ -1017,7 +1057,7 @@ extension WinMenus {
             }
         }
 
-        if face { look.face = pixels } else { look.chest = pixels }
+        look.setPixels(pixels, for: region)
         skinDraft = look
 
         let bw = 250 * s, by = H - 46 * s - 22 * s

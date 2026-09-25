@@ -9,6 +9,15 @@ King Grumblesaurus
 - Toonland's boss: ink splatters, ground-shaking stomps and a boss health bar.
 - Cheer him up to beat the game, win the Smile Trophy and hear his own theme, "Grumble Stomp".
 
+Draw your whole skin
+- The Skin Creator now paints every side of every body part: head (even the top), body, both arms and both legs.
+- The preview turns to show the side you're painting, and "Copy Other Arm/Leg" matches your limbs in one click.
+
+More cosmetics
+- 8 new hats: Wizard Hat, Viking Helmet, Headphones, Halo, Pirate Hat, Beanie, Bunny Ears and Party Hat.
+- 4 new things for your back: Angel Wings, Dragon Wings, a Jetpack and a Sword.
+- More shirt, trouser, skin and accent colours.
+
 DinoCraft Launcher
 - A separate launcher program: news, updates, cosmetics, the skin creator and "How to Beat the Game". Play starts the game.
 

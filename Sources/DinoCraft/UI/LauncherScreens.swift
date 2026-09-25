@@ -323,20 +323,28 @@ final class CosmeticsScreen: Screen {
         if ui.button("cos.done", "Done", Rect(panel.midX - 160, panel.maxY - 74, 320, 52), style: .primary) { back(e) }
     }
 
-    /// Draws the explorer from the front: every box of the model as a flat rectangle, back to front.
-    static func drawFront(_ d: UIRenderer, _ look: PlayerLook, in r: Rect) {
-        var boxes: [(z: Float, rect: Rect, color: Color)] = []
+    /// Draws the explorer from one side: every box of the model as a flat rectangle, back to front.
+    static func drawFront(_ d: UIRenderer, _ look: PlayerLook, side: SkinRegion.Side = .front, in r: Rect) {
+        var boxes: [(depth: Float, rect: Rect, color: Color)] = []
         let scale = min(r.w / 1.4, r.h / 2.5)
         let cx = r.midX, feet = r.maxY - 20
         for part in PlayerAvatar.parts(look) {
             for box in part.boxes {
                 let lo = part.pivot + box.0, hi = part.pivot + box.1
-                // Seen from the front, the explorer's +x side is on the viewer's left.
-                let rect = Rect(cx - hi.x * scale, feet - hi.y * scale, (hi.x - lo.x) * scale, (hi.y - lo.y) * scale)
-                boxes.append((lo.z, rect, Color(linear: box.2.x, box.2.y, box.2.z, 1)))
+                // Across the screen, and how far the nearest face is from the viewer. The front faces -z,
+                // so from the front the explorer's +x side is on the viewer's left.
+                let x0: Float, x1: Float, depth: Float
+                switch side {
+                case .front, .top: (x0, x1, depth) = (-hi.x, -lo.x, lo.z)
+                case .back: (x0, x1, depth) = (lo.x, hi.x, -hi.z)
+                case .left: (x0, x1, depth) = (lo.z, hi.z, lo.x)
+                case .right: (x0, x1, depth) = (-hi.z, -lo.z, -hi.x)
+                }
+                let rect = Rect(cx + x0 * scale, feet - hi.y * scale, (x1 - x0) * scale, (hi.y - lo.y) * scale)
+                boxes.append((depth, rect, Color(linear: box.2.x, box.2.y, box.2.z, 1)))
             }
         }
-        for b in boxes.sorted(by: { $0.z > $1.z }) { d.fill(b.rect, b.color) }
+        for b in boxes.sorted(by: { $0.depth > $1.depth }) { d.fill(b.rect, b.color) }
     }
 }
 
@@ -407,11 +415,11 @@ enum MacUpdater {
 
 // MARK: - Skin creator
 
-/// Paint your own face and shirt, pixel by pixel. Friends see it in multiplayer, and skins can be
+/// Paint your whole explorer, every side of every body part, pixel by pixel. Friends see it in multiplayer, and skins can be
 /// shared as codes (DINOSKIN:…) through the clipboard.
 final class SkinCreatorScreen: Screen {
     private var draft: PlayerLook?
-    private var tab = 0
+    private var regionID = "hf"
     private var colorIndex: UInt8 = 1
     private var mirror = true
     private var fillMode = false
@@ -431,26 +439,38 @@ final class SkinCreatorScreen: Screen {
                size: 14, color: Theme.textMuted, align: .center)
 
         var look = draft ?? PlayerLook(encoded: e.settings.cosmetics) ?? PlayerLook.defaultLook(for: e.settings.username)
-        if look.face.count != 64 { look.face = Array(repeating: 0, count: 64) }
-        if look.chest.count != 80 { look.chest = Array(repeating: 0, count: 80) }
+        let region = SkinRegion.byID[regionID] ?? SkinRegion.all[0]
+        let isFace = region.id == "hf", isShirt = region.id == "bf"
 
-        // Preview
+        // Preview, turned to show the side you're painting
         let preview = Rect(panel.x + 30, panel.y + 110, 260, panel.h - 210)
         d.fill(preview, Color(linear: 0, 0, 0, 0.25), radius: 18)
-        CosmeticsScreen.drawFront(d, look, in: preview)
+        CosmeticsScreen.drawFront(d, look, side: region.side, in: preview)
 
-        // Tabs and canvas
-        let isFace = tab == 0
-        let cols = isFace ? PlayerLook.faceWidth : PlayerLook.chestWidth, rows = isFace ? PlayerLook.faceHeight : PlayerLook.chestHeight
-        let cell = min(40, (panel.h - 250) / Float(rows))
-        let canvas = Rect(preview.maxX + 40, panel.y + 160, cell * Float(cols), cell * Float(rows))
-        let tabW = (canvas.w - 10) / 2
-        if ui.button("skin.tab.face", "Face", Rect(canvas.x, canvas.y - 52, tabW, 40), style: isFace ? .primary : .secondary, fontSize: 16) { tab = 0 }
-        if ui.button("skin.tab.shirt", "Shirt", Rect(canvas.x + tabW + 10, canvas.y - 52, tabW, 40), style: isFace ? .secondary : .primary,
-                     fontSize: 16) { tab = 1 }
-        let baseHex = isFace ? PlayerLook.skinTones[look.skin] : PlayerLook.shirtColors[look.shirt]
+        // Which part and which side
+        let partW: Float = 128, partH: Float = 34
+        let pickX = preview.maxX + 40, pickY = panel.y + 92
+        for (i, part) in SkinRegion.parts.enumerated() {
+            let r = Rect(pickX + Float(i % 3) * (partW + 8), pickY + Float(i / 3) * (partH + 8), partW, partH)
+            if ui.button("skin.part.\(part)", part, r, style: region.part == part ? .primary : .secondary, fontSize: 14) {
+                let sides = SkinRegion.regions(part: part)
+                regionID = (sides.first { $0.side == region.side } ?? sides[0]).id
+            }
+        }
+        for (i, side) in SkinRegion.regions(part: region.part).enumerated() {
+            let r = Rect(pickX + Float(i) * (100 + 8), pickY + 2 * (partH + 8) + 6, 100, partH)
+            if ui.button("skin.side.\(side.id)", side.side.rawValue.capitalized, r, style: side.id == region.id ? .primary : .secondary,
+                         fontSize: 14) { regionID = side.id }
+        }
+
+        // Canvas
+        let cols = region.width, rows = region.height
+        let canvasTop = pickY + 3 * (partH + 8) + 30
+        let cell = min(34, (panel.maxY - 90 - canvasTop) / Float(rows))
+        let canvas = Rect(pickX, canvasTop, cell * Float(cols), cell * Float(rows))
+        let baseHex = region.baseColor(look)
         d.fill(Rect(canvas.x - 4, canvas.y - 4, canvas.w + 8, canvas.h + 8), Color(hex: 0x0B0716), radius: 6)
-        var pixels = isFace ? look.face : look.chest
+        var pixels = look.pixels(region)
         for r in 0..<rows {
             for c in 0..<cols {
                 let v = pixels[r * cols + c]
@@ -474,8 +494,8 @@ final class SkinCreatorScreen: Screen {
             }
         }
 
-        // Palette
-        let px = canvas.maxX + 40, swatch: Float = 44
+        // Palette (it stays put while the canvas changes shape between parts)
+        let px = canvas.x + max(canvas.w, 8 * min(34, (panel.maxY - 90 - canvasTop) / 8)) + 40, swatch: Float = 44
         var py = canvas.y
         d.text("Colours", x: px, y: py - 26, size: 15, color: Theme.textMuted)
         for i in 0..<16 {
@@ -495,11 +515,15 @@ final class SkinCreatorScreen: Screen {
         if tool("skin.fill", fillMode ? "Fill" : "Brush", 0, primary: fillMode) { fillMode.toggle() }
         if tool("skin.mirror", mirror ? "Mirror On" : "Mirror Off", 1, primary: mirror) { mirror.toggle() }
         py += th + 10
-        let presets = isFace ? PlayerLook.facePresets : PlayerLook.chestPresets
-        let presetIndex = isFace ? facePreset : chestPreset
-        if tool("skin.preset", "Idea: \(presets[presetIndex].name)", 0) {
-            pixels = PlayerLook.presetPixels(presets[presetIndex].pixels, count: cols * rows)
-            if isFace { facePreset = (facePreset + 1) % presets.count } else { chestPreset = (chestPreset + 1) % presets.count }
+        if isFace || isShirt {
+            let presets = isFace ? PlayerLook.facePresets : PlayerLook.chestPresets
+            let presetIndex = isFace ? facePreset : chestPreset
+            if tool("skin.preset", "Idea: \(presets[presetIndex].name)", 0) {
+                pixels = PlayerLook.presetPixels(presets[presetIndex].pixels, count: cols * rows)
+                if isFace { facePreset = (facePreset + 1) % presets.count } else { chestPreset = (chestPreset + 1) % presets.count }
+            }
+        } else if let twin = region.twin, tool("skin.twin", region.copyTwinLabel, 0) {
+            pixels = look.pixels(twin)
         }
         if tool("skin.clear", "Clear", 1) { pixels = Array(repeating: 0, count: cols * rows) }
         py += th + 10
@@ -511,9 +535,7 @@ final class SkinCreatorScreen: Screen {
         if tool("skin.paste", "Paste Code", 1) {
             if let text = NSPasteboard.general.string(forType: .string), let pasted = PlayerLook(shareCode: text) {
                 look = pasted
-                if look.face.count != 64 { look.face = Array(repeating: 0, count: 64) }
-                if look.chest.count != 80 { look.chest = Array(repeating: 0, count: 80) }
-                pixels = isFace ? look.face : look.chest
+                pixels = look.pixels(region)
                 message = "Skin pasted!"
             } else {
                 message = "The clipboard doesn't hold a DinoCraft skin code."
@@ -522,7 +544,7 @@ final class SkinCreatorScreen: Screen {
         py += th + 14
         if let message { d.text(message, x: px, y: py, size: 14, color: Theme.textMuted, maxWidth: panel.maxX - px - 20) }
 
-        if isFace { look.face = pixels } else { look.chest = pixels }
+        look.setPixels(pixels, for: region)
         draft = look
 
         if ui.button("skin.play", "Save & Play", Rect(panel.midX - 370, panel.maxY - 70, 230, 50), style: .primary) {

@@ -195,7 +195,7 @@ do {
         if let message = join(joined).message {
             Log.info(message, category: "Net")
         }
-    } else if options.hostName != nil || (options.screenshotPath != nil && !["menu", "worlds", "create", "cosmetics", "skin", "reviews"].contains(options.demoScreen ?? "")) {
+    } else if options.hostName != nil || (options.screenshotPath != nil && !["menu", "worlds", "create", "cosmetics", "skin", "skin-arm", "reviews"].contains(options.demoScreen ?? "")) {
         let storage = WorldStorage()
         if let existing = storage.listWorlds().first(where: { $0.name == "Windows World" }) {
             _ = play(existing, isNew: false, hostName: options.hostName.map(cleanName))
