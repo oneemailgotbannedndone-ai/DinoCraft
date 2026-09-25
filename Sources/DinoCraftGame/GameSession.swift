@@ -359,8 +359,14 @@ final class GameSession {
         }
 
         let px = Int(floor(player.position.x)), pz = Int(floor(player.position.z))
+        let before = player.position
         if world.isLoaded(px, pz) {
             player.update(dt: dt, input: move, world: world)
+        }
+        // Lifetime stats: play time and distance walked (not flown). Menu backdrops have no input and don't count.
+        if input != nil {
+            let moved = player.position - before
+            PlayerStats.shared.tick(dt: dt, walked: player.flying || spectator ? 0 : (moved.x * moved.x + moved.z * moved.z).squareRoot())
         }
         processPlayerEvents()
         if !isRemote {

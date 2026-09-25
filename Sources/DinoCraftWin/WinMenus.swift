@@ -68,7 +68,7 @@ final class WinMenus {
         case launchGame(join: String?)
     }
 
-    private enum Page { case launcher, cosmetics, skin, title, worlds, create, multiplayer, settings, connecting, reviews, friends }
+    private enum Page { case launcher, cosmetics, skin, title, worlds, create, multiplayer, settings, connecting, reviews, friends, leaderboard }
 
     private let window: OpaquePointer
     private let renderer: WinRenderer
@@ -100,6 +100,8 @@ final class WinMenus {
     private var reviewStars = 5
     private var reviewWords = ""
     private var friendMessage: String?
+    private var leaderCategory = Leaderboard.Category.playtime
+    private var leaderScroll = 0
     private var launchJoin: String?
     private var friendScroll = 0
     /// The side being painted (a `SkinRegion` id); "hf" is the face.
@@ -147,6 +149,7 @@ final class WinMenus {
             if options.screenshotPath == nil && !options.skipLauncher {
                 GameLinks.reviews.load()
                 FriendList.shared.refreshStatuses()
+                PlayerStats.shared.submitNow()
             }
         }
         focus = ""
@@ -157,6 +160,7 @@ final class WinMenus {
         if options.demoScreen == "create" { page = .create; focus = "name" }
         if options.demoScreen == "cosmetics" { page = .cosmetics }
         if options.demoScreen == "reviews" { GameLinks.reviews.load(); page = .reviews }
+        if options.demoScreen == "leaderboard" { GameLinks.leaderboard.load(); page = .leaderboard }
         if options.demoScreen == "friends" {
             // Automated check: a friend, a recent player and a friend code to paste.
             let list = FriendList.shared
@@ -337,6 +341,9 @@ final class WinMenus {
 
         case .reviews:
             buildReviews(&ui, input: input, width: W, height: H, scale: s)
+
+        case .leaderboard:
+            buildLeaderboard(&ui, input: input, width: W, height: H, scale: s)
 
         case .friends:
             buildFriends(&ui, input: input, width: W, height: H, scale: s, now: now)
@@ -733,8 +740,12 @@ extension WinMenus {
         y += bh + gap
         if ui.button("Settings", x: bx, y: y, w: bw, h: bh, scale: s, input: input) { click(); settingsReturn = .launcher; page = .settings }
         y += bh + gap
-        if ui.button(showingGuide ? "What's New" : "How to Beat the Game", x: bx, y: y, w: bw, h: bh, scale: s, input: input) {
+        let guideW = (bw - gap) / 2
+        if ui.button(showingGuide ? "What's New" : "Guide", x: bx, y: y, w: guideW, h: bh, scale: s, input: input) {
             click(); showingGuide.toggle()
+        }
+        if ui.button("Leaderboard", x: bx + guideW + gap, y: y, w: guideW, h: bh, scale: s, input: input) {
+            click(); leaderScroll = 0; GameLinks.leaderboard.load(); page = .leaderboard
         }
         y += bh + gap
         let halfW = (bw - gap) / 2
@@ -765,6 +776,85 @@ extension WinMenus {
                 x: panelX, y: panelY + panelH + 10 * s, scale: small, color: muted)
         if quitForUpdate { return .quit }
         return nil
+    }
+
+    /// Everyone's lifetime stats, sortable by category, with your own stats beside them.
+    fileprivate func buildLeaderboard(_ ui: inout UIBuilder, input: MenuInput, width W: Float, height H: Float, scale s: Float) {
+        let small = max(1, (2 * s).rounded())
+        let head = max(1, (4 * s).rounded())
+        ui.rect(0, 0, W, H, SIMD4(0.02, 0.01, 0.005, 0.45))
+        ui.centeredText("Leaderboard", centerX: W / 2, y: H * 0.04, scale: head, color: amber)
+        ui.centeredText("Everyone who plays DinoCraft. Your stats are shared every few minutes while you play.",
+                        centerX: W / 2, y: H * 0.04 + 10 * head, scale: small, color: muted)
+        // Categories
+        let categories = Leaderboard.Category.allCases
+        let tabW = min(140 * s, (W - 80 * s) / Float(categories.count) - 6 * s), tabY = H * 0.04 + 10 * head + 18 * s
+        let tabsX = W / 2 - (Float(categories.count) * (tabW + 6 * s) - 6 * s) / 2
+        for (i, category) in categories.enumerated() {
+            if ui.button(category.tab, x: tabsX + Float(i) * (tabW + 6 * s), y: tabY, w: tabW, h: 32 * s, scale: s, input: input,
+                         primary: category == leaderCategory) {
+                click(); leaderCategory = category; leaderScroll = 0
+            }
+        }
+        let me = Leaderboard.entryName(name: store.settings.username, playerID: store.settings.playerID)
+        let mine = PlayerStats.shared.values
+        // The table
+        let top = tabY + 44 * s, bottom = H - 80 * s
+        let sideW = min(300 * s, W * 0.26)
+        let tableX = 40 * s, tableW = W - 80 * s - sideW - 20 * s
+        ui.woodPanel(tableX, top, tableW, bottom - top, scale: s)
+        let rowH = 12 * small
+        var y = top + 16 * s
+        switch GameLinks.leaderboard.state {
+        case .idle, .loading:
+            ui.centeredText("Loading the leaderboard...", centerX: tableX + tableW / 2, y: y + 30 * s, scale: small, color: muted)
+        case .failed(let reason):
+            ui.centeredText(reason, centerX: tableX + tableW / 2, y: y + 30 * s, scale: small, color: SIMD4(1, 0.7, 0.6, 1))
+        case .loaded(let entries):
+            let ranked = Leaderboard.ranked(entries, by: leaderCategory)
+            if ranked.isEmpty {
+                ui.centeredText("Nobody's on the board yet. Play for a minute and you'll be first!", centerX: tableX + tableW / 2, y: y + 30 * s,
+                                scale: small, color: muted)
+            }
+            let visible = max(1, Int((bottom - top - 50 * s) / rowH))
+            if input.wheel != 0 { leaderScroll = max(0, min(max(0, ranked.count - visible), leaderScroll - Int(input.wheel))) }
+            ui.text("#", x: tableX + 20 * s, y: y, scale: small, color: amber)
+            ui.text("Player", x: tableX + 70 * s, y: y, scale: small, color: amber)
+            let valueX = tableX + tableW - 20 * s
+            ui.text(leaderCategory.title, x: valueX - UIBuilder.textWidth(leaderCategory.title, scale: small), y: y, scale: small, color: amber)
+            y += rowH + 4 * s
+            for (index, entry) in ranked.enumerated().dropFirst(leaderScroll).prefix(visible) {
+                let isMe = entry.name + "_" + entry.tag == me
+                if isMe { ui.rect(tableX + 10 * s, y - 3 * s, tableW - 20 * s, rowH, SIMD4(0.5, 0.26, 0.05, 0.6)) }
+                let medal: SIMD4<Float> = index == 0 ? SIMD4(1, 0.78, 0.2, 1) : index == 1 ? SIMD4(0.8, 0.82, 0.86, 1) : index == 2 ? SIMD4(0.8, 0.45, 0.2, 1) : SIMD4(1, 0.95, 0.85, 1)
+                ui.text("\(index + 1)", x: tableX + 20 * s, y: y, scale: small, color: medal)
+                ui.text(entry.display + (isMe ? "  (you)" : ""), x: tableX + 70 * s, y: y, scale: small, color: SIMD4(1, 0.96, 0.88, 1))
+                let value = leaderCategory.format(entry.stats)
+                ui.text(value, x: valueX - UIBuilder.textWidth(value, scale: small), y: y, scale: small, color: SIMD4(1, 0.96, 0.88, 1))
+                y += rowH
+            }
+        }
+        // Your stats
+        let sideX = tableX + tableW + 20 * s
+        ui.woodPanel(sideX, top, sideW, bottom - top, scale: s)
+        var sy = top + 16 * s
+        ui.text("Your Stats", x: sideX + 16 * s, y: sy, scale: small, color: amber)
+        sy += 12 * small
+        ui.text(PlayerIdentity.display(name: store.settings.username, id: store.settings.playerID), x: sideX + 16 * s, y: sy, scale: small,
+                color: SIMD4(1, 0.96, 0.88, 1))
+        sy += 16 * small
+        for category in categories {
+            ui.text(category.title, x: sideX + 16 * s, y: sy, scale: small, color: muted)
+            let value = category.format(mine)
+            ui.text(value, x: sideX + sideW - 16 * s - UIBuilder.textWidth(value, scale: small), y: sy, scale: small, color: SIMD4(1, 0.96, 0.88, 1))
+            sy += 12 * small
+        }
+        if ui.button("Refresh", x: W / 2 - 250 * s, y: H - 60 * s, w: 240 * s, h: 44 * s, scale: s, input: input) {
+            click(); PlayerStats.shared.submitNow(); GameLinks.leaderboard.load()
+        }
+        if ui.button("Back", x: W / 2 + 10 * s, y: H - 60 * s, w: 240 * s, h: 44 * s, scale: s, input: input) || input.escape {
+            click(); page = .launcher
+        }
     }
 
     /// Your one-of-a-kind player card, your friends (and whether they're hosting right now) and the

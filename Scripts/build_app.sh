@@ -66,6 +66,9 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>NSHighResolutionCapable</key><true/>
   <key>NSLocalNetworkUsageDescription</key><string>DinoCraft finds and hosts games on your local network so you can play with friends.</string>
   <key>NSBonjourServices</key><array><string>_dinocraft._tcp</string></array>
+  <key>NSAppTransportSecurity</key><dict><key>NSExceptionDomains</key><dict>
+    <key>dreamlo.com</key><dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/><key>NSIncludesSubdomains</key><true/></dict>
+  </dict></dict>
   <key>NSSupportsAutomaticGraphicsSwitching</key><true/>
   <key>NSPrincipalClass</key><string>NSApplication</string>
   <key>NSHumanReadableCopyright</key><string>DinoCraft — an original voxel adventure.</string>

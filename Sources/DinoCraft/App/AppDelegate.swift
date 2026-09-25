@@ -36,6 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         let settings = SettingsStore()
         PlayerLook.settle(settings)
+        GameLinks.setUpStats(settings)
         let s = settings.settings
         let window = GameWindow(size: NSSize(width: s.windowWidth, height: s.windowHeight))
         window.delegate = self

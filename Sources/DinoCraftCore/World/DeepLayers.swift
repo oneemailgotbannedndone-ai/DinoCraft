@@ -55,9 +55,9 @@ extension TerrainGenerator {
                     } else {
                         let fx = Double(wx), fy = Double(y), fz = Double(wz)
                         // Big caverns and long twisting tunnels
-                        let cavern = caves.noise3(fx / 34, fy / 18, fz / 34)
-                        let tunnel = abs(tunnels.noise3(fx / 22, fy / 14, fz / 22))
-                        let open = (cavern > 0.55 || tunnel < 0.045) && y > 5 && y < top - 3
+                        let cavern = caves.noise3(fx / 44, fy / 22, fz / 44)
+                        let tunnel = abs(tunnels.noise3(fx / 26, fy / 16, fz / 26))
+                        let open = (cavern > 0.44 || tunnel < 0.07) && y > 5 && y < top - 3
                         if open {
                             id = y <= 11 ? Blocks.lava : Blocks.air
                         } else {

@@ -64,6 +64,7 @@ final class AdvancementTracker {
 
     /// Records a gameplay event such as ("pickup", "diamond") or ("kill", "rex").
     func record(_ type: String, _ target: String = "", amount: Int = 1) {
+        PlayerStats.shared.record(type, target, amount: amount)
         guard let defs = byType[type] else { return }
         for def in defs where unlocked[def.id] == nil {
             if let pattern = def.target, !AdvancementTracker.matches(target, pattern) { continue }

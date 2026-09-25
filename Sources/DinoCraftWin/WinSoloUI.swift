@@ -702,6 +702,76 @@ extension WinSolo {
         slotsChanged()
     }
 
+    /// The recipe book: every recipe that fits the grid (the ones you can make first), with its
+    /// ingredients. Clicking one moves a set of ingredients into the grid. Returns true while the mouse is over it.
+    private func drawRecipeBook(_ ui: inout UIBuilder, x: Float, y: Float, w: Float, h: Float, scale sc: Float, gridSize: Int) -> Bool {
+        let s = game
+        let small = max(1, (2 * sc).rounded())
+        ui.woodPanel(x, y, w, h, scale: sc)
+        bookArea = SIMD4(x, y, w, h)
+        let over = mouse.x >= x && mouse.x < x + w && mouse.y >= y && mouse.y < y + h
+        ui.text("Recipe Book", x: x + 14 * sc, y: y + 14 * sc, scale: small, color: amber)
+        // Craftable-only switch
+        let toggleY = y + 14 * sc + 12 * small
+        let label = bookCraftableOnly ? "[x] Craftable only" : "[ ] Craftable only"
+        let toggleW = UIBuilder.textWidth(label, scale: small) + 8 * sc
+        let overToggle = mouse.x >= x + 10 * sc && mouse.x < x + 10 * sc + toggleW && mouse.y >= toggleY - 2 * sc && mouse.y < toggleY + 9 * small
+        ui.text(label, x: x + 14 * sc, y: toggleY, scale: small, color: overToggle ? amber : dim, shadow: false)
+        if clicked && overToggle {
+            bookCraftableOnly.toggle()
+            bookScroll = 0
+            clicked = false
+        }
+        let pool = RecipeBook.pool(s.inventory.slots + craftGrid)
+        let entries = RecipeBook.entries(recipes, items: items, gridSize: gridSize, pool: pool, craftableOnly: bookCraftableOnly)
+        let top = toggleY + 14 * small, rowH = 46 * sc
+        let visible = max(1, Int((y + h - 12 * sc - top) / rowH))
+        bookScroll = max(0, min(bookScroll, max(0, entries.count - visible)))
+        if entries.isEmpty {
+            ui.text("Gather materials to", x: x + 14 * sc, y: top + 6 * sc, scale: small, color: dim, shadow: false)
+            ui.text("unlock recipes.", x: x + 14 * sc, y: top + 6 * sc + 10 * small, scale: small, color: dim, shadow: false)
+        }
+        for (i, entry) in entries.enumerated().dropFirst(bookScroll).prefix(visible) {
+            let ry = top + Float(i - bookScroll) * rowH
+            guard let info = items[entry.recipe.result.item] else { continue }
+            let hovered = mouse.x >= x + 8 * sc && mouse.x < x + w - 8 * sc && mouse.y >= ry && mouse.y < ry + rowH - 4 * sc
+            ui.rect(x + 8 * sc, ry, w - 16 * sc, rowH - 4 * sc,
+                    hovered ? SIMD4(0.32, 0.17, 0.06, 1) : SIMD4(0.1, 0.05, 0.02, entry.craftable ? 0.85 : 0.5))
+            let icon = renderer.iconLayer(entry.recipe.result.item, items: items, blocks: blocks)
+            ui.icon(x + 12 * sc, ry + 4 * sc, rowH - 12 * sc, layer: icon)
+            let name = info.displayName + (entry.recipe.result.count > 1 ? " x\(entry.recipe.result.count)" : "")
+            let maxChars = max(4, Int((w - 60 * sc) / (6 * small)))
+            ui.text(String(name.prefix(maxChars)), x: x + rowH + 6 * sc, y: ry + 5 * sc, scale: small,
+                    color: entry.craftable ? white : SIMD4(0.55, 0.47, 0.38, 1), shadow: false)
+            var ix = x + rowH + 6 * sc
+            for (item, count) in RecipeBook.summary(entry.recipe) {
+                guard ix < x + w - 36 * sc else { break }
+                ui.icon(ix, ry + 5 * sc + 9 * small, 16 * sc, layer: renderer.iconLayer(item, items: items, blocks: blocks))
+                ui.text("\(count)", x: ix + 17 * sc, y: ry + 8 * sc + 9 * small, scale: small, color: dim, shadow: false)
+                ix += 38 * sc
+            }
+            if clicked && hovered {
+                clicked = false
+                if entry.craftable {
+                    if let problem = RecipeBook.autofill(entry.recipe, grid: &craftGrid, gridSize: gridSize, inventory: s.inventory, recipes: recipes) {
+                        showToast(problem)
+                    } else {
+                        audio?.play("ui_click", volume: 0.4)
+                    }
+                } else {
+                    showToast("Missing ingredients for \(info.displayName)")
+                }
+            }
+        }
+        if entries.count > visible {
+            let barH = y + h - 12 * sc - top
+            let thumb = barH * Float(visible) / Float(entries.count)
+            ui.rect(x + w - 7 * sc, top, 3 * sc, barH, SIMD4(0, 0, 0, 0.4))
+            ui.rect(x + w - 7 * sc, top + (barH - thumb) * Float(bookScroll) / Float(max(1, entries.count - visible)), 3 * sc, thumb, amber)
+        }
+        return over
+    }
+
     private func buildSlotScreen(_ ui: inout UIBuilder, width W: Float, height H: Float, scale sc: Float) {
         let s = game
         let small = max(1, (2 * sc).rounded())
@@ -731,10 +801,37 @@ extension WinSolo {
         let titleHeight = 12 * small
         let lowerHeight = creative ? slot : 3 * step + 8 * sc + slot
         let panelH = pad + titleHeight + topHeight + 14 * sc + lowerHeight + pad
-        let px = W / 2 - panelW / 2, py = H / 2 - panelH / 2
+        // The recipe book sits to the left of the inventory and the crafting bench.
+        var bookSpot = false
+        switch screen {
+        case .inventory, .crafting: bookSpot = true
+        default: break
+        }
+        let bookW = 270 * sc, bookGap = 10 * sc
+        let showBook = bookSpot && bookOpen
+        let px = showBook ? W / 2 - (panelW + bookW + bookGap) / 2 + bookW + bookGap : W / 2 - panelW / 2, py = H / 2 - panelH / 2
         ui.rect(0, 0, W, H, SIMD4(0, 0, 0, 0.45))
         ui.woodPanel(px, py, panelW, panelH, scale: sc)
         ui.text(title, x: px + pad, y: py + pad, scale: small, color: amber)
+        var insideBook = false
+        bookArea = nil
+        if bookSpot {
+            // A "Recipes" tab on the panel's top-right corner opens and closes the book.
+            let label = bookOpen ? "Hide Recipes" : "Recipes"
+            let tw = UIBuilder.textWidth(label, scale: small) + 12 * sc, th = 10 * small
+            let tx = px + panelW - pad - tw, ty = py + pad - 2 * sc
+            let over = mouse.x >= tx && mouse.x < tx + tw && mouse.y >= ty && mouse.y < ty + th
+            ui.rect(tx, ty, tw, th, over ? SIMD4(0.6, 0.3, 0.05, 1) : SIMD4(0.24, 0.12, 0.05, 1))
+            ui.text(label, x: tx + 6 * sc, y: ty + 1.5 * small, scale: small, color: white, shadow: false)
+            if clicked && over {
+                bookOpen.toggle()
+                clicked = false
+                audio?.play("ui_click", volume: 0.4)
+            }
+            if showBook {
+                insideBook = drawRecipeBook(&ui, x: px - bookGap - bookW, y: py, w: bookW, h: panelH, scale: sc, gridSize: gridSize)
+            }
+        }
 
         hoveredSlot = nil
         var hoveredStack: ItemStack?
@@ -846,7 +943,7 @@ extension WinSolo {
             if let ref = hoveredSlot {
                 clickSlot(ref, button: button, shift: shiftHeld)
             } else if let cursor = cursorStack {
-                let inside = mouse.x >= px && mouse.x < px + panelW && mouse.y >= py && mouse.y < py + panelH
+                let inside = insideBook || (mouse.x >= px && mouse.x < px + panelW && mouse.y >= py && mouse.y < py + panelH)
                 if !inside {
                     // Clicking outside the panel throws the carried stack (or deletes it in the creative palette).
                     if !creative { s.dropStack(cursor, thrown: true) }

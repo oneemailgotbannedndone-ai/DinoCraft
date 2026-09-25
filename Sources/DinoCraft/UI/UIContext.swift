@@ -123,7 +123,7 @@ final class UIContext {
         let corner: Float = 8
         draw.shadow(r, radius: corner, blur: 26, color: Color(linear: 0, 0, 0, 0.55), offset: 12)
         draw.fill(r, Theme.frame, radius: corner)
-        let inner = r.inset(9)
+        let inner = r.inset(min(9, max(0, min(r.w, r.h) / 2 - 1)))
         draw.fill(inner, Theme.panelTop, radius: 3, bottom: Theme.panelBottom)
         // Boards, with seams, grain streaks and staggered joints (placed the same way every frame)
         let plank: Float = 46
@@ -133,7 +133,7 @@ final class UIContext {
             draw.fill(Rect(inner.x, y + 1, inner.w, 1), Color(linear: 1, 0.8, 0.5, 0.08))
             y += plank
         }
-        for board in 0...Int(inner.h / plank) {
+        for board in 0..<max(0, Int(inner.h / plank) + 1) {
             let top = inner.y + Float(board) * plank
             var x = inner.x + Float((board * 37) % 60)
             var k = 0

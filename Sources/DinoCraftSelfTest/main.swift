@@ -412,6 +412,37 @@ func persistenceTests() throws {
 }
 section("Persistence", persistenceTests)
 
+section("Leaderboard") {
+    var s = PlayerStats.Values()
+    s.playSeconds = 3725; s.deaths = 3; s.kills = 41; s.bossesBeaten = 1; s.blocksMined = 900; s.blocksPlaced = 450; s.itemsCrafted = 70
+    s.foodEaten = 9; s.metresWalked = 12_345
+    let text = Leaderboard.encode(s)
+    var back = Leaderboard.decode(text, playSeconds: 3725)
+    back.metresWalked = s.metresWalked.rounded(.down)
+    var expected = s
+    expected.metresWalked = s.metresWalked.rounded(.down)
+    check(back == expected, "stats survive the trip through the board (\(text))")
+    let one = #"{"dreamlo":{"leaderboard":{"entry":{"name":"Rex_K7Q2","score":"600","seconds":"4","text":"d1k4","date":"x"}}}}"#
+    let many = #"{"dreamlo":{"leaderboard":{"entry":[{"name":"Rex_K7Q2","score":"600","seconds":"4","text":"d1k4"},{"name":"Mo_9WDA","score":"60","seconds":"9","text":"k9m50"}]}}}"#
+    let none = #"{"dreamlo":{"leaderboard":null}}"#
+    let parsedOne = Leaderboard.parse(Data(one.utf8))
+    check(parsedOne.count == 1 && parsedOne[0].name == "Rex" && parsedOne[0].tag == "K7Q2" && parsedOne[0].stats.kills == 4, "reads a board with one entry")
+    let parsedMany = Leaderboard.parse(Data(many.utf8))
+    check(parsedMany.count == 2 && Leaderboard.parse(Data(none.utf8)).isEmpty, "reads boards with several entries, or none")
+    check(Leaderboard.ranked(parsedMany, by: .kills).first?.name == "Mo" && Leaderboard.ranked(parsedMany, by: .playtime).first?.name == "Rex",
+          "the board sorts by any stat")
+    check(Leaderboard.entryName(name: "Rex!", playerID: "0000000000000001").hasPrefix("Rex_"), "entry names are safe for the board")
+    let statsURL = FileManager.default.temporaryDirectory.appendingPathComponent("dinocraft-stats-\(UUID().uuidString).json")
+    let stats = PlayerStats(url: statsURL)
+    stats.record("break", amount: 3); stats.record("kill", "grumblesaurus"); stats.record("die"); stats.record("jump")
+    stats.tick(dt: 2, walked: 1.5)
+    stats.save()
+    let reloaded = PlayerStats(url: statsURL).values
+    check(reloaded.blocksMined == 3 && reloaded.kills == 1 && reloaded.bossesBeaten == 1 && reloaded.deaths == 1 && reloaded.playSeconds == 2,
+          "lifetime stats count and save")
+    try? FileManager.default.removeItem(at: statsURL)
+}
+
 section("Double chests") {
     var world: [SIMD3<Int>: BlockID] = [:]
     let north = Blocks.chest[0], east = Blocks.chest[1]

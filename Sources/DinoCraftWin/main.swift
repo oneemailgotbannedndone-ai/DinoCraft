@@ -146,6 +146,7 @@ guard let context = SDL_GL_CreateContext(window) else {
 _ = SDL_GL_MakeCurrent(window, context)
 let settingsStore = SettingsStore()
 PlayerLook.settle(settingsStore)
+GameLinks.setUpStats(settingsStore)
 _ = SDL_GL_SetSwapInterval(options.screenshotPath == nil && settingsStore.settings.vsync ? 1 : 0)
 
 do {
@@ -197,7 +198,7 @@ do {
         if let message = join(joined).message {
             Log.info(message, category: "Net")
         }
-    } else if options.hostName != nil || (options.screenshotPath != nil && !["menu", "worlds", "create", "cosmetics", "skin", "skin-arm", "reviews", "friends"].contains(options.demoScreen ?? "")) {
+    } else if options.hostName != nil || (options.screenshotPath != nil && !["menu", "worlds", "create", "cosmetics", "skin", "skin-arm", "reviews", "friends", "leaderboard"].contains(options.demoScreen ?? "")) {
         let storage = WorldStorage()
         if let existing = storage.listWorlds().first(where: { $0.name == "Windows World" }) {
             _ = play(existing, isNew: false, hostName: options.hostName.map(cleanName))
@@ -234,5 +235,6 @@ do {
 SDL_GL_DestroyContext(context)
 SDL_DestroyWindow(window)
 SDL_Quit()
+PlayerStats.shared.save()
 Log.info("DinoCraft closed", category: "App")
 Log.shared.flush()

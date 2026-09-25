@@ -171,6 +171,7 @@ final class WinGame {
             draw(now: now)
         }
         shutdown()
+        PlayerStats.shared.submitNow()
         return disconnectReason
     }
 
@@ -328,6 +329,10 @@ final class WinGame {
             zooming = keys[scancode]
         }
         zoomAmount += ((zooming ? zoomFactor : 1) - zoomAmount) * (1 - exp(-14 * dt))
+        if controllable {
+            let v = player.velocity
+            PlayerStats.shared.tick(dt: dt, walked: player.onGround && !player.flying ? (v.x * v.x + v.z * v.z).squareRoot() * dt : 0)
+        }
         var input = MovementInput()
         if controllable, let keys = SDL_GetKeyboardState(nil) {
             func down(_ scancode: SDL_Scancode) -> Bool { keys[Int(scancode.rawValue)] }
@@ -465,6 +470,7 @@ final class WinGame {
         guard world.setBlock(hit.block, Blocks.air) else { return }
         if let g = soundGroup(hit.id) { audio?.play("break_\(g)", volume: 0.8) }
         network.sendBlock(hit.block, Blocks.air, harvest: !creative && canHarvest(info))
+        PlayerStats.shared.record("break")
         exhaustion += 0.005
         swingTimer = 0.25
         if !creative && info.hardness > 0 && heldTool != nil { inventory.damageSelectedTool() }
@@ -482,6 +488,7 @@ final class WinGame {
         guard world.setBlock(cell, blockID) else { return }
         if let g = soundGroup(blockID) { audio?.play("place_\(g)", volume: 0.8) }
         network.sendBlock(cell, blockID, harvest: false)
+        PlayerStats.shared.record("place")
         swingTimer = 0.25
         if !creative { inventory.consumeSelected() }
     }
@@ -530,6 +537,7 @@ final class WinGame {
         if let k = knockback { player.velocity += DVec3(k.x * 7, 4.5, k.z * 7) }
         if health <= 0 {
             dead = true
+            PlayerStats.shared.record("die")
             deathMessage = cause
             leftHeld = false
             addChat("You died: \(cause)", now: now)

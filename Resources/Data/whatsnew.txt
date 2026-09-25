@@ -9,6 +9,20 @@ King Grumblesaurus
 - Toonland's boss: mud splatters, ground-shaking stomps and a boss health bar.
 - Cheer him up to beat the game, win the Smile Trophy and hear his own theme, "Grumble Stomp".
 
+Global leaderboard
+- A new Leaderboard in the launcher: see everyone's play time, kills, blocks mined and placed, distance, crafting, deaths and bosses.
+- Your stats are counted in every world and shared automatically every few minutes while you play.
+
+Bigger caves
+- New worlds have wider tunnels and much bigger caverns, and the deep slate caves are bigger too.
+
+Recipe book on Windows
+- The inventory and crafting bench now have a Recipe Book: see every recipe, and click one to fill the grid.
+
+Fixes
+- Mac: joining a friend no longer gives up straight away while macOS asks for Local Network permission.
+- If DinoCraft ever crashes, the launcher offers to send the crash report so it can be fixed.
+
 A crafting-table look
 - Menus, inventories and chests are now oak planks in a dark wooden frame with iron nails, on Mac and Windows.
 

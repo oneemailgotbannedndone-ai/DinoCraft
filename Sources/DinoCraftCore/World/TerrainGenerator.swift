@@ -193,10 +193,17 @@ public final class TerrainGenerator: @unchecked Sendable {
         return (a, b, c)
     }
 
-    @inline(__always) private static func isCave(a: Float, b: Float, c: Float, y: Int, depthBelowSurface: Int) -> Bool {
+    /// `big` (worlds made since the deep update): tunnels about 1.5× as wide and bigger, more common
+    /// caverns that reach higher. Older worlds keep their original caves so new chunks still line up.
+    @inline(__always) private static func isCave(a: Float, b: Float, c: Float, y: Int, depthBelowSurface: Int, big: Bool) -> Bool {
         let surfaceFade: Float = depthBelowSurface < 8 ? Float(depthBelowSurface) / 8 : 1
-        let tunnel = a * a + b * b < 0.0055 * (0.35 + 0.65 * surfaceFade)
-        let cavernLimit: Float = y < 48 ? 0.34 + Float(y) / 48 * 0.2 : 1
+        let tunnel = a * a + b * b < (big ? 0.0125 : 0.0055) * (0.35 + 0.65 * surfaceFade)
+        let cavernLimit: Float
+        if big {
+            cavernLimit = y < 60 ? 0.24 + Float(y) / 60 * 0.22 : 1
+        } else {
+            cavernLimit = y < 48 ? 0.34 + Float(y) / 48 * 0.2 : 1
+        }
         return tunnel || (c > cavernLimit && depthBelowSurface > 10)
     }
 
@@ -211,7 +218,7 @@ public final class TerrainGenerator: @unchecked Sendable {
             corners[i] = caveSample((lx + (i & 1)) * s, (ly + ((i >> 1) & 1)) * s, (lz + ((i >> 2) & 1)) * s)
         }
         let v = TerrainGenerator.trilinear(corners, tx, ty, tz)
-        return TerrainGenerator.isCave(a: v.0, b: v.1, c: v.2, y: y, depthBelowSurface: surfaceHeight - 1 - y)
+        return TerrainGenerator.isCave(a: v.0, b: v.1, c: v.2, y: y, depthBelowSurface: surfaceHeight - 1 - y, big: modern)
     }
 
     @inline(__always) private static func trilinear(_ c: [(Float, Float, Float)], _ tx: Float, _ ty: Float, _ tz: Float) -> (Float, Float, Float) {
@@ -310,7 +317,7 @@ public final class TerrainGenerator: @unchecked Sendable {
                         corners[i] = lattice[((ly + ((i >> 1) & 1)) * 5 + (lz + ((i >> 2) & 1))) * 5 + (lx + (i & 1))]
                     }
                     let v = TerrainGenerator.trilinear(corners, tx, ty, tz)
-                    if TerrainGenerator.isCave(a: v.0, b: v.1, c: v.2, y: y, depthBelowSurface: h - 1 - y) {
+                    if TerrainGenerator.isCave(a: v.0, b: v.1, c: v.2, y: y, depthBelowSurface: h - 1 - y, big: modern) {
                         id = Blocks.air
                     }
                 }

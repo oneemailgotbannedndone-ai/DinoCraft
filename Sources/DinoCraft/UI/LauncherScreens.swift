@@ -13,6 +13,9 @@ final class LauncherScreen: Screen {
     private var showingGuide = false
     /// Reviews and friends' games are checked once, when the launcher first shows.
     private var primed = false
+    /// Set when DinoCraft crashed last time, so the player can send the report.
+    private var crash: CrashReport?
+    private var crashNote: String?
 
     override var scene: GameActivityState.Scene { .mainMenu }
     override func back(_ engine: GameEngine) {}
@@ -26,8 +29,11 @@ final class LauncherScreen: Screen {
             primed = true
             GameLinks.reviews.load()
             FriendList.shared.refreshStatuses()
+            crash = CrashReport.fromLastRun()
+            PlayerStats.shared.submitNow()
         }
         d.opacity = intro
+        defer { if let report = crash { drawCrashReport(ui, e, report) } }
 
         let titleY = max(30, H * 0.06)
         d.outlinedText(Brand.title, x: W / 2, y: titleY, size: Brand.title.count > 9 ? 70 : 80, fill: Color(hex: Brand.top),
@@ -160,8 +166,13 @@ final class LauncherScreen: Screen {
         by += bh + gap
         if ui.button("launcher.settings", "Settings", Rect(bx, by, bw, bh), style: .secondary) { e.pushScreen(SettingsScreen()) }
         by += bh + gap
-        if ui.button("launcher.guide", showingGuide ? "What's New" : "How to Beat the Game", Rect(bx, by, bw, bh), style: .secondary) {
+        let guideW = (bw - gap) / 2
+        if ui.button("launcher.guide", showingGuide ? "What's New" : "Guide", Rect(bx, by, guideW, bh), style: .secondary) {
             showingGuide.toggle()
+        }
+        if ui.button("launcher.leaderboard", "Leaderboard", Rect(bx + guideW + gap, by, guideW, bh), style: .secondary) {
+            GameLinks.leaderboard.load()
+            e.pushScreen(LeaderboardScreen())
         }
         by += bh + gap
         let halfW = (bw - gap) / 2
@@ -194,9 +205,121 @@ final class LauncherScreen: Screen {
     }
 }
 
+extension LauncherScreen {
+    /// "DinoCraft closed unexpectedly": send the report on GitHub, copy it, or dismiss it.
+    fileprivate func drawCrashReport(_ ui: UIContext, _ e: GameEngine, _ report: CrashReport) {
+        let d = ui.draw
+        d.opacity = 1
+        ui.dim(0.6)
+        let W = ui.size.x, H = ui.size.y
+        let panel = Rect(W / 2 - 330, H / 2 - 150, 660, 300)
+        ui.panel(panel, title: "Sorry, DinoCraft crashed")
+        d.text("DinoCraft closed unexpectedly last time. Sending the crash report helps get it fixed.",
+               x: panel.x + 36, y: panel.y + 84, size: 15, color: Theme.text, maxWidth: panel.w - 72)
+        if let crashNote { d.text(crashNote, x: panel.x + 36, y: panel.y + 150, size: 14, color: Theme.amber, maxWidth: panel.w - 72) }
+        let bw: Float = 186, by = panel.maxY - 76
+        if ui.button("crash.send", "Send Report", Rect(panel.x + 36, by, bw, 48), style: .primary, fontSize: 16),
+           let url = report.issueURL(repository: GameLinks.reviewsRepo, build: BuildInfo.current.displayName, platform: "Mac") {
+            NSWorkspace.shared.open(url)
+            report.dismiss()
+            crash = nil
+        }
+        if ui.button("crash.copy", "Copy Report", Rect(panel.midX - bw / 2, by, bw, 48), style: .secondary, fontSize: 16) {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(report.text, forType: .string)
+            crashNote = "Copied! Paste it into a message."
+        }
+        if ui.button("crash.close", "Not Now", Rect(panel.maxX - 36 - bw, by, bw, 48), style: .secondary, fontSize: 16) {
+            report.dismiss()
+            crash = nil
+        }
+    }
+}
+
 // MARK: - Cosmetics
 
 /// Choose a hat, outfit colours and something to wear on your back. Friends see it in multiplayer.
+/// Everyone's lifetime stats, sortable by category, with your own stats beside them.
+final class LeaderboardScreen: Screen {
+    private var category = Leaderboard.Category.playtime
+    private var scroll = 0
+
+    override var scene: GameActivityState.Scene { .mainMenu }
+
+    override func draw(_ ui: UIContext, _ e: GameEngine) {
+        MenuBackdrop.draw(ui)
+        let d = ui.draw
+        let W = ui.size.x, H = ui.size.y
+        let panel = Rect(max(30, W / 2 - 600), max(24, H / 2 - 360), min(1200, W - 60), min(720, H - 48))
+        ui.panel(panel, title: "Leaderboard")
+        d.text("Everyone who plays DinoCraft. Your stats are shared every few minutes while you play.", x: panel.midX, y: panel.y + 70,
+               size: 14, color: Theme.textMuted, align: .center)
+        let categories = Leaderboard.Category.allCases
+        let tabW = min(128, (panel.w - 60) / Float(categories.count) - 6)
+        let tabsX = panel.midX - (Float(categories.count) * (tabW + 6) - 6) / 2
+        for (i, c) in categories.enumerated() {
+            if ui.button("lb.tab.\(c.rawValue)", c.tab, Rect(tabsX + Float(i) * (tabW + 6), panel.y + 98, tabW, 36),
+                         style: c == category ? .primary : .secondary, fontSize: 14) {
+                category = c
+                scroll = 0
+            }
+        }
+        let me = Leaderboard.entryName(name: e.settings.username, playerID: e.settings.playerID)
+        let mine = PlayerStats.shared.values
+        let top = panel.y + 150, bottom = panel.maxY - 84
+        let sideW: Float = 300
+        let table = Rect(panel.x + 30, top, panel.w - 60 - sideW - 20, bottom - top)
+        d.fill(table, Color(linear: 0, 0, 0, 0.25), radius: 10)
+        var y = table.y + 14
+        let rowH: Float = 30
+        switch GameLinks.leaderboard.state {
+        case .idle, .loading:
+            d.text("Loading the leaderboard…", x: table.midX, y: y + 40, size: 16, color: Theme.textMuted, align: .center)
+        case .failed(let reason):
+            d.text(reason, x: table.midX, y: y + 40, size: 15, color: Theme.danger, align: .center, maxWidth: table.w - 40)
+        case .loaded(let entries):
+            let ranked = Leaderboard.ranked(entries, by: category)
+            if ranked.isEmpty {
+                d.text("Nobody's on the board yet. Play for a minute and you'll be first!", x: table.midX, y: y + 40, size: 15,
+                       color: Theme.textMuted, align: .center)
+            }
+            let visible = max(1, Int((table.h - 50) / rowH))
+            if table.contains(ui.mouse) && ui.input.scroll != 0 { scroll -= Int(ui.input.scroll.rounded()) }
+            scroll = max(0, min(max(0, ranked.count - visible), scroll))
+            d.text("#", x: table.x + 18, y: y, size: 14, color: Theme.amber, face: .display)
+            d.text("Player", x: table.x + 64, y: y, size: 14, color: Theme.amber, face: .display)
+            d.text(category.title, x: table.maxX - 18, y: y, size: 14, color: Theme.amber, face: .display, align: .right)
+            y += rowH + 2
+            for (index, entry) in ranked.enumerated().dropFirst(scroll).prefix(visible) {
+                let isMe = entry.name + "_" + entry.tag == me
+                if isMe { d.fill(Rect(table.x + 8, y - 4, table.w - 16, rowH - 2), Theme.amber.alpha(0.25), radius: 6) }
+                let medal = index == 0 ? Color(hex: 0xFFD04A) : index == 1 ? Color(hex: 0xD8DCE4) : index == 2 ? Color(hex: 0xD88A4A) : Theme.text
+                d.text("\(index + 1)", x: table.x + 18, y: y, size: 16, color: medal, face: .display)
+                d.text(entry.display + (isMe ? "  (you)" : ""), x: table.x + 64, y: y, size: 16, color: Theme.text)
+                d.text(category.format(entry.stats), x: table.maxX - 18, y: y, size: 16, color: Theme.text, face: .display, align: .right)
+                y += rowH
+            }
+        }
+        let side = Rect(table.maxX + 20, top, sideW, bottom - top)
+        d.fill(side, Color(linear: 0, 0, 0, 0.25), radius: 10)
+        var sy = side.y + 16
+        d.text("Your Stats", x: side.x + 18, y: sy, size: 18, color: Theme.amber, face: .display)
+        sy += 30
+        d.text(PlayerIdentity.display(name: e.settings.username, id: e.settings.playerID), x: side.x + 18, y: sy, size: 15, color: Theme.text)
+        sy += 34
+        for c in categories {
+            d.text(c.title, x: side.x + 18, y: sy, size: 15, color: Theme.textMuted)
+            d.text(c.format(mine), x: side.maxX - 18, y: sy, size: 15, color: Theme.text, face: .display, align: .right)
+            sy += 28
+        }
+        if ui.button("lb.refresh", "Refresh", Rect(panel.midX - 250, panel.maxY - 66, 240, 46), style: .secondary) {
+            PlayerStats.shared.submitNow()
+            GameLinks.leaderboard.load()
+        }
+        if ui.button("lb.back", "Back", Rect(panel.midX + 10, panel.maxY - 66, 240, 46), style: .secondary) { e.popScreen() }
+    }
+}
+
 /// Your one-of-a-kind player card, your friends (and whether they're hosting right now) and the
 /// players you've recently been in a game with.
 final class FriendsScreen: Screen {

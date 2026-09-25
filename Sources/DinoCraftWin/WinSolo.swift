@@ -56,6 +56,12 @@ final class WinSolo: CommandHost {
     var craftGrid: [ItemStack?] = Array(repeating: nil, count: 4)
     var hoveredSlot: SlotRef?
     var paletteScroll = 0
+    /// The recipe book beside the inventory and crafting bench.
+    var bookOpen = true
+    var bookScroll = 0
+    var bookCraftableOnly = false
+    /// Where the book was drawn last frame (x, y, w, h), for the mouse wheel.
+    var bookArea: SIMD4<Float>?
     var paletteSearch = ""
     var paletteSearchFocused = false
     var hudHidden = false
@@ -337,6 +343,8 @@ final class WinSolo: CommandHost {
             } else if type == UInt32(SDL_EVENT_MOUSE_WHEEL.rawValue) {
                 if isPlaying {
                     input.wheel(event.wheel.y)
+                } else if let r = bookArea, mouse.x >= r.x, mouse.x < r.x + r.z, mouse.y >= r.y, mouse.y < r.y + r.w {
+                    bookScroll = max(0, bookScroll - Int(event.wheel.y.rounded()))
                 } else if case .creative = screen {
                     paletteScroll = max(0, paletteScroll - Int(event.wheel.y.rounded()))
                 }
@@ -906,6 +914,7 @@ final class WinSolo: CommandHost {
     }
 
     private func shutdown() {
+        PlayerStats.shared.submitNow()
         setMouseCaptured(false)
         audio?.stopLoops()
         if !chatOpen { _ = SDL_StopTextInput(window) }

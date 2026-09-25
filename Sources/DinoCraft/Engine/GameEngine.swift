@@ -222,6 +222,7 @@ final class GameEngine: NSObject, MTKViewDelegate {
     }
 
     func shutdown() {
+        PlayerStats.shared.save()
         input.setMouseCaptured(false)
         portMapper.unmap()
         server?.stop()
@@ -298,6 +299,7 @@ final class GameEngine: NSObject, MTKViewDelegate {
 
     func saveAndQuitToTitle() {
         guard let s = session else { return }
+        PlayerStats.shared.submitNow()
         input.setMouseCaptured(false)
         portMapper.unmap()
         internetAddress = nil
@@ -502,8 +504,13 @@ final class GameEngine: NSObject, MTKViewDelegate {
         c.connect()
         DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self, weak c] in
             guard let self, let c, self.client === c, self.session == nil else { return }
+            let waiting = c.connection.lastWaitingReason
             c.connection.close()
-            self.clientDisconnected("Couldn't reach \(label). Check the code or address, make sure the host pressed Open to Internet, and that you both have the latest DinoCraft.")
+            var message = "Couldn't reach \(label). Check the code or address, make sure the host pressed Open to LAN or Open to Internet, and that you both have the latest DinoCraft."
+            if let waiting {
+                message += "\n\nmacOS said: \(waiting)\nIf your friend is on the same Wi-Fi, open System Settings → Privacy & Security → Local Network and turn on DinoCraft, then try again."
+            }
+            self.clientDisconnected(message)
         }
     }
 
