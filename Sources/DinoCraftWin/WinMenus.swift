@@ -91,6 +91,7 @@ final class WinMenus {
     private var showingGuide = false
     /// Stars picked on the Reviews page before writing a review.
     private var reviewStars = 5
+    private var reviewWords = ""
     private var skinTab = 0
     private var skinColor: UInt8 = 1
     private var skinMirror = true
@@ -726,7 +727,7 @@ extension WinMenus {
             for k in 0..<5 { ui.text("\u{2605}", x: x + Float(k) * 8 * scale, y: y, scale: scale, color: k < n ? gold : dimStar) }
         }
         let panelW = min(W - 60 * s, 900 * s), panelX = W / 2 - panelW / 2, panelY = H * 0.05 + 10 * head + 16 * s
-        let panelH = H - panelY - 150 * s
+        let panelH = H - panelY - 205 * s
         ui.rect(panelX, panelY, panelW, panelH, SIMD4(0.06, 0.04, 0.1, 0.9))
         var y = panelY + 16 * s
         let maxChars = max(10, Int((panelW - 40 * s) / (6 * small)))
@@ -760,7 +761,8 @@ extension WinMenus {
                 }
             }
         }
-        // Your review: pick stars, then finish it on GitHub (anyone with a free account can post)
+        // Your review: stars and a few words, then post it on GitHub (anyone with a free account can post)
+        edit(&reviewWords, id: "review", input: input, limit: 240)
         let rowY = panelY + panelH + 16 * s
         ui.text("Your rating:", x: panelX, y: rowY + 12 * s, scale: small, color: SIMD4(1, 1, 1, 1))
         let starW = 40 * s
@@ -771,12 +773,21 @@ extension WinMenus {
             }
         }
         let bw = 260 * s
-        if ui.button("Write a Review", x: panelX + panelW - bw, y: rowY, w: bw, h: 38 * s, scale: s, input: input, primary: true),
-           let url = board.writeURL(stars: reviewStars, username: store.settings.username) {
+        if ui.field(reviewWords, placeholder: "Type your review here...", x: panelX, y: rowY + 46 * s, w: panelW - bw - 12 * s, h: 38 * s,
+                    scale: s, focused: focus == "review", input: input, time: Date.timeIntervalSinceReferenceDate) { focus = "review" }
+        if ui.button("Post Review", x: panelX + panelW - bw, y: rowY + 46 * s, w: bw, h: 38 * s, scale: s, input: input, primary: true)
+            || (focus == "review" && input.enter),
+           let url = board.writeURL(stars: reviewStars, username: store.settings.username, words: reviewWords) {
             click()
-            _ = SDL_OpenURL(url.absoluteString)
+            if SDL_OpenURL(url.absoluteString) {
+                reviewWords = ""
+                updateError = nil
+            } else {
+                updateError = "Couldn't open your browser. Go to github.com/\(board.repository)/issues/new to post."
+            }
         }
-        ui.text("Opens GitHub in your browser: add a few words and press Submit.", x: panelX, y: rowY + 48 * s, scale: small, color: muted)
+        ui.text(updateError ?? "Opens GitHub with your review filled in: sign in (free) and press Create to post it.", x: panelX, y: rowY + 92 * s,
+                scale: small, color: muted)
         if ui.button("Refresh", x: W / 2 - 250 * s, y: H - 60 * s, w: 240 * s, h: 44 * s, scale: s, input: input) { click(); board.load() }
         if ui.button("Back", x: W / 2 + 10 * s, y: H - 60 * s, w: 240 * s, h: 44 * s, scale: s, input: input) || input.escape {
             click(); page = .launcher

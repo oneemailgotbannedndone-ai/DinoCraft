@@ -326,9 +326,14 @@ final class GameEngine: NSObject, MTKViewDelegate {
     /// DinoCraft Launcher's Play: opens DinoCraft.app (next to the launcher) and closes the launcher.
     func launchGameApp() {
         let here = Bundle.main.bundleURL
-        let game = here.deletingLastPathComponent().appendingPathComponent("DinoCraft.app")
-        guard FileManager.default.fileExists(atPath: game.path) else {
-            showToast("Couldn't find DinoCraft.app. Keep DinoCraft Launcher in the same folder as DinoCraft.")
+        let sibling = here.deletingLastPathComponent().appendingPathComponent("DinoCraft.app")
+        // Next to the launcher, or wherever macOS knows DinoCraft is installed.
+        let found = FileManager.default.fileExists(atPath: sibling.path) ? sibling
+            : NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.dinocraft.game")
+        guard let game = found, game.standardizedFileURL != here.standardizedFileURL else {
+            // No separate game app to open: play right here instead.
+            Log.info("DinoCraft.app not found; playing in the launcher window", category: "App")
+            popScreen()
             return
         }
         let config = NSWorkspace.OpenConfiguration()
@@ -337,7 +342,9 @@ final class GameEngine: NSObject, MTKViewDelegate {
         NSWorkspace.shared.openApplication(at: game, configuration: config) { _, error in
             DispatchQueue.main.async {
                 if let error {
-                    self.showToast("Couldn't start DinoCraft: \(error.localizedDescription)")
+                    // Couldn't open the game app: play right here instead.
+                    Log.warning("Couldn't open DinoCraft.app (\(error.localizedDescription)); playing in the launcher window", category: "App")
+                    self.popScreen()
                 } else {
                     NSApp.terminate(nil)
                 }

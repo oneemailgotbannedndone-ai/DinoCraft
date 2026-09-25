@@ -103,9 +103,10 @@ public final class ReviewBoard: @unchecked Sendable {
     }
 
     /// The GitHub page for posting a review with `stars`, pre-filled so players only type their words.
-    public func writeURL(stars: Int, username: String) -> URL? {
+    public func writeURL(stars: Int, username: String, words: String = "") -> URL? {
         let rating = String(repeating: "\u{2605}", count: stars) + String(repeating: "\u{2606}", count: 5 - stars)
-        let body = "Write what you think of DinoCraft here!\n\n---\nPlayer name in game: \(username.isEmpty ? "?" : username)"
+        let text = words.trimmingCharacters(in: .whitespacesAndNewlines)
+        let body = (text.isEmpty ? "Write what you think of DinoCraft here!" : text) + "\n\n---\nPlayer name in game: \(username.isEmpty ? "?" : username)"
         var parts = URLComponents(string: "https://github.com/\(repository)/issues/new")
         parts?.queryItems = [URLQueryItem(name: "title", value: "Review: \(rating)"), URLQueryItem(name: "body", value: body)]
         return parts?.url

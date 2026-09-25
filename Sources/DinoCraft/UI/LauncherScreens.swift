@@ -189,6 +189,8 @@ final class LauncherScreen: Screen {
 /// pre-filled page for writing your own.
 final class ReviewsScreen: Screen {
     private var stars = 5
+    private var words = ""
+    private var note: String?
 
     override var scene: GameActivityState.Scene { .mainMenu }
 
@@ -205,7 +207,7 @@ final class ReviewsScreen: Screen {
         }
         var y = panel.y + 76
         let left = panel.x + 34, textW = panel.w - 68
-        let listBottom = panel.maxY - 150
+        let listBottom = panel.maxY - 200
         switch board.state {
         case .idle, .loading:
             d.text("Loading reviews…", x: panel.midX, y: y + 30, size: 16, color: Theme.textMuted, align: .center)
@@ -229,20 +231,27 @@ final class ReviewsScreen: Screen {
                 }
             }
         }
-        // Your review
-        let rowY = panel.maxY - 130
+        // Your review: stars and a few words, posted on GitHub (anyone with a free account can post)
+        let rowY = panel.maxY - 184
         d.text("Your rating", x: left, y: rowY + 10, size: 16, color: Theme.text, face: .display)
         for k in 1...5 {
             if ui.button("reviews.star\(k)", "\u{2605}", Rect(left + 130 + Float(k - 1) * 50, rowY, 44, 40), style: k <= stars ? .primary : .secondary) {
                 stars = k
             }
         }
-        if ui.button("reviews.write", "Write a Review", Rect(panel.maxX - 294, rowY, 260, 40), style: .primary),
-           let url = board.writeURL(stars: stars, username: e.settings.username) {
-            NSWorkspace.shared.open(url)
+        let submitted = ui.textField("reviews.words", Rect(left, rowY + 50, textW - 280, 44), &words,
+                                     placeholder: "Type your review here…", maxLength: 240)
+        if ui.button("reviews.post", "Post Review", Rect(panel.maxX - 294, rowY + 50, 260, 44), style: .primary) || submitted,
+           let url = board.writeURL(stars: stars, username: e.settings.username, words: words) {
+            if NSWorkspace.shared.open(url) {
+                words = ""
+                note = nil
+            } else {
+                note = "Couldn't open your browser. Go to github.com/\(board.repository)/issues/new to post."
+            }
         }
-        d.text("Opens GitHub in your browser: add a few words and press Submit. Anyone with a free GitHub account can post.",
-               x: left, y: rowY + 52, size: 13, color: Theme.textMuted, maxWidth: textW)
+        d.text(note ?? "Opens GitHub with your review filled in: sign in (free) and press Create to post it.",
+               x: left, y: rowY + 104, size: 13, color: Theme.textMuted, maxWidth: textW)
         if ui.button("reviews.refresh", "Refresh", Rect(panel.midX - 250, panel.maxY - 58, 240, 44), style: .secondary) { board.load() }
         if ui.button("reviews.back", "Back", Rect(panel.midX + 10, panel.maxY - 58, 240, 44), style: .secondary) { e.popScreen() }
     }
