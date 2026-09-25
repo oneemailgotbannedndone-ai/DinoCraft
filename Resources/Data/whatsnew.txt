@@ -1,5 +1,13 @@
 DinoCraft - the Toonland update
 
+Life under the sea
+- Fish: schools of Cod and Salmon, and Clownfish and Blue Tang on the reefs. They swim all around you,
+  dart away when you hit them and flop about on land. Catch them for Raw Fish and Tropical Fish; cook fish in a furnace.
+- Coral reefs in warm, shallow seas: mounds of coral in five colours, branching coral and glowing Sea Lanterns.
+- Kelp forests sway in cooler seas, and seagrass meadows cover the sea floor. Smelt kelp into Dried Kelp to snack on.
+- Under water now really looks like under water on Windows too: blue-green fog all around (a little clearer on Mac as well).
+- Craft Sea Lanterns from coral, glass and a torch. New advancements: Just Keep Swimming, Something Fishy and Under the Sea.
+
 Toonland
 - A whole new dimension of golden meadows, birch woods and glowing sunblooms.
 - Build a Checker Gateway (coal + bone meal make Checker Blocks) and light it with the Ember Lighter.

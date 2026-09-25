@@ -27,6 +27,9 @@
     { "id": "rex", "category": "Adventure", "title": "King of the Dinosaurs", "description": "Defeat a T-Rex", "icon": "diamond_sword", "type": "kill", "target": "rex" },
     { "id": "spinosaurus", "category": "Adventure", "title": "River Monster", "description": "Defeat a Spinosaurus", "icon": "diamond_sword", "type": "kill", "target": "spinosaurus" },
     { "id": "pookpook", "category": "Adventure", "title": "Pook Pook!", "description": "Meet a Pookpook", "icon": "feather", "type": "near", "target": "pookpook" },
+    { "id": "found_him", "category": "Adventure", "title": "Just Keep Swimming", "description": "Swim with a Clownfish", "icon": "tropical_fish", "type": "near", "target": "clownfish" },
+    { "id": "fishy", "category": "Adventure", "title": "Something Fishy", "description": "Catch a fish", "icon": "raw_fish", "type": "pickup", "target": "raw_fish|tropical_fish" },
+    { "id": "reef", "category": "Adventure", "title": "Under the Sea", "description": "Pick up coral from a reef", "icon": "coral", "type": "pickup", "target": "coral|coral_block" },
     { "id": "big_game", "category": "Adventure", "title": "Big Game", "description": "Stand next to a Longneck", "icon": "dino_hide", "type": "near", "target": "longneck" },
 
     { "id": "farmer", "category": "Farming", "title": "Barnyard", "description": "Meet a pig, a cow, a sheep and a chicken", "icon": "hay_bale", "type": "near", "target": "pig|cow|sheep|chicken", "count": 4, "distinct": true },

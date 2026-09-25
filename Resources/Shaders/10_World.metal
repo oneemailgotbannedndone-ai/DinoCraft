@@ -94,7 +94,7 @@ static float3 terrainLighting(float sky, float blockLight, float shade, uint fla
 static float3 applyFog(float3 color, float3 viewPos, constant FrameUniforms &f) {
     float d = length(viewPos);
     if (f.fogParams.y > 0.5) {
-        float k = 1.0 - exp(-d * 0.085);
+        float k = 1.0 - exp(-d * 0.06);
         return mix(color, float3(0.03, 0.14, 0.26) * max(0.25, f.sunDirDaylight.w), k);
     }
     float fogT = smoothstep(f.fogColorStart.w, f.fogParams.x, d);

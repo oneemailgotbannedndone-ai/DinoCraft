@@ -87,6 +87,8 @@ final class WinSolo: CommandHost {
     var fps = 0
     var framesSinceReady = 0
     var demoPlaced = false
+    /// Automated check "reef"/"kelp": already moved under the sea.
+    var seaDemoMoved = false
     var screenshotQueued = false
 
     // Hosting: friends on Mac and Windows join through the wire protocol
@@ -588,6 +590,9 @@ final class WinSolo: CommandHost {
         let ui = buildUI(width: Float(w), height: Float(h), camera: camera)
         let sky = SkyState.at(worldTime: s.worldTime, dimension: s.dimension, weather: s.weather.intensity)
         renderer.mono = 0
+        let eye = camera.position
+        renderer.underwater = cameraView == .firstPerson && s.player.headInWater
+            && Blocks.holdsWater(s.world.block(Int(floor(eye.x)), Int(floor(eye.y)), Int(floor(eye.z))), s.world.registry)
         renderer.render(world: s.world, camera: camera, sky: sky, time: clock, now: Date.timeIntervalSinceReferenceDate,
                         width: w, height: h, ui: ui, models: models(camera: camera), effects: worldEffects(camera: camera))
 
@@ -673,6 +678,34 @@ final class WinSolo: CommandHost {
         return v
     }
 
+    /// Automated check: dive into the nearest coral reef (or cold kelp forest), then let the chunks there load.
+    private func moveToSeaDemo(_ s: GameSession) {
+        seaDemoMoved = true
+        framesSinceReady = 0
+        guard let generator = s.world.generator as? TerrainGenerator else { return }
+        let sea = generator.seaLevel
+        let reef = options.demoScreen == "reef"
+        let start = s.player.position
+        search: for ring in 0..<80 {
+            let r = ring * 12
+            for step in 0..<max(1, ring * 8) {
+                let a = Double(step) / Double(max(1, ring * 8)) * 2 * .pi
+                let x = Int(start.x + cos(a) * Double(r)), z = Int(start.z + sin(a) * Double(r))
+                let info = generator.columnInfo(x: x, z: z)
+                guard info.biome == .ocean else { continue }
+                let ok = reef ? sea - info.height >= 6 && [(0, 0), (8, 0), (-8, 0), (0, 8), (0, -8)].allSatisfy { generator.isReef(x: x + $0.0, z: z + $0.1) }
+                              : info.temperature < 0.3 && sea - info.height >= 9
+                guard ok else { continue }
+                s.player.gameMode = .creative
+                s.player.setFlying(true)
+                s.player.teleport(to: DVec3(Double(x) + 0.5, Double(sea - 3), Double(z) + 0.5))
+                s.player.pitch = -0.45
+                Log.info("Automated check: diving at \(x), \(z), \(sea - info.height) deep", category: "Game")
+                break search
+            }
+        }
+    }
+
     /// Automated check: a few creatures and a chat line in view, and optionally the inventory screen.
     private func placeDemo() {
         guard let s = session else { return }
@@ -680,6 +713,21 @@ final class WinSolo: CommandHost {
             // Automated check: travel to Toonland first, then take the picture there.
             s.changeDimension(to: .toonland, portal: nil, arrival: DVec3(24.5, 70, 0.5))
             framesSinceReady = 0
+            return
+        }
+        if options.demoScreen == "reef" || options.demoScreen == "kelp" {
+            guard seaDemoMoved else { moveToSeaDemo(s); return }
+            demoPlaced = true
+            // A school of fish in front of you.
+            let look = s.player.lookDirection
+            let forward = simd_normalize(DVec3(look.x, 0, look.z)), right = DVec3(-forward.z, 0, forward.x)
+            let kinds: [MobKind] = options.demoScreen == "reef" ? [.clownfish, .blueTang] : [.cod, .salmon]
+            for i in 0..<7 {
+                let spot = s.player.position + forward * (2.4 + Double(i % 3) * 1.1) + right * (Double(i) - 3) * 0.6 + DVec3(0, 0.6 - Double(i % 3) * 0.45, 0)
+                let fish = s.mobs.spawn(kinds[i % 2], at: spot)
+                fish.yaw = atan2(-right.x, -right.z)
+            }
+            addChat(from: "", text: "Automated check: under the sea")
             return
         }
         demoPlaced = true

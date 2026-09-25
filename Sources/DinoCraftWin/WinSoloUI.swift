@@ -21,7 +21,7 @@ extension WinSolo {
             return ui.vertices
         }
 
-        if s.player.headInWater { ui.rect(0, 0, W, H, SIMD4(0.167, 0.093, 0.041, 0.35)) }
+        if s.player.headInWater { ui.rect(0, 0, W, H, SIMD4(0.01, 0.06, 0.13, 0.22)) }   // a blue-green tint under water
         if s.portalProgress > 0 {
             let tint: SIMD3<Float> = s.portalKind == Blocks.toonlandPortal ? SIMD3(0.95, 0.95, 0.95) : SIMD3(0.45, 0.1, 0.7)
             ui.rect(0, 0, W, H, SIMD4(tint, Float(min(1, s.portalProgress)) * 0.55))

@@ -782,6 +782,7 @@ final class WinGame {
         camera.pitch = player.pitch
         camera.fovY = max(50, min(110, settings.settings.fov)) * .pi / 180 / zoomAmount
         let ui = buildUI(width: Float(w), height: Float(h), camera: camera, now: now)
+        renderer.underwater = Blocks.holdsWater(world.block(Int(floor(camera.position.x)), Int(floor(camera.position.y)), Int(floor(camera.position.z))), world.registry)
         renderer.render(world: world, camera: camera, sky: SkyState.at(worldTime: worldTime), time: now - startTime, now: now,
                         width: w, height: h, ui: ui, models: entityModels(camera: camera, time: now - startTime))
 
@@ -862,7 +863,7 @@ extension WinGame {
             }
         }
         let eye = player.eyePosition
-        if player.headInWater && world.block(Int(floor(eye.x)), Int(floor(eye.y)), Int(floor(eye.z))) == Blocks.water {
+        if player.headInWater && Blocks.holdsWater(world.block(Int(floor(eye.x)), Int(floor(eye.y)), Int(floor(eye.z))), world.registry) {
             air -= dt
             if air < 0 {
                 drownTimer += dt

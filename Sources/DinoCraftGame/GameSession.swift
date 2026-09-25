@@ -659,7 +659,9 @@ final class GameSession {
     private func breakBlock(at pos: BlockPos, harvest: Bool) {
         let id = world.block(pos)
         guard let info = blocks[id], info.isBreakable else { return }
-        let waterNearby = [BlockFace.up, .north, .south, .east, .west].contains { world.block(pos.offset($0)) == Blocks.water }
+        // Plants that grow under water leave their water behind, and so does anything next to water.
+        let waterNearby = info.submerged
+            || [BlockFace.up, .north, .south, .east, .west].contains { Blocks.holdsWater(world.block(pos.offset($0)), blocks) }
         guard place(pos, waterNearby ? Blocks.water : Blocks.air, harvest: harvest && player.gameMode == .survival && canHarvest(info)) else { return }
         Log.info("Broke \(info.name) at \(pos)\(harvest && canHarvest(info) ? " (harvested)" : "")", category: "Game")
         onBlockBroken?(pos, id)
@@ -908,7 +910,10 @@ final class GameSession {
             if let variant = family[face] { blockID = variant }
         }
         guard let placed = blocks[blockID] else { return false }
-        if placed.needsSupport && !blocks.isSolid[Int(world.block(pos.offset(.down)))] { return false }
+        let below = world.block(pos.offset(.down))
+        // Kelp grows on kelp; sea plants only go in water.
+        if placed.needsSupport && !blocks.isSolid[Int(below)] && !(placed.submerged && below == blockID) { return false }
+        if placed.submerged && world.block(pos) != Blocks.water { return false }
         if placed.solid {
             let origin = DVec3(Double(pos.x), Double(pos.y), Double(pos.z))
             let shape = blocks.boxes[Int(blockID)]
@@ -1419,7 +1424,7 @@ final class GameSession {
                 if health > floorHealth { damage(1, cause: "Starved in the wilderness") }
             }
         }
-        if player.headInWater && world.block(Int(floor(player.eyePosition.x)), Int(floor(player.eyePosition.y)), Int(floor(player.eyePosition.z))) == Blocks.water {
+        if player.headInWater && Blocks.holdsWater(world.block(Int(floor(player.eyePosition.x)), Int(floor(player.eyePosition.y)), Int(floor(player.eyePosition.z))), world.registry) {
             air -= dt
             if air < 0 {
                 drownTimer += dt

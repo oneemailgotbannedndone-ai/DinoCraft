@@ -15,6 +15,7 @@ enum NewTextures {
     static func add(to t: inout [String: Canvas]) {
         t["lava"] = lava()
         ToonTextures.add(to: &t)
+        OceanTextures.add(to: &t)
         MoreTextures.add(to: &t)
         BiomeTextures.add(to: &t)
         ArmorTextures.add(to: &t)
@@ -181,6 +182,7 @@ enum NewTextures {
     static func item(_ name: String) -> Canvas? {
         if let egg = EggTextures.item(name) { return egg }
         if let toon = ToonTextures.item(name) { return toon }
+        if let ocean = OceanTextures.item(name) { return ocean }
         if let more = MoreTextures.item(name) { return more }
         let c = Canvas(S)
         switch name {

@@ -118,7 +118,7 @@ final class EntityManager {
             let attracted = canPickUp && distance < EntityManager.magnetRadius && distance > 0.001
             let by = Int(floor(e.position.y + 0.1))
             if world.block(bx, by, bz) == Blocks.lava { e.removed = true; continue }
-            let inLiquid = registry.shape[Int(world.block(bx, by, bz))] == .liquid
+            let inLiquid = registry.isWet[Int(world.block(bx, by, bz))]
 
             if attracted {
                 e.velocity += (toPlayer / distance) * (EntityManager.magnetRadius - distance) * 32 * dt

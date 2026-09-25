@@ -122,6 +122,11 @@ jobs:
             Write-Host "$screen check exit code: $($pN.ExitCode)"
             if (-not (Test-Path $shotN)) { throw "The game did not produce the $screen screenshot" }
           }
+          # Under the sea: a coral reef with fish (the camera dives there, then the chunks load).
+          $shotR = "$PWD/screenshot-reef.png"
+          $pR = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--screenshot `"$shotR`" --frames 120 --render-distance 4 --seed dino --demo-screen reef" -PassThru -Wait -NoNewWindow
+          Write-Host "Reef check exit code: $($pR.ExitCode)"
+          if (-not (Test-Path $shotR)) { throw "The game did not produce the reef screenshot" }
           # The launcher's online work (updates, reviews, friends, sharing stats) and the leaderboard, for real.
           # The leaderboard address is changed so nothing is posted to the real board.
           $env:DINOCRAFT_LEADERBOARD_URL = "http://dreamlo.com/lb/automated-check"
@@ -156,6 +161,7 @@ jobs:
             screenshot-create.png
             screenshot-crafting.png
             screenshot-double-chest.png
+            screenshot-reef.png
             screenshot-online-menu.png
             screenshot-online-leaderboard.png
             .build/release/*.pdb

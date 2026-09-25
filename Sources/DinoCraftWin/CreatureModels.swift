@@ -9,7 +9,7 @@ import DinoCraftCore
 enum CreatureKind: String, CaseIterable {
     case trikey, dodo, longneck, raptor, spitter, crawler, magmaRaptor, villager, stego, ankylo, rex, compy, ptero, parasaur,
          sailback, boneWalker, scorpion, pig, cow, sheep, chicken, pookpook, carnotaurus, allosaurus, baryonyx, troodon, spinosaurus,
-         grumblesaurus, grinasaurus
+         grumblesaurus, grinasaurus, cod, salmon, clownfish, blueTang
 }
 
 enum PartRole {
@@ -48,6 +48,25 @@ enum CreatureModels {
     private static func b(_ x0: Float, _ y0: Float, _ z0: Float, _ x1: Float, _ y1: Float, _ z1: Float,
                           _ col: SIMD4<Float>, glow: Bool = false, s: Float = 1) -> Box {
         (SIMD3(x0, y0, z0) * s, SIMD3(x1, y1, z1) * s, col, glow)
+    }
+
+    /// A fish seen side-on along -Z: slim body, eyes, dorsal fin, wagging tail and paddling side fins.
+    private static func fish(_ m: inout Builder, body: SIMD4<Float>, belly: SIMD4<Float>, fin: SIMD4<Float>, tail: SIMD4<Float>,
+                             stripe: SIMD4<Float>?, tall: Float, s: Float) {
+        let h0: Float = 0.06, h1: Float = 0.06 + 0.22 * tall, mid = (h0 + h1) / 2
+        let eye = c(0x111111)
+        var boxes = [b(-0.07, h0, -0.22, 0.07, h1, 0.18, body, s: s), b(-0.066, h0 - 0.02, -0.18, 0.066, h0 + 0.05, 0.14, belly, s: s),
+                     b(-0.012, h1, -0.1, 0.012, h1 + 0.07 * tall, 0.1, fin, s: s),
+                     b(-0.074, mid, -0.19, -0.066, mid + 0.04, -0.15, eye, s: s), b(0.066, mid, -0.19, 0.074, mid + 0.04, -0.15, eye, s: s)]
+        if let stripe {
+            boxes += [b(-0.075, h0, -0.13, 0.075, h1, -0.09, stripe, s: s), b(-0.075, h0, 0.03, 0.075, h1, 0.07, stripe, s: s)]
+        }
+        m.add(.body, .zero, boxes)
+        m.add(.head, SIMD3(0, mid, -0.22) * s, [b(-0.055, -(mid - h0) * 0.75, -0.07, 0.055, (h1 - mid) * 0.7, 0.0, body, s: s)])
+        m.add(.tail, SIMD3(0, mid, 0.18) * s, [b(-0.02, -0.035, 0, 0.02, 0.035, 0.06, body, s: s),
+                                              b(-0.01, -0.13 * tall, 0.05, 0.01, 0.13 * tall, 0.17, tail, s: s)])
+        m.add(.wing(-1), SIMD3(-0.07, h0 + 0.05, -0.1) * s, [b(-0.09, -0.01, -0.03, 0, 0.01, 0.05, fin, s: s)])
+        m.add(.wing(1), SIMD3(0.07, h0 + 0.05, -0.1) * s, [b(0, -0.01, -0.03, 0.09, 0.01, 0.05, fin, s: s)])
     }
 
     static func build(_ kind: CreatureKind) -> [CreaturePart] {
@@ -107,6 +126,14 @@ enum CreatureModels {
             raptor(&m, body: c(0xA83A2A), stripe: c(0x5A1A12), belly: c(0xD8A080), glow: false, frill: nil, s: 1.9)
             m.add(.head, SIMD3(0, 0.9, -0.3) * 1.9, [b(-0.18, 0.36, -0.36, -0.1, 0.52, -0.26, c(0xF2EBD6), s: 1.9),
                                                     b(0.1, 0.36, -0.36, 0.18, 0.52, -0.26, c(0xF2EBD6), s: 1.9)])
+        case .cod:
+            fish(&m, body: c(0x8A9AA6), belly: c(0xDCE0E2), fin: c(0x5E6A74), tail: c(0x6A7680), stripe: nil, tall: 1, s: 1.1)
+        case .salmon:
+            fish(&m, body: c(0xB85A4A), belly: c(0xF0B8A0), fin: c(0x3E5A6E), tail: c(0x8A3A30), stripe: nil, tall: 1, s: 1.3)
+        case .clownfish:
+            fish(&m, body: c(0xF08A1A), belly: c(0xF8A840), fin: c(0x1E1E1E), tail: c(0xF08A1A), stripe: c(0xFFFFFF), tall: 1.2, s: 0.8)
+        case .blueTang:
+            fish(&m, body: c(0x2A6AE0), belly: c(0x5A90F0), fin: c(0x1A1A48), tail: c(0xF2D83A), stripe: nil, tall: 1.5, s: 0.9)
         case .grumblesaurus, .grinasaurus:
             // King Grumblesaurus: a huge, scarred bronze rex wearing a gold crown. His brows are drawn
             // down in a scowl until he's won over, then they relax.

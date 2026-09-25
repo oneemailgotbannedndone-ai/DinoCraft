@@ -148,10 +148,10 @@ public final class PlayerController {
         let hw = width / 2
         let body = DBox(min: DVec3(position.x - hw, position.y + 0.1, position.z - hw),
                         max: DVec3(position.x + hw, position.y + 0.9, position.z + hw))
-        inWater = VoxelPhysics.anyBlock(world, in: body) { reg.shape[Int($0)] == .liquid }
+        inWater = VoxelPhysics.anyBlock(world, in: body) { reg.isWet[Int($0)] }
         let eye = eyePosition
         if let id = world.blockIfLoaded(Int(floor(eye.x)), Int(floor(eye.y)), Int(floor(eye.z))) {
-            headInWater = reg.shape[Int(id)] == .liquid
+            headInWater = reg.isWet[Int(id)]
         } else {
             headInWater = false
         }
@@ -207,7 +207,7 @@ public final class PlayerController {
         } else if inWater {
             // Is the water surface just above your eyes? Then you float up to it.
             let aboveEyes = world.blockIfLoaded(Int(floor(position.x)), Int(floor(position.y + eyeHeight + 0.6)), Int(floor(position.z))) ?? Blocks.air
-            let nearSurface = reg.shape[Int(aboveEyes)] != .liquid
+            let nearSurface = !reg.isWet[Int(aboveEyes)]
             let targetY: Double
             if collidedHorizontally && input.jump {
                 targetY = 5.4                                       // climb out onto a ledge

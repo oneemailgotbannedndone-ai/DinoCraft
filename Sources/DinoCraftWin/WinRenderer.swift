@@ -146,6 +146,8 @@ final class WinRenderer {
     var shaderPack = 0
     /// 1 shows the scene in black and white (no dimension uses it now).
     var mono: Float = 0
+    /// Your eyes are under water: thick blue-green fog all round, like on the Mac.
+    var underwater = false
     /// Set when the driver can't render offscreen, so post-processing stays off.
     private var postUnavailable = false
     var shaderStrength: Float = 1
@@ -435,6 +437,7 @@ final class WinRenderer {
 
     /// Menu background: a slowly turning evening sky with drifting clouds, plus the menu UI.
     func renderMenu(width: Int32, height: Int32, time: Double, ui: [Float], models: [Float] = []) {
+        underwater = false
         gl.viewport(0, 0, width, height)
         gl.enable(GLC.FRAMEBUFFER_SRGB)
         gl.depthMask(1)
@@ -462,6 +465,12 @@ final class WinRenderer {
 
     func render(world: World, camera: WinCamera, sky: SkyState, time: Double, now: Double,
                 width: Int32, height: Int32, ui: [Float], models: [Float] = [], effects: WorldEffects = WorldEffects()) {
+        var sky = sky
+        if underwater {
+            // The sky disappears into the water's colour (the same colour the fog fades to).
+            let water = SIMD3<Float>(0.03, 0.14, 0.26) * max(0.25, sky.daylight)
+            sky.zenith = water; sky.horizon = water; sky.stars = 0; sky.sunsetGlow = 0
+        }
         let aspect = Float(width) / Float(max(1, height))
         let viewProj = camera.viewProjection(aspect: aspect)
         let t = Float(time.truncatingRemainder(dividingBy: 3600))
@@ -510,7 +519,7 @@ final class WinRenderer {
             gl.uniform4f(program.sunDaylight, sky.sunDirection.x, sky.sunDirection.y, sky.sunDirection.z, sky.daylight)
             gl.uniform3f(program.skyLight, sky.skyLight.x, sky.skyLight.y, sky.skyLight.z)
             gl.uniform4f(program.fogColorStart, sky.horizon.x, sky.horizon.y, sky.horizon.z, fogEnd * 0.55)
-            gl.uniform2f(program.fogParams, fogEnd, 0)
+            gl.uniform2f(program.fogParams, fogEnd, underwater ? 1 : 0)
             gl.uniform3f(program.skyHorizon, sky.horizon.x, sky.horizon.y, sky.horizon.z)
             gl.uniform1f(program.brightness, brightness)
             gl.activeTexture(GLC.TEXTURE0)
@@ -557,8 +566,8 @@ final class WinRenderer {
     private func drawModels(_ v: [Float], viewProj: Mat4, sky: SkyState, fogEnd: Float) {
         gl.useProgram(modelProgram)
         gl.setMatrix(gl.uniform(modelProgram, "uViewProj"), viewProj)
-        gl.uniform4f(gl.uniform(modelProgram, "uFogColorStart"), sky.horizon.x, sky.horizon.y, sky.horizon.z, fogEnd * 0.55)
-        gl.uniform1f(gl.uniform(modelProgram, "uFogEnd"), fogEnd)
+        gl.uniform4f(gl.uniform(modelProgram, "uFogColorStart"), sky.horizon.x, sky.horizon.y, sky.horizon.z, underwater ? 1 : fogEnd * 0.55)
+        gl.uniform1f(gl.uniform(modelProgram, "uFogEnd"), underwater ? min(fogEnd, 34) : fogEnd)
         gl.uniform1f(gl.uniform(modelProgram, "uDaylight"), sky.daylight)
         gl.bindVertexArray(modelVertexArray)
         gl.bindBuffer(GLC.ARRAY_BUFFER, modelBuffer)
@@ -569,8 +578,8 @@ final class WinRenderer {
     private func drawEffects(_ v: [Float], viewProj: Mat4, sky: SkyState, fogEnd: Float, blended: Bool) {
         gl.useProgram(effectProgram)
         gl.setMatrix(gl.uniform(effectProgram, "uViewProj"), viewProj)
-        gl.uniform4f(gl.uniform(effectProgram, "uFogColorStart"), sky.horizon.x, sky.horizon.y, sky.horizon.z, fogEnd * 0.55)
-        gl.uniform1f(gl.uniform(effectProgram, "uFogEnd"), fogEnd)
+        gl.uniform4f(gl.uniform(effectProgram, "uFogColorStart"), sky.horizon.x, sky.horizon.y, sky.horizon.z, underwater ? 1 : fogEnd * 0.55)
+        gl.uniform1f(gl.uniform(effectProgram, "uFogEnd"), underwater ? min(fogEnd, 34) : fogEnd)
         gl.uniform1f(gl.uniform(effectProgram, "uDaylight"), sky.daylight)
         gl.uniform1i(gl.uniform(effectProgram, "uBlocks"), 0)
         gl.uniform1i(gl.uniform(effectProgram, "uItems"), 1)

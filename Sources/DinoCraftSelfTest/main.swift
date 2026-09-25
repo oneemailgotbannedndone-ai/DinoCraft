@@ -443,6 +443,38 @@ section("Leaderboard") {
     try? FileManager.default.removeItem(at: statsURL)
 }
 
+section("Ocean life") {
+    let reg = try! BlockRegistry.loadDefault()
+    check(reg.isSubmerged[Int(Blocks.kelp)] && reg.isWet[Int(Blocks.seagrass)] && reg.isWet[Int(Blocks.water)] && !reg.isWet[Int(Blocks.sand)],
+          "sea plants count as water for swimming")
+    check(reg.variantLayers.count == 256 && reg[Blocks.coralBlock]?.variants.count == 5 && reg.textureNames.contains("coral_fan_purple"),
+          "coral comes in five colours")
+    check(reg.emission[Int(Blocks.seaLantern)] == 15, "sea lanterns glow")
+    // Somewhere in a big patch of ocean there are kelp, seagrass and a coral reef.
+    let gen = TerrainGenerator(seed: 1337)
+    var counts: [BlockID: Int] = [:]
+    var reefColumn: (Int, Int)?
+    search: for ring in 0..<60 {
+        for step in 0..<max(1, ring * 8) {
+            let a = Double(step) / Double(max(1, ring * 8)) * 2 * .pi
+            let x = Int(cos(a) * Double(ring * 16)), z = Int(sin(a) * Double(ring * 16))
+            if gen.isReef(x: x, z: z) { reefColumn = (x, z); break search }
+        }
+    }
+    check(reefColumn != nil, "warm seas have coral reefs")
+    if let (x, z) = reefColumn {
+        for dz in -2...2 { for dx in -2...2 {
+            let chunk = gen.generate(ChunkPos(Int32((x >> 4) + dx), Int32((z >> 4) + dz)))
+            for y in 0..<WorldConst.height { for cz in 0..<16 { for cx in 0..<16 {
+                let id = chunk.block(cx, y, cz)
+                if id >= Blocks.kelp { counts[id, default: 0] += 1 }
+            } } }
+        } }
+    }
+    check((counts[Blocks.coralBlock] ?? 0) > 20 && (counts[Blocks.coral] ?? 0) > 10, "reefs are built of coral (\(counts[Blocks.coralBlock] ?? 0) blocks, \(counts[Blocks.coral] ?? 0) plants)")
+    check((counts[Blocks.seagrass] ?? 0) > 10, "seagrass grows on the sea floor (\(counts[Blocks.seagrass] ?? 0))")
+}
+
 section("Crash reports") {
     let log = URL(fileURLWithPath: "/tmp/logs/dinocraft-20260925-030000.log")
     check(CrashReport.companion(of: log).lastPathComponent == "dinocraft-20260925-030000.err.txt", "the error file sits beside its log")

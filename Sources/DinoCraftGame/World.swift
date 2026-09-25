@@ -157,7 +157,7 @@ final class World: BlockSource {
             guard y > 0, y < WorldConst.height - 2 else { return false }
             let below = block(x, y - 1, z), feet = block(x, y, z), head = block(x, y + 1, z)
             return registry.isSolid[Int(below)] && !registry.isSolid[Int(feet)] && !registry.isSolid[Int(head)]
-                && registry.shape[Int(feet)] != .liquid && registry.shape[Int(head)] != .liquid
+                && !registry.isWet[Int(feet)] && !registry.isWet[Int(head)]
                 && below != Blocks.leaves && below != Blocks.redwoodNeedles && below != Blocks.bedrock
         }
         for d in 0..<WorldConst.height {

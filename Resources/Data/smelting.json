@@ -109,6 +109,14 @@
       "result": "cooked_pork"
     },
     {
+      "input": "raw_fish",
+      "result": "cooked_fish"
+    },
+    {
+      "input": "kelp",
+      "result": "dried_kelp"
+    },
+    {
       "input": "raw_beef",
       "result": "cooked_beef"
     },

@@ -110,7 +110,7 @@ enum Shaders {
         vec3 applyFog(vec3 color, vec3 viewPos) {
             float d = length(viewPos);
             if (uFogParams.y > 0.5) {
-                float k = 1.0 - exp(-d * 0.085);
+                float k = 1.0 - exp(-d * 0.06);
                 return mix(color, vec3(0.03, 0.14, 0.26) * max(0.25, uSunDaylight.w), k);
             }
             float t = smoothstep(uFogColorStart.w, uFogParams.x, d);

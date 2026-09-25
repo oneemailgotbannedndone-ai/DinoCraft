@@ -61,6 +61,8 @@ public final class TerrainGenerator: @unchecked Sendable {
 
     private let warpX, warpZ, continent, erosion, ridge, detail, river: SimplexNoise
     private let temperatureNoise, humidityNoise, variantNoise: SimplexNoise
+    /// Where kelp forests and coral reefs grow.
+    private let seaNoise: SimplexNoise
     private let caveA, caveB, cavern: SimplexNoise
 
     private static let caveStride = 4
@@ -81,6 +83,7 @@ public final class TerrainGenerator: @unchecked Sendable {
         continent = sub(21); erosion = sub(22); ridge = sub(23); detail = sub(24); river = sub(25)
         temperatureNoise = sub(31); humidityNoise = sub(32); variantNoise = sub(33)
         caveA = sub(41); caveB = sub(42); cavern = sub(43)
+        seaNoise = sub(51)
     }
 
     // MARK: - Column shaping
@@ -275,6 +278,7 @@ public final class TerrainGenerator: @unchecked Sendable {
         placeStructures(chunk)
         placeDetails(chunk, columns: columns)
         placePlants(chunk, columns: columns)
+        placeSeaLife(chunk, columns: columns)
         if modern { placeIceberg(chunk, columns: columns) }
         chunk.recomputeHeights()
         return chunk
@@ -934,6 +938,63 @@ public final class TerrainGenerator: @unchecked Sendable {
                     plant = r < 0.03 ? Blocks.pebbles : nil
                 }
                 if let plant { chunk.setRaw(x, y, z, plant) }
+            }
+        }
+    }
+
+    // MARK: - Sea life
+
+    /// Is (x, z) in a warm, shallow sea where coral reefs grow?
+    public func isReef(x: Int, z: Int) -> Bool { isReef(x: x, z: z, info: baseColumnInfo(x: x, z: z)) }
+
+    /// `info` in base heights (as the generator uses them).
+    private func isReef(x: Int, z: Int, info: ColumnInfo) -> Bool {
+        let depth = TerrainGenerator.baseSeaLevel - info.height
+        guard info.biome == .ocean, info.temperature > 0.15, (3...16).contains(depth) else { return false }
+        return seaNoise.fbm2(Double(x) / 56, Double(z) / 56, octaves: 2) > 0.12
+    }
+
+    /// The sea floor comes alive: seagrass meadows, kelp forests in cooler water, and coral reefs
+    /// with glowing sea lanterns in warm shallows.
+    private func placeSeaLife(_ chunk: Chunk, columns: [ColumnInfo]) {
+        let ox = Int(chunk.pos.originX), oz = Int(chunk.pos.originZ)
+        let sea = TerrainGenerator.baseSeaLevel
+        let floors: Set<BlockID> = [Blocks.sand, Blocks.gravel, Blocks.clay, Blocks.dirt, Blocks.stone, Blocks.mud]
+        for z in 0..<16 {
+            for x in 0..<16 {
+                let info = columns[z * 16 + x]
+                guard info.biome == .ocean || info.biome == .river else { continue }
+                var y = info.height
+                guard y < sea - 1, chunk.block(x, y, z) == Blocks.water, floors.contains(chunk.block(x, y - 1, z)) else { continue }
+                let wx = ox + x, wz = oz + z
+                let depth = sea - y
+                let r = Hashing.unit(seed, Int32(wx), Int32(y), Int32(wz), salt: 211)
+                let r2 = Hashing.unit(seed, Int32(wx), Int32(y), Int32(wz), salt: 212)
+                // The top water block stays clear (and may be ice), so plants stop one below it.
+                let ceiling = sea - 2
+
+                if isReef(x: wx, z: wz, info: info) {
+                    // Mounds of coral, tallest in the middle of the reef.
+                    let lump = seaNoise.fbm2(Double(wx) / 9, Double(wz) / 9, octaves: 2)
+                    let mound = lump > -0.05 ? min(4, 1 + Int((lump + 0.05) * 7)) : 0
+                    for _ in 0..<mound where y < ceiling {
+                        chunk.setRaw(x, y, z, r2 < 0.012 ? Blocks.seaLantern : Blocks.coralBlock)
+                        y += 1
+                    }
+                    guard y <= ceiling else { continue }
+                    if r < 0.5 { chunk.setRaw(x, y, z, Blocks.coral) }
+                    else if r < 0.62 { chunk.setRaw(x, y, z, Blocks.seagrass) }
+                    continue
+                }
+
+                let forest = seaNoise.fbm2(Double(wx) / 40 + 100, Double(wz) / 40, octaves: 2) > 0.05
+                let kelpChance: Float = info.temperature < 0.3 && depth >= 4 ? (forest ? 0.22 : 0.025) : 0
+                if r < kelpChance {
+                    let height = min(ceiling - y + 1, 2 + Int(r2 * Float(max(1, depth - 2))))
+                    for i in 0..<height { chunk.setRaw(x, y + i, z, Blocks.kelp) }
+                } else if depth >= 2 && r < kelpChance + (forest ? 0.3 : 0.16) {
+                    chunk.setRaw(x, y, z, Blocks.seagrass)
+                }
             }
         }
     }

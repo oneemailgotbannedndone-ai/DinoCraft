@@ -88,6 +88,12 @@ public final class ChunkMesher {
     private var faceLayers: [UInt16]
     /// Double chest halves: front, back (side) and top/bottom textures.
     private var chestHalfLayers: (front: UInt16, side: UInt16, top: UInt16) = (0, 0, 0)
+    /// Plants growing under water: their cell also holds water.
+    private let submergedTable: [Bool]
+    /// Per-position texture choices (coral colours), by id.
+    private var variantLayers: [[UInt16]]
+    /// World position of the centre chunk's corner, for per-position variants.
+    private var originX = 0, originZ = 0
 
     private var H = 0
 
@@ -119,6 +125,8 @@ public final class ChunkMesher {
         wavingTable = .allocate(capacity: 256)
         leafLike = .allocate(capacity: 256)
         boxTable = registry.shapeBoxes
+        submergedTable = registry.isSubmerged
+        variantLayers = registry.variantLayers
         facingTable = registry.facingIndex
         for i in 0..<256 {
             let info = registry.blocks[i]
@@ -147,6 +155,22 @@ public final class ChunkMesher {
         refreshChestLayers()
     }
 
+    /// The texture layer of a face, picking a variant by position for blocks that have them.
+    /// `patch` groups neighbouring blocks into same-coloured clumps.
+    @inline(__always) private func faceLayer(_ id: Int, _ face: Int, _ x: Int, _ y: Int, _ z: Int, patch: Int = 0) -> UInt16 {
+        let variants = variantLayers[id]
+        if variants.isEmpty { return faceLayers[id * 6 + face] }
+        let wx = (originX + x) >> patch, wy = y >> patch, wz = (originZ + z) >> patch
+        var h = UInt32(truncatingIfNeeded: wx &* 73_856_093 ^ wy &* 19_349_663 ^ wz &* 83_492_791)
+        h ^= h >> 13; h = h &* 0x5bd1e995; h ^= h >> 15
+        return variants[Int(h % UInt32(variants.count))]
+    }
+
+    /// Water, or a plant growing in it (for water that meets another water cell).
+    @inline(__always) private func waterMeets(_ id: Int, _ nb: Int) -> Bool {
+        nb == id || (id == Int(Blocks.water) && submergedTable[nb])
+    }
+
     private func refreshChestLayers() {
         let l = registry.extraLayers
         chestHalfLayers = (l["chest_front_half"] ?? 0, l["chest_side_half"] ?? 0, l["chest_top_half"] ?? 0)
@@ -162,6 +186,7 @@ public final class ChunkMesher {
     /// Refreshes texture layer bindings (call after the atlas is rebuilt).
     public func refreshTextureLayers() {
         faceLayers = registry.faceLayers
+        variantLayers = registry.variantLayers
         refreshChestLayers()
     }
 
@@ -176,6 +201,8 @@ public final class ChunkMesher {
         out.reset()
         let t0 = Date.timeIntervalSinceReferenceDate
         let center = neighborhood[4]
+        originX = Int(center.pos.x) * 16
+        originZ = Int(center.pos.z) * 16
         var top = 1
         for c in neighborhood { top = max(top, c.maxHeight) }
         H = min(WorldConst.height, top + 1)
@@ -427,15 +454,15 @@ public final class ChunkMesher {
                     var flags: UInt8 = 0
                     if shape == 4 {
                         // Liquids: skip internal faces; side faces are emitted per block.
-                        if nb == id || !isY { continue }
+                        if waterMeets(id, nb) || !isY { continue }
                         flags |= VertexFlags.liquid
-                        if face == 2 && idAt(rx, y + 1, rz) != id { flags |= VertexFlags.rawUV }   // lowered surface marker
+                        if face == 2 && !waterMeets(id, idAt(rx, y + 1, rz)) { flags |= VertexFlags.rawUV }   // lowered surface marker
                     } else if nb == id {
                         if !leafLike[id] || !fancyLeaves { continue }
                     }
                     if wavingTable[id] { flags |= VertexFlags.waving }
                     if emissionTable[id] > 0 { flags |= VertexFlags.emissive }
-                    let layer = UInt32(faceLayers[id * 6 + face])
+                    let layer = UInt32(faceLayer(id, face, x, y, z, patch: 1))
                     maskKey[mi] = layer | (UInt32(flags) << 16) | (UInt32(layerTable[id]) << 24)
                     maskLight[mi] = cornerData(nx, ny, nz, fa, ao: shape != 4)
                     any = true
@@ -524,7 +551,9 @@ public final class ChunkMesher {
                     let rx = x + 16, rz = z + 16
                     let id = Int(ids[ri(rx, y, rz)])
                     switch shapeTable[id] {
-                    case 2: emitCross(id: id, x: x, y: y, z: z)
+                    case 2:
+                        emitCross(id: id, x: x, y: y, z: z)
+                        if submergedTable[id] { emitSubmergedWater(x: x, y: y, z: z) }
                     case 3: emitTorch(id: id, x: x, y: y, z: z)
                     case 4: emitLiquidSides(id: id, x: x, y: y, z: z)
                     case 5: emitBox(id: id, x: x, y: y, z: z)
@@ -554,10 +583,12 @@ public final class ChunkMesher {
 
     private func emitCross(id: Int, x: Int, y: Int, z: Int) {
         let (s, l) = cellLight(x + 16, y, z + 16)
-        let layer = faceLayers[id * 6]
+        let layer = faceLayer(id, 0, x, y, z)
         let base = VertexFlags.rawUV | (emissionTable[id] > 0 ? VertexFlags.emissive : 0)
         let waveTop = wavingTable[id] ? VertexFlags.wavingTop : 0
-        let flags = [base, base, base | waveTop, base | waveTop]
+        // A stack of the same plant (kelp) sways as one: each piece's foot follows the one below.
+        let waveFoot = wavingTable[id] && idAt(x + 16, y - 1, z + 16) == id ? VertexFlags.wavingTop : 0
+        let flags = [base | waveFoot, base | waveFoot, base | waveTop, base | waveTop]
         let uvs = [(0, 16), (16, 16), (16, 0), (0, 0)]
         let a = 2, b = 14
         let quads: [[(Int, Int, Int)]] = [
@@ -680,9 +711,24 @@ public final class ChunkMesher {
         }
     }
 
+    /// The water around a plant growing under water: a surface on top if nothing wet is above,
+    /// and sides wherever it meets air.
+    private func emitSubmergedWater(x: Int, y: Int, z: Int) {
+        let water = Int(Blocks.water)
+        let rx = x + 16, rz = z + 16
+        emitLiquidSides(id: water, x: x, y: y, z: z)
+        let above = idAt(rx, y + 1, rz)
+        guard !waterMeets(water, above), !opaqueTable[above] else { return }
+        let (s, l) = cellLight(rx, y + 1, rz)
+        let positions = [(0, 14, 16), (16, 14, 16), (16, 14, 0), (0, 14, 0)]
+        let uvs = positions.map { (x * 16 + $0.0, z * 16 + $0.2) }
+        emitRaw(positions, uvs, layer: faceLayers[water * 6 + 2], normal: 2, sky: s, light: l,
+                flags: [VertexFlags.liquid, VertexFlags.liquid, VertexFlags.liquid, VertexFlags.liquid], into: \.translucent, origin: (x, y, z))
+    }
+
     private func emitLiquidSides(id: Int, x: Int, y: Int, z: Int) {
         let rx = x + 16, rz = z + 16
-        let top = idAt(rx, y + 1, rz) == id ? 16 : 14
+        let top = waterMeets(id, idAt(rx, y + 1, rz)) ? 16 : 14
         let layer = faceLayers[id * 6]
         let flags = [VertexFlags.liquid, VertexFlags.liquid, VertexFlags.liquid, VertexFlags.liquid]
         let sides: [(Int, [(Int, Int, Int)])] = [
@@ -695,7 +741,7 @@ public final class ChunkMesher {
             let fa = ChunkMesher.axes[face]
             let nx = rx + fa.n.0, nz = rz + fa.n.2
             let nb = idAt(nx, y, nz)
-            if nb == id || opaqueTable[nb] { continue }
+            if waterMeets(id, nb) || opaqueTable[nb] { continue }
             let (s, l) = cellLight(nx, y, nz)
             let uvs = pos.map { p -> (Int, Int) in
                 let u = (face == 0 || face == 1) ? p.2 : p.0
