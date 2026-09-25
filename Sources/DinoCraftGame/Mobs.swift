@@ -10,7 +10,7 @@ enum MobKind: String, CaseIterable, Codable {
          grumblesaurus, grinasaurus,
          cod, salmon, clownfish, blueTang,
          pachy, iguanodon, therizino, gallimimus, oviraptor, microraptor,
-         boat, egg, armorStand
+         boat, egg, armorStand, mosasaurus
 }
 
 /// Kinds of particle burst the game can ask for.
@@ -205,6 +205,13 @@ struct MobSpecies {
         .boat: MobSpecies(kind: .boat, displayName: "Boat", hostile: false, maxHealth: 4, width: 1.2, height: 0.6,
                    walkSpeed: 0, runSpeed: 7.5, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: false,
                    detectRange: 0, drops: [], callPitch: 1, deepCall: false),
+        .mosasaurus: MobSpecies(kind: .mosasaurus, displayName: "Mosasaurus", hostile: true, maxHealth: 140, width: 1.8, height: 1.3,
+                   walkSpeed: 3.2, runSpeed: 7.5, damage: 9, attackReach: 2.4, attackCooldown: 1.3, ranged: false, fireproof: false,
+                   detectRange: 30, drops: [MobDrop(item: "mosasaurus_tooth", min: 1, max: 1, chance: 1),
+                                            MobDrop(item: "emerald", min: 3, max: 7, chance: 1),
+                                            MobDrop(item: "diamond", min: 1, max: 2, chance: 0.6),
+                                            MobDrop(item: "raw_fish", min: 3, max: 6, chance: 1)],
+                   callPitch: 0.5, deepCall: true),
         .armorStand: MobSpecies(kind: .armorStand, displayName: "Armour Stand", hostile: false, maxHealth: 1, width: 0.5, height: 1.9,
                    walkSpeed: 0, runSpeed: 0, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: false,
                    detectRange: 0, drops: [], callPitch: 1, deepCall: false),
@@ -221,7 +228,10 @@ struct MobSpecies {
     var flying: Bool { kind == .ptero || kind == .microraptor }
 
     /// Fish: they swim anywhere in the water and flop about on land.
-    var aquatic: Bool { [.cod, .salmon, .clownfish, .blueTang].contains(kind) }
+    var aquatic: Bool { [.cod, .salmon, .clownfish, .blueTang, .mosasaurus].contains(kind) }
+
+    /// Bosses get a health bar across the top of the screen.
+    var isBoss: Bool { kind == .grumblesaurus || kind == .mosasaurus }
 
     /// Boats: ridden, not alive (see `Boats`).
     var isVehicle: Bool { kind == .boat }
@@ -404,6 +414,7 @@ final class MobManager {
         if guardTimer <= 0 {
             guardTimer = 15
             spawnDungeonGuards(s)
+            spawnTempleGuardian(s)
         }
         stageTimer -= dt
         if stageTimer <= 0 {
@@ -461,6 +472,10 @@ final class MobManager {
             if m.isTamed {
                 updateBreeding(m, dt: dt, session: s)
                 updateTamed(m, dt: dt, session: s)
+                continue
+            }
+            if m.species.kind == .mosasaurus {
+                updateMosasaurus(m, target: chosen, dt: dt, session: s)
                 continue
             }
             if m.species.aquatic {
@@ -697,7 +712,7 @@ final class MobManager {
     }
 
     /// Picks spots to swim to that are under water, a few blocks away, often at a new depth.
-    private func swimWander(_ m: Mob, dt: Double, world: World, desired: inout DVec3, speed: inout Double) {
+    func swimWander(_ m: Mob, dt: Double, world: World, desired: inout DVec3, speed: inout Double) {
         m.wanderTimer -= dt
         if let target = m.wanderTarget, m.wanderTimer > 0 {
             let d = target - m.position
@@ -721,7 +736,7 @@ final class MobManager {
         }
     }
 
-    private func swimPhysics(_ m: Mob, desired input: DVec3, speed: Double, dt: Double, session s: GameSession) {
+    func swimPhysics(_ m: Mob, desired input: DVec3, speed: Double, dt: Double, session s: GameSession) {
         let world = s.world
         let middle = m.position + DVec3(0, m.species.height * 0.5, 0)
         m.inLiquid = wet(world, middle)
@@ -883,6 +898,7 @@ final class MobManager {
     private func finishDeath(_ m: Mob, _ s: GameSession) {
         m.removed = true
         if m.species.kind == .grumblesaurus { bossCheeredUp(m, s) }
+        if m.species.kind == .mosasaurus { mosasaurusDefeated(m, s) }
         let center = m.position + DVec3(0, m.species.height * 0.5, 0)
         for drop in m.species.drops {
             guard Double.random(in: 0..<1) < drop.chance, let item = s.items.id(named: drop.item) else { continue }
@@ -1202,7 +1218,7 @@ extension MobManager {
 extension MobManager {
     /// The boss fighting near `p`, for the boss health bar.
     func boss(near p: DVec3) -> Mob? {
-        mobs.first { $0.species.kind == .grumblesaurus && !$0.removed && simd_distance($0.position, p) < 64 }
+        mobs.first { $0.species.isBoss && !$0.removed && simd_distance($0.position, p) < 64 }
     }
 
     /// Keeps King Grumblesaurus on the nearest Toonland stage until he's cheered up,

@@ -35,6 +35,8 @@ final class Fireball {
 /// Timers for the world's big events.
 struct HazardState {
     var fireballs: [Fireball] = []
+    /// Lightning bolts on screen right now.
+    var bolts: [LightningBolt] = []
     /// The nearest volcano (rescanned every few seconds) and its crater top.
     var volcano: DVec3?
     var volcanoScan = 0.0

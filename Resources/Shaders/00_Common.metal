@@ -14,7 +14,8 @@ struct FrameUniforms {
     float4 skyHorizon;        // rgb horizon, w sunset glow
     float4 skyLight;          // rgb sky light tint, w cloud toggle
     float4 viewport;          // xy size (px), zw 1/size
-    float4 dimension;         // x ambient light, y cloud height, z sky visible, w reserved
+    float4 dimension;         // x ambient light, y cloud height, z sky visible, w winter snow on leaves and grass
+    float4 season;            // rgb leaf/grass colour (times brightness), w how far to blend toward it
 };
 
 struct ChunkUniforms {

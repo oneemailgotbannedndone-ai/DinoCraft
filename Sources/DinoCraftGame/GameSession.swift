@@ -139,6 +139,9 @@ final class GameSession {
     var onOpenEnchanting: ((BlockPos) -> Void)?
     /// Levers, dust, lamps and pistons (see `Circuits`).
     let circuits: CircuitManager
+    /// Burning blocks (see `Fire`).
+    let fires: FireManager
+    var burnTimer = 0.0
     /// What's hanging in item frames (see `Decorations`).
     let frames = FrameManager()
     /// Volcano eruptions, meteor showers and flying fireballs (see `Hazards`).
@@ -146,6 +149,8 @@ final class GameSession {
     var onOpenMap: (() -> Void)?
     /// The paper map's view (built only while it's open).
     let paperMap = Minimap(reach: Minimap.paperRadius)
+    /// The season last time we looked (to announce a new one).
+    var lastSeason: Season?
     var onOpenQuestBook: (() -> Void)?
     var smelting: SmeltingRegistry?
     var onOpenContainer: ((BlockPos, ContainerKind) -> Void)?
@@ -162,6 +167,7 @@ final class GameSession {
         self.isRemote = remote
         variants = BlockVariants(blocks: blocks)
         circuits = CircuitManager(blocks: blocks)
+        fires = FireManager(blocks: blocks)
         self.isNewWorld = isNew
         self.storage = storage
         self.blocks = blocks
@@ -232,8 +238,13 @@ final class GameSession {
             crops.load(from: cropsURL)
             circuits.load(from: circuitsURL)
             frames.load(from: framesURL, registry: items)
+            fires.load(from: firesURL)
         }
-        world.onBlockSet = { [circuits] pos, id in circuits.noteChange(pos, id) }
+        world.onBlockSet = { [circuits, fires] pos, id in
+            circuits.noteChange(pos, id)
+            fires.noteChange(pos, id)
+        }
+        weather.onStrike = { [weak self] closeness in self?.lightningStrike(closeness: closeness) }
         advancements.load(from: advancementsURL)
         advancements.onRecord = { [weak self] type, target, amount in
             guard let self else { return }
@@ -257,6 +268,9 @@ final class GameSession {
     }
     private var containersURL: URL {
         storage.directory(for: meta.id).appendingPathComponent(dimension == .overworld ? "containers.json" : "containers_\(dimension.rawValue).json")
+    }
+    private var firesURL: URL {
+        storage.directory(for: meta.id).appendingPathComponent(dimension == .overworld ? "fires.json" : "fires_\(dimension.rawValue).json")
     }
     private var framesURL: URL {
         storage.directory(for: meta.id).appendingPathComponent(dimension == .overworld ? "frames.json" : "frames_\(dimension.rawValue).json")
@@ -378,7 +392,8 @@ final class GameSession {
         meta.playTimeSeconds += dt
         hurtCooldown = max(0, hurtCooldown - dt)
         spawnProtection = max(0, spawnProtection - dt)
-        if !isRemote { crops.update(dt: dt, world: world, wet: weather.kind != .clear) }
+        if !isRemote { crops.update(dt: dt * season.cropSpeed, world: world, wet: weather.kind != .clear) }
+        updateSeason()
 
         if isDead {
             if !isRemote {
@@ -435,6 +450,7 @@ final class GameSession {
         updateFishing(dt)
         updateOrbs(dt)
         updateHazards(dt)
+        updateFire(dt)
         if !isRemote { circuits.update(dt: dt, session: self) }
         updateNavigation(dt)
         updateHandAnimation(dt)
@@ -962,7 +978,11 @@ final class GameSession {
             guard pressed, let hit = target else { return false }
             swing()
             if tryActivatePortal(at: hit.adjacent) { return true }
-            onToast?("Strike the Ember Lighter inside a Bone Block, Amber Block or Checker Block frame")
+            if lightFire(at: hit.adjacent) {
+                onSound?("place_sand", 0.6, 1.6)
+                return true
+            }
+            onToast?("Strike the Ember Lighter inside a Bone Block, Amber Block or Checker Block frame, or on the ground to light a fire")
             return true
         }
 
@@ -1211,7 +1231,10 @@ final class GameSession {
         world = World(registry: blocks, generator: generator, storage: isRemote ? nil : storage, worldID: isRemote ? nil : meta.id,
                       meshFactory: meshFactory, jobs: jobs, renderDistance: renderDistance)
         world.onBlockChanged = blockObserver
-        world.onBlockSet = { [circuits] pos, id in circuits.noteChange(pos, id) }
+        world.onBlockSet = { [circuits, fires] pos, id in
+            circuits.noteChange(pos, id)
+            fires.noteChange(pos, id)
+        }
         world.remoteRequest = remoteChunkRequester
         entities.clear()
         mobs.clear()
@@ -1219,6 +1242,7 @@ final class GameSession {
         crops.clear()
         circuits.clear()
         frames.clear()
+        fires.clear()
         arrows.clear()
         if !isRemote {
             entities.load(from: entitiesURL, items: items)
@@ -1227,6 +1251,7 @@ final class GameSession {
             crops.load(from: cropsURL)
             circuits.load(from: circuitsURL)
             frames.load(from: framesURL, registry: items)
+            fires.load(from: firesURL)
         }
         let x = Int(floor(destination.x)), z = Int(floor(destination.z))
         let estimate = arrival.map { Int($0.y) } ?? generator.estimatedSurface(x: x, z: z)
@@ -1878,6 +1903,7 @@ final class GameSession {
         crops.save(to: cropsURL)
         circuits.save(to: circuitsURL)
         frames.save(to: framesURL, registry: items)
+        fires.save(to: firesURL)
         let queued = world.saveModifiedChunks()
         Log.info("Saved '\(meta.name)' [\(dimension.rawValue)] (\(queued) chunks queued)", category: "Save")
     }

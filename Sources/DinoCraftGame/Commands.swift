@@ -53,6 +53,7 @@ enum Commands {
         Spec("day", "/day", "Jump to morning"),
         Spec("night", "/night", "Jump to nightfall"),
         Spec("weather", "/weather <clear|rain|thunder|storm> [seconds]", "Change the weather", args: [.choices(["clear", "rain", "thunder", "storm"]), .number]),
+        Spec("season", "/season [spring|summer|autumn|winter]", "Show the season, or skip to one", args: [.choices(["spring", "summer", "autumn", "winter"])]),
         Spec("event", "/event <eruption|meteors>", "Start a volcano eruption or a meteor shower", args: [.choices(["eruption", "meteors"])]),
         Spec("gamemode", "/gamemode <survival|creative>", "Switch game mode", args: [.choices(["survival", "creative"])], aliases: ["gm"]),
         Spec("difficulty", "/difficulty <peaceful|easy|normal|hard>", "Change difficulty", args: [.choices(Difficulty.allCases.map { $0.rawValue })]),
@@ -67,8 +68,8 @@ enum Commands {
         Spec("setblock", "/setblock <x> <y> <z> <block>", "Place a block", args: coord3 + [.blocks]),
         Spec("fill", "/fill <x1> <y1> <z1> <x2> <y2> <z2> <block> [replace <block>]", "Fill a box (air clears)",
              args: coord3 + coord3 + [.blocks, .choices(["replace"]), .blocks]),
-        Spec("locate", "/locate <village|dungeon|ruin|desert_ruin|dig_site|volcano|biome> [biome]", "Find the nearest structure or biome",
-             args: [.choices(["village", "dungeon", "ruin", "desert_ruin", "dig_site", "volcano", "biome"]), .biomes], readOnly: true),
+        Spec("locate", "/locate <village|dungeon|ruin|desert_ruin|dig_site|volcano|ocean_temple|biome> [biome]", "Find the nearest structure or biome",
+             args: [.choices(["village", "dungeon", "ruin", "desert_ruin", "dig_site", "volcano", "ocean_temple", "biome"]), .biomes], readOnly: true),
         Spec("biome", "/biome", "Show which biome you're in", readOnly: true),
         Spec("coords", "/coords", "Show your position and facing", aliases: ["pos"], readOnly: true),
         Spec("list", "/list", "Show who's playing", readOnly: true),
@@ -246,6 +247,20 @@ enum Commands {
             case .storm: reply("A howling storm blows in! Hold on to your hat.")
             }
 
+        case "season":
+            guard let name = choice(0, Season.allCases.map { $0.displayName.lowercased() }),
+                  let target = Season.allCases.first(where: { $0.displayName.lowercased() == name }) else {
+                let day = Int(s.worldTime / SkyModel.dayLength)
+                return reply("It's \(s.season.displayName) (day \(day % Season.daysPerSeason + 1) of \(Season.daysPerSeason)).")
+            }
+            let length = SkyModel.dayLength
+            let year = Double(Season.daysPerSeason * 4) * length
+            let timeOfDay = s.worldTime.truncatingRemainder(dividingBy: length)
+            var start = floor(s.worldTime / year) * year + Double(target.rawValue * Season.daysPerSeason) * length + timeOfDay
+            if start < s.worldTime { start += year }
+            s.debugSetTime(start)
+            reply("Skipped ahead to \(target.displayName).")
+
         case "event":
             guard let what = choice(0, ["eruption", "meteors"]) else { return reply("Usage: \(command.usage)") }
             if what == "meteors" {
@@ -373,7 +388,7 @@ enum Commands {
                 return reply("Only the Overworld can be searched.")
             }
             let px = Int(floor(s.player.position.x)), pz = Int(floor(s.player.position.z))
-            guard let what = choice(0, ["village", "dungeon", "ruin", "desert_ruin", "dig_site", "volcano", "biome"]) else { return reply("Usage: \(command.usage)") }
+            guard let what = choice(0, ["village", "dungeon", "ruin", "desert_ruin", "dig_site", "volcano", "ocean_temple", "biome"]) else { return reply("Usage: \(command.usage)") }
             if what == "biome" {
                 guard rest.count >= 2, let biome = resolveBiome(rest.dropFirst().joined(separator: "_"), note: reply) else {
                     return reply("Which biome? \(biomeNames.joined(separator: ", "))")
@@ -399,6 +414,7 @@ enum Commands {
                 case "ruin": kind = .ruin
                 case "dig_site", "digsite", "fossils": kind = .digSite
                 case "volcano": kind = .volcano
+                case "ocean_temple", "temple": kind = .oceanTemple
                 default: kind = .desertRuin
                 }
                 found = generator.structures(near: px, z: pz, radius: 3000).first(where: { $0.kind == kind })

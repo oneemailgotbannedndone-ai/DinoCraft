@@ -116,7 +116,7 @@ jobs:
           $p4 = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--screenshot `"$shot4`" --demo-screen worlds --hide-console" -PassThru -Wait -NoNewWindow
           Write-Host "World list check exit code: $($p4.ExitCode)"
           if (-not (Test-Path $shot4)) { throw "The game did not produce the world list screenshot" }
-          foreach ($screen in @("creative", "furnace", "pause", "settings", "controls", "crafting", "double-chest", "villagers", "dinos", "pets", "boat", "mining", "chat", "nursery", "armory", "sky", "enchanting", "quests", "questbook", "xp", "digsite", "museum", "meteors", "storm", "map", "circuits", "decorations")) {
+          foreach ($screen in @("creative", "furnace", "pause", "settings", "controls", "crafting", "double-chest", "villagers", "dinos", "pets", "boat", "mining", "chat", "nursery", "armory", "sky", "enchanting", "quests", "questbook", "xp", "digsite", "museum", "meteors", "storm", "map", "circuits", "decorations", "autumn", "winter", "fire")) {
             $shotN = "$PWD/screenshot-$screen.png"
             $pN = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--screenshot `"$shotN`" --frames 5 --render-distance 4 --seed dino --demo-entities --demo-screen $screen" -PassThru -Wait -NoNewWindow
             Write-Host "$screen check exit code: $($pN.ExitCode)"
@@ -191,6 +191,9 @@ jobs:
             screenshot-map.png
             screenshot-circuits.png
             screenshot-decorations.png
+            screenshot-autumn.png
+            screenshot-winter.png
+            screenshot-fire.png
             screenshot-join.png
             screenshot-online-menu.png
             screenshot-online-leaderboard.png
@@ -229,6 +232,24 @@ jobs:
 
       - name: Build DinoCraft.app
         run: zsh Scripts/build_app.sh
+
+      - name: Compile the Metal shaders
+        # The game compiles its shaders at startup, so check them here where a mistake can't reach players.
+        run: |
+          cat Resources/Shaders/*.metal > "$RUNNER_TEMP/all.metal"
+          set +e
+          out=$(xcrun -sdk macosx metal -std=metal3.0 -c "$RUNNER_TEMP/all.metal" -o "$RUNNER_TEMP/all.air" 2>&1)
+          code=$?
+          set -e
+          echo "$out"
+          if [ $code -ne 0 ]; then
+            if echo "$out" | grep -qi "toolchain\|unable to find utility\|not a developer tool"; then
+              echo "::warning::Metal compiler not available on this runner; shader check skipped"
+            else
+              echo "::error::Metal shaders failed to compile"
+              exit 1
+            fi
+          fi
 
       - name: Zip for the launcher's updater
         run: |

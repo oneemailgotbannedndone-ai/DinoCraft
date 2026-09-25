@@ -28,6 +28,8 @@ final class WeatherSystem {
     private var strikeTimer = 6.0
     /// Called on each lightning strike with a 0…1 closeness.
     var onThunder: ((Float) -> Void)?
+    /// Called with each strike too, for the game (where it lands, fires).
+    var onStrike: ((Float) -> Void)?
     /// Storm wind (east, south) in blocks per second: slants the rain and pushes you about in gusts.
     private(set) var wind = SIMD2<Float>(0, 0)
     private var windAngle = Float.random(in: 0..<(2 * .pi))
@@ -68,7 +70,9 @@ final class WeatherSystem {
             if strikeTimer <= 0 {
                 strikeTimer = kind == .storm ? Double.random(in: 3...9) : Double.random(in: 7...20)
                 flash = 1
-                onThunder?(Float.random(in: 0.2...1))
+                let closeness = Float.random(in: 0.2...1)
+                onThunder?(closeness)
+                onStrike?(closeness)
             }
         }
     }

@@ -23,6 +23,27 @@ enum GadgetTextures {
         t["piston_head"] = pistonHead()
         t["item_frame"] = frame()
         for p in paintings { t["painting_\(p)"] = painting(p) }
+        t["fire"] = fire()
+    }
+
+    /// Flickering flames on a transparent background (drawn as a cross, like plants).
+    private static func fire() -> Canvas {
+        let c = Canvas(S)
+        let colours = [RGBA(hex: 0xFFF2A0), RGBA(hex: 0xFFC83A), RGBA(hex: 0xFF8A1A), RGBA(hex: 0xD8401A)]
+        for x in 0..<S {
+            // Each column's flame height wobbles; the hottest (palest) colour sits low and in the middle.
+            let h = 10 + TexturePainter.hash01(421, x / 2, 0) * 16 + sin(Double(x) * 0.7) * 3
+            for y in 0..<S {
+                let fromBottom = Double(S - 1 - y)
+                guard fromBottom < h else { continue }
+                let t = fromBottom / h
+                let edge = abs(Double(x) - 15.5) / 16
+                let k = min(3, Int((t * 0.8 + edge * 0.9 + TexturePainter.hash01(422, x, y) * 0.35) * 3))
+                if t > 0.85 && TexturePainter.hash01(423, x, y) > 0.5 { continue }
+                c.plot(x, y, colours[k])
+            }
+        }
+        return c
     }
 
     static func item(_ name: String) -> Canvas? {
@@ -32,6 +53,7 @@ enum GadgetTextures {
         case "painting": return paintingItem()
         case "item_frame_item": return frameItem()
         case "armor_stand": return standItem()
+        case "mosasaurus_tooth": return toothItem()
         default: return nil
         }
     }
@@ -232,6 +254,20 @@ enum GadgetTextures {
 
     private static func frameItem() -> Canvas {
         let c = frame()
+        return c
+    }
+
+    /// A big, curved, glossy Mosasaurus tooth with a dark root.
+    private static func toothItem() -> Canvas {
+        let c = Canvas(S)
+        for i in 0..<22 {
+            let t = Double(i) / 21
+            let x = 12 + t * 8 + sin(t * 2.2) * 3, y = 27 - t * 22
+            let r = 5.5 * (1 - t) + 0.8
+            c.disc(x, y, r, t < 0.25 ? RGBA(hex: 0x6A5A44) : RGBA(hex: 0xF0EAD6).mix(RGBA(hex: 0xC8BCA0), t * 0.4))
+        }
+        c.line(11, 20, 17, 8, width: 1.2) { _ in RGBA(hex: 0xFFFFFF) }
+        c.outline()
         return c
     }
 

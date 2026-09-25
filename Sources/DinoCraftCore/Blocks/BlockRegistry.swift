@@ -165,6 +165,10 @@ public enum Blocks {
     /// Display cases with a fossil inside: skull, claw, rib, tooth, fern.
     public static let displayCases: [BlockID] = [259, 260, 261, 262, 263]
     public static let meteoriteOre: BlockID = 264
+    public static let marbleBricks: BlockID = 117
+    public static let slateTiles: BlockID = 119
+    public static let goldBlock: BlockID = 87
+    public static let fire: BlockID = 321
 
     /// Water, or a plant growing in it (you can drown there, and breaking the plant leaves water).
     @inlinable public static func holdsWater(_ id: BlockID, _ registry: BlockRegistry) -> Bool {
@@ -177,6 +181,7 @@ public enum Blocks {
         ("toon_leaves", toonLeaves), ("checker_block", checkerBlock), ("toonland_portal", toonlandPortal), ("deep_slate", deepSlate),
         ("kelp", kelp), ("seagrass", seagrass), ("coral_block", coralBlock), ("coral", coral), ("sea_lantern", seaLantern), ("enchanting_table", enchantingTable), ("fossil_deposit", fossilDeposit),
         ("display_case", displayCase), ("display_case_skull", displayCases[0]), ("display_case_fern", displayCases[4]), ("meteorite_ore", meteoriteOre),
+        ("marble_bricks", marbleBricks), ("slate_tiles", slateTiles), ("gold_block", goldBlock), ("fire", fire),
         ("terracotta", terracotta), ("dyed_clay_white", dyedClay[0]), ("dyed_clay_pink", dyedClay[9]),
         ("air", air), ("stone", stone), ("grass", grass), ("dirt", dirt), ("cobblestone", cobblestone),
         ("planks", planks), ("sand", sand), ("gravel", gravel), ("log", log), ("leaves", leaves),
@@ -257,6 +262,8 @@ public struct BlockDefinition: Codable, Sendable {
     public var submerged: Bool?
     /// Extra looks picked by position (coral colours); the first replaces `textures`.
     public var variants: [String]?
+    /// Changes colour with the seasons: "all" faces (leaves, plants) or just the "top" (grass).
+    public var seasonal: String?
 }
 
 private struct BlockFile: Codable { var blocks: [BlockDefinition] }
@@ -295,6 +302,8 @@ public struct BlockInfo: Sendable {
     public let submerged: Bool
     /// Textures picked per position, or empty.
     public let variants: [String]
+    /// 0: never; 1: every face changes colour with the seasons; 2: only the top face.
+    public let seasonal: UInt8
     public var isLiquid: Bool { shape == .liquid }
     public var isBreakable: Bool { hardness >= 0 }
 }
@@ -396,7 +405,8 @@ public final class BlockRegistry: @unchecked Sendable {
                 needsSupport: def.needsSupport ?? false,
                 box: box, facing: facing, itemName: def.itemName ?? def.name, itemTexture: def.itemTexture,
                 parts: parts, placement: def.placement ?? "facePlayer",
-                submerged: def.submerged ?? false, variants: def.variants ?? [])
+                submerged: def.submerged ?? false, variants: def.variants ?? [],
+                seasonal: def.seasonal == "all" ? 1 : (def.seasonal == "top" ? 2 : 0))
             table[def.id] = info
             names[def.name] = BlockID(def.id)
         }

@@ -58,6 +58,15 @@ enum LootTables {
             Entry(item: "display_case", min: 1, max: 2, chance: 0.3),
             Entry(item: "trail_mix", min: 1, max: 3, chance: 0.5),
         ],
+        "oceanTemple": [
+            Entry(item: "gold_ingot", min: 4, max: 10, chance: 0.8),
+            Entry(item: "diamond", min: 2, max: 5, chance: 0.6),
+            Entry(item: "emerald", min: 4, max: 10, chance: 0.7),
+            Entry(item: "sea_lantern", min: 2, max: 6, chance: 0.5),
+            Entry(item: "starmetal_sword", min: 1, max: 1, chance: 0.15),
+            Entry(item: "fossil_skull", min: 1, max: 1, chance: 0.3),
+            Entry(item: "map", min: 1, max: 1, chance: 0.3),
+        ],
         "village": [
             Entry(item: "berries", min: 4, max: 10, chance: 0.6),
             Entry(item: "trail_mix", min: 1, max: 3, chance: 0.4),

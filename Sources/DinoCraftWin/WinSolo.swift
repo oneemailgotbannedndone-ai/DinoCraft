@@ -678,6 +678,9 @@ final class WinSolo: CommandHost {
         let eye = camera.position
         renderer.underwater = cameraView == .firstPerson && s.player.headInWater
             && Blocks.holdsWater(s.world.block(Int(floor(eye.x)), Int(floor(eye.y)), Int(floor(eye.z))), s.world.registry)
+        let seasonLook = Season.look(worldTime: s.worldTime, dimension: s.dimension)
+        renderer.season = seasonLook.tint
+        renderer.snow = seasonLook.snow
         renderer.render(world: s.world, camera: camera, sky: sky, time: clock, now: Date.timeIntervalSinceReferenceDate,
                         width: w, height: h, ui: ui, models: models(camera: camera), effects: worldEffects(camera: camera))
 
@@ -767,6 +770,14 @@ final class WinSolo: CommandHost {
                 CreatureModels.appendBox(&v, m, SIMD3(-0.03, -0.03, -0.75), SIMD3(0.03, 0.03, 0.75), CreatureModels.c(0x9A6E3E), glow: false, tint: none)
                 CreatureModels.appendBox(&v, m, SIMD3(-0.06, -0.035, -1.0), SIMD3(0.06, 0.035, -0.75), CreatureModels.c(0x6E6E7C), glow: false, tint: none)
                 CreatureModels.appendBox(&v, m, SIMD3(-0.04, -0.04, 0.1), SIMD3(0.04, 0.04, 0.35), CreatureModels.c(0x5A3A1E), glow: false, tint: none)
+            }
+        }
+        for bolt in s.hazards.bolts {
+            // Lightning: a chain of bright specks down the bolt's jagged path.
+            for p in bolt.samples {
+                guard let r = rel(p) else { continue }
+                CreatureModels.appendBox(&v, MathUtil.translation(r), SIMD3(repeating: -0.12), SIMD3(repeating: 0.12),
+                                         SIMD4(0.85, 0.9, 1, 1), glow: true, tint: none)
             }
         }
         for f in s.hazards.fireballs where !f.removed {
@@ -961,6 +972,77 @@ final class WinSolo: CommandHost {
             s.mount(mount)
             s.followMount()
             s.player.pitch = -0.25
+            return
+        }
+        if ["autumn", "winter", "fire", "temple"].contains(options.demoScreen ?? "") {
+            demoPlaced = true
+            let look = s.player.lookDirection
+            let forward = simd_normalize(DVec3(look.x, 0, look.z))
+            let length = SkyModel.dayLength
+            switch options.demoScreen {
+            case "autumn", "winter":
+                // Automated check: the same world in autumn colours or winter snow.
+                let season: Season = options.demoScreen == "autumn" ? .autumn : .winter
+                s.debugSetTime(Double(season.rawValue * Season.daysPerSeason) * length + length * 0.25)
+                guard !seaDemoMoved else { break }
+                seaDemoMoved = true
+                demoPlaced = false
+                framesSinceReady = 0
+                s.player.gameMode = .creative
+                s.player.setFlying(true)
+                // Find a forest to look at.
+                var spot = s.player.position
+                if let generator = s.world.generator as? TerrainGenerator {
+                    search: for r in stride(from: 0, through: 1200, by: 24) {
+                        for k in 0..<max(1, r / 12) {
+                            let a = Double(k) / Double(max(1, r / 12)) * 2 * .pi
+                            let x = Int(spot.x + cos(a) * Double(r)), z = Int(spot.z + sin(a) * Double(r))
+                            let info = generator.columnInfo(x: x, z: z)
+                            if info.biome == .forest {
+                                spot = DVec3(Double(x), Double(info.height), Double(z))
+                                break search
+                            }
+                        }
+                    }
+                }
+                s.player.teleport(to: spot + DVec3(0, 16, 0))
+                s.player.pitch = -0.45
+                return
+            case "fire":
+                // Automated check: a lightning bolt, and flames catching in the grass and trees.
+                s.debugSetTime(length * 0.3)
+                s.weather.set(.thunder, duration: 600)
+                for k in 0..<5 {
+                    let p = s.player.position + forward * Double(3 + k) + DVec3(Double(k % 2) * 1.5 - 0.7, 0, 0)
+                    let x = Int(floor(p.x)), z = Int(floor(p.z))
+                    if let y = s.world.findStandingY(x, z, near: Int(s.player.position.y)) { s.lightFire(at: BlockPos(x, y, z)) }
+                }
+                s.lightningStrike(closeness: 0.7)
+                s.player.pitch = -0.2
+            default:
+                // Automated check: dive to the nearest ocean temple and meet its guardian.
+                guard !seaDemoMoved else { break }
+                seaDemoMoved = true
+                demoPlaced = false
+                framesSinceReady = 0
+                let p = s.player.position
+                guard let t = (s.world.generator as? TerrainGenerator)?.structures(near: Int(p.x), z: Int(p.z), radius: 4000)
+                    .first(where: { $0.kind == .oceanTemple }) else {
+                    demoPlaced = true
+                    addChat(from: "", text: "Automated check: no ocean temple found")
+                    return
+                }
+                s.player.gameMode = .creative
+                s.player.setFlying(true)
+                s.player.teleport(to: DVec3(Double(t.x) - 10, Double(t.y) + 7, Double(t.z) + 10))
+                s.player.yaw = -.pi / 4
+                s.player.pitch = -0.3
+                let guardian = s.mobs.spawn(.mosasaurus, at: DVec3(Double(t.x) - 3, Double(t.y) + 9, Double(t.z) + 3))
+                guardian.home = DVec3(Double(t.x) + 0.5, Double(t.y) + 8, Double(t.z) + 0.5)
+                guardian.yaw = .pi * 0.75
+                Log.info("Automated check: ocean temple at \(t.x), \(t.y), \(t.z)", category: "Game")
+                return
+            }
             return
         }
         if options.demoScreen == "circuits" || options.demoScreen == "decorations" {

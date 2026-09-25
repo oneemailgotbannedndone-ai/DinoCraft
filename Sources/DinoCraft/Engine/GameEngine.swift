@@ -822,7 +822,7 @@ final class GameEngine: NSObject, MTKViewDelegate {
         audio.setLoop("amb_crickets", volume: surface && sky.isNight ? 0.45 : 0)
         audio.setLoop("amb_jungle", volume: surface && s.biome == .fernJungle && !sky.isNight ? 0.5 : 0)
         audio.setLoop("amb_surf", volume: surface && [.beach, .ocean].contains(s.biome) ? 0.55 : 0)
-        let raining = s.dimension == .overworld && WeatherSystem.precipitation(for: s.biome) == .rain
+        let raining = s.dimension == .overworld && s.precipitation == .rain
         audio.setLoop("amb_rain", volume: raining ? s.weather.intensity * (surface ? 0.75 : 0.2) : 0)
 
         ambienceTimer -= dt
@@ -924,6 +924,11 @@ final class GameEngine: NSObject, MTKViewDelegate {
                                       brightness: settings.brightness, underwater: underwater, clouds: settings.clouds,
                                       drawableSize: size, dimension: session?.dimension ?? .overworld)
         lastViewProj = uniforms.viewProj
+        if let s = session {
+            let look = Season.look(worldTime: s.worldTime, dimension: s.dimension)
+            uniforms.season = look.tint
+            uniforms.dimension.w = look.snow
+        }
         if let s = session, s.dimension == .overworld, s.weather.intensity > 0 {
             let rain = s.weather.intensity
             uniforms.fogParams.w = 0.42 + 0.5 * rain

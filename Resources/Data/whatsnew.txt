@@ -1,5 +1,18 @@
 DinoCraft - the Toonland update
 
+Seasons, lightning fires and ocean temples
+- The year now turns: spring, summer, autumn and winter, six days each. Leaves and grass go fresh green in
+  spring and gold and orange in autumn. In winter snow settles on treetops and grass, and rain falls as snow.
+  Crops grow fastest in spring and slowest in winter. Type /season to see which it is (or skip ahead).
+- Lightning now really strikes: you'll see the bolt, it hurts anything it hits, and it can set grass, leaves
+  and wood alight. Fire spreads to flammable blocks nearby and burns them away, then dies down. Rain puts it
+  out, and standing in it burns. An Ember Lighter struck on the ground lights a fire too
+  (/gamerule doFireTick false stops it spreading).
+- Ocean Temples stand on the deep sea floor: stepped marble pyramids lit by sea lanterns, with a treasure chest
+  on a gold dais inside. Each is guarded by a Mosasaurus. It circles the temple and charges at anyone who swims
+  near. Beat it (it has a boss bar) for its tooth, diamonds, emeralds and plenty of experience, and the temple
+  is safe from then on. Find one with /locate ocean_temple or on your map.
+
 Amber circuits and decorations
 - Amber Dust (from amber) carries power up to 15 blocks, lighting up as it goes. Power it with a Lever (flip
   it on and off), a Button (on for a second) or a Pressure Plate (on while something stands on it).

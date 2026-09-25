@@ -238,7 +238,7 @@ final class ParticleSystem {
         let eye = s.player.eyePosition
 
         // Rain splashes where drops land near the player.
-        if s.dimension == .overworld, s.weather.intensity > 0.2, WeatherSystem.precipitation(for: s.biome) == .rain {
+        if s.dimension == .overworld, s.weather.intensity > 0.2, s.precipitation == .rain {
             splashBudget += dt * 45 * Double(s.weather.intensity)
             while splashBudget >= 1 {
                 splashBudget -= 1

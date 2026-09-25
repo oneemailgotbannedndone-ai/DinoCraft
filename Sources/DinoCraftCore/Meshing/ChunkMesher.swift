@@ -25,6 +25,8 @@ public enum VertexFlags {
     public static let rawUV: UInt8 = 4
     public static let wavingTop: UInt8 = 8
     public static let emissive: UInt8 = 16
+    /// Leaves, grass and plants: tinted with the season (and dusted with snow on top in winter).
+    public static let seasonal: UInt8 = 32
 }
 
 public final class MeshBuffers {
@@ -82,6 +84,7 @@ public final class ChunkMesher {
     private let shapeTable: UnsafeMutablePointer<UInt8>   // 0 none, 1 cube, 2 cross, 3 torch, 4 liquid
     private let layerTable: UnsafeMutablePointer<UInt8>   // 0 opaque, 1 cutout, 2 translucent, 3 invisible
     private let wavingTable: UnsafeMutablePointer<Bool>
+    private let seasonalTable: UnsafeMutablePointer<UInt8>
     private let leafLike: UnsafeMutablePointer<Bool>
     private let boxTable: [[BlockBox]]
     private let facingTable: [Int8]
@@ -123,6 +126,7 @@ public final class ChunkMesher {
         shapeTable = .allocate(capacity: BlockRegistry.capacity)
         layerTable = .allocate(capacity: BlockRegistry.capacity)
         wavingTable = .allocate(capacity: BlockRegistry.capacity)
+        seasonalTable = .allocate(capacity: BlockRegistry.capacity)
         leafLike = .allocate(capacity: BlockRegistry.capacity)
         boxTable = registry.shapeBoxes
         submergedTable = registry.isSubmerged
@@ -149,6 +153,7 @@ public final class ChunkMesher {
             case .invisible: layerTable[i] = 3
             }
             wavingTable[i] = info?.waving ?? false
+            seasonalTable[i] = info?.seasonal ?? 0
             leafLike[i] = (info?.waving ?? false) && registry.shape[i] == .cube
         }
         faceLayers = registry.faceLayers
@@ -181,6 +186,7 @@ public final class ChunkMesher {
         fullTop.deallocate(); litBottom.deallocate(); maskKey.deallocate(); maskLight.deallocate()
         opaqueTable.deallocate(); filterTable.deallocate(); emissionTable.deallocate()
         shapeTable.deallocate(); layerTable.deallocate(); wavingTable.deallocate(); leafLike.deallocate()
+        seasonalTable.deallocate()
     }
 
     /// Refreshes texture layer bindings (call after the atlas is rebuilt).
@@ -462,6 +468,7 @@ public final class ChunkMesher {
                     }
                     if wavingTable[id] { flags |= VertexFlags.waving }
                     if emissionTable[id] > 0 { flags |= VertexFlags.emissive }
+                    if seasonalTable[id] == 1 || (seasonalTable[id] == 2 && face == 2) { flags |= VertexFlags.seasonal }
                     let layer = UInt32(faceLayer(id, face, x, y, z, patch: 1))
                     maskKey[mi] = layer | (UInt32(flags) << 16) | (UInt32(layerTable[id]) << 24)
                     maskLight[mi] = cornerData(nx, ny, nz, fa, ao: shape != 4)
@@ -587,7 +594,7 @@ public final class ChunkMesher {
     private func emitCross(id: Int, x: Int, y: Int, z: Int) {
         let (s, l) = cellLight(x + 16, y, z + 16)
         let layer = faceLayer(id, 0, x, y, z)
-        let base = VertexFlags.rawUV | (emissionTable[id] > 0 ? VertexFlags.emissive : 0)
+        let base = VertexFlags.rawUV | (emissionTable[id] > 0 ? VertexFlags.emissive : 0) | (seasonalTable[id] != 0 ? VertexFlags.seasonal : 0)
         let waveTop = wavingTable[id] ? VertexFlags.wavingTop : 0
         // A stack of the same plant (kelp) sways as one: each piece's foot follows the one below.
         let waveFoot = wavingTable[id] && idAt(x + 16, y - 1, z + 16) == id ? VertexFlags.wavingTop : 0

@@ -91,6 +91,15 @@ static float3 terrainLighting(float sky, float blockLight, float shade, uint fla
     return pow(l, float3(mix(1.15, 0.72, brightness)));
 }
 
+// Leaves, grass and plants take on the season's colours, with snow on their tops in winter.
+static float3 seasonal(float3 c, uint flags, float normalY, constant FrameUniforms &f) {
+    if ((flags & 32u) == 0u) return c;
+    float luma = dot(c, float3(0.3, 0.59, 0.11));
+    c = mix(c, luma * f.season.rgb, f.season.w);
+    if (normalY > 0.5) c = mix(c, float3(0.92, 0.95, 0.98) * (0.85 + luma * 0.3), f.dimension.w);
+    return c;
+}
+
 static float3 applyFog(float3 color, float3 viewPos, constant FrameUniforms &f) {
     float d = length(viewPos);
     if (f.fogParams.y > 0.5) {
@@ -106,7 +115,7 @@ fragment float4 chunk_fragment_opaque(ChunkVertexOut in [[stage_in]],
                                       texture2d_array<float> tex [[texture(0)]],
                                       sampler s [[sampler(0)]],
                                       constant FrameUniforms &f [[buffer(1)]]) {
-    float3 albedo = tex.sample(s, in.uv, in.layer).rgb;
+    float3 albedo = seasonal(tex.sample(s, in.uv, in.layer).rgb, in.flags, in.normalY, f);
     float3 lit = albedo * terrainLighting(in.sky, in.light, in.shade, in.flags, f);
     return float4(applyFog(lit, in.viewPos, f), 1.0);
 }
@@ -117,7 +126,7 @@ fragment float4 chunk_fragment_cutout(ChunkVertexOut in [[stage_in]],
                                       constant FrameUniforms &f [[buffer(1)]]) {
     float4 c = tex.sample(s, in.uv, in.layer);
     if (c.a < 0.5) discard_fragment();
-    float3 albedo = c.rgb / max(c.a, 0.001);
+    float3 albedo = seasonal(c.rgb / max(c.a, 0.001), in.flags, in.normalY, f);
     float3 lit = albedo * terrainLighting(in.sky, in.light, in.shade, in.flags, f);
     return float4(applyFog(lit, in.viewPos, f), 1.0);
 }

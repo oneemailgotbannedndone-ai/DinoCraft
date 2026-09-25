@@ -148,6 +148,14 @@ final class ParticleRenderer {
             }
         }
 
+        // Lightning: a chain of bright specks down the bolt's jagged path.
+        for bolt in s.hazards.bolts {
+            for p in bolt.samples {
+                let r = SIMD3<Float>(Float(p.x - camera.position.x), Float(p.y - camera.position.y), Float(p.z - camera.position.z))
+                quad(r, right * 0.22, up * 0.22, uv: .zero, uvSize: 1, color: SIMD4(0.85, 0.9, 1, 1), layer: -1, sky: 1, block: 1, emissive: true)
+            }
+        }
+
         // Lava bombs, meteorites and shooting stars.
         for f in s.hazards.fireballs where !f.removed {
             let r = SIMD3<Float>(Float(f.position.x - camera.position.x), Float(f.position.y - camera.position.y), Float(f.position.z - camera.position.z))
@@ -198,7 +206,7 @@ final class ParticleRenderer {
 
         // Weather around the camera (overworld only).
         let strength = s.weather.intensity
-        let precipitation = WeatherSystem.precipitation(for: s.biome)
+        let precipitation = s.precipitation
         if s.dimension == .overworld, strength > 0.02, precipitation != .none {
             let light = world.light(at: camera.position)
             let radius = precipitation == .snow ? 12 : 14

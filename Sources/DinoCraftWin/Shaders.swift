@@ -89,8 +89,19 @@ enum Shaders {
         uniform vec3 uSkyHorizon;
         uniform float uTime;
         uniform float uBrightness;
+        uniform vec4 uSeason;
+        uniform float uSnow;
 
         out vec4 fragColor;
+
+        // Leaves, grass and plants take on the season's colours, with snow on their tops in winter.
+        vec3 seasonal(vec3 c, uint flags) {
+            if ((flags & 32u) == 0u) return c;
+            float luma = dot(c, vec3(0.3, 0.59, 0.11));
+            c = mix(c, luma * uSeason.rgb, uSeason.w);
+            if (vNormalY > 0.5) c = mix(c, vec3(0.92, 0.95, 0.98) * (0.85 + luma * 0.3), uSnow);
+            return c;
+        }
 
         float lightCurve(float l) { return pow(0.82, (1.0 - l) * 15.0); }
 
@@ -121,11 +132,11 @@ enum Shaders {
         void main() {
             vec4 c = texture(uBlocks, vec3(vUV, vLayer));
         #if defined(PASS_OPAQUE)
-            vec3 lit = c.rgb * terrainLighting(vSky, vLight, vShade, vFlags);
+            vec3 lit = seasonal(c.rgb, vFlags) * terrainLighting(vSky, vLight, vShade, vFlags);
             fragColor = vec4(applyFog(lit, vViewPos), 1.0);
         #elif defined(PASS_CUTOUT)
             if (c.a < 0.5) discard;
-            vec3 albedo = c.rgb / max(c.a, 0.001);
+            vec3 albedo = seasonal(c.rgb / max(c.a, 0.001), vFlags);
             vec3 lit = albedo * terrainLighting(vSky, vLight, vShade, vFlags);
             fragColor = vec4(applyFog(lit, vViewPos), 1.0);
         #else

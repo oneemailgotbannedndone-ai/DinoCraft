@@ -151,6 +151,7 @@
     {"name": "starmetal_sword", "displayName": "Starmetal Sword", "tool": {"kind": "sword", "level": 4, "speed": 1.5, "durability": 2600, "damage": 9}},
     {"name": "painting", "displayName": "Painting"},
     {"name": "armor_stand", "displayName": "Armour Stand", "maxStack": 16},
+    {"name": "mosasaurus_tooth", "displayName": "Mosasaurus Tooth", "maxStack": 16},
     {"name": "shield", "displayName": "Shield", "tool": {"kind": "shield", "level": 1, "speed": 1.0, "durability": 336, "damage": 1}}
   ]
 }

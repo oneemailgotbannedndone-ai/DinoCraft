@@ -242,6 +242,7 @@ extension GameSession {
             case .digSite: add(st.x, st.z, "Dig Site", 0xF2E6C4)
             case .volcano: add(st.x, st.z, "Volcano", 0xFF6A2A)
             case .ruin, .desertRuin: add(st.x, st.z, "Ruins", 0xC8B89A)
+            case .oceanTemple: add(st.x, st.z, "Ocean Temple", 0x6AD8E8)
             case .dungeon: break   // hidden underground
             }
         }

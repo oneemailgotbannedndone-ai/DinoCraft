@@ -253,7 +253,7 @@ extension WinSolo {
 
         // Rain streaks and snowflakes around the camera (overworld only).
         let strength = s.weather.intensity
-        let precipitation = WeatherSystem.precipitation(for: s.biome)
+        let precipitation = s.precipitation
         if s.dimension == .overworld, strength > 0.02, precipitation != .none {
             let radius = precipitation == .snow ? 12 : 14
             let cx = Int(floor(camera.position.x)), cz = Int(floor(camera.position.z))

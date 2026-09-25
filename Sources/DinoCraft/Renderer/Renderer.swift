@@ -17,6 +17,7 @@ struct FrameUniforms {
     var skyLight = SIMD4<Float>(1, 1, 1, 1)
     var viewport = SIMD4<Float>(1, 1, 1, 1)
     var dimension = SIMD4<Float>(0, 200, 1, 0)
+    var season = SIMD4<Float>(1, 1, 1, 0)
 }
 
 struct ChunkUniforms {

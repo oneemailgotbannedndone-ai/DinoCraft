@@ -40,6 +40,7 @@ enum CreatureShapes {
         case .boat: return boat()
         case .egg: return egg(Breeding.kind(ofEgg: variant))
         case .armorStand: return armorStand(Decorations.armor(variant))
+        case .mosasaurus: return mosasaurus()
         default: return nil
         }
     }
@@ -317,6 +318,42 @@ enum CreatureShapes {
             body.append(b(0.06, 0.08, -0.14, 0.26, 0.28, 0.1, c))
         }
         m.add(.body, .zero, body)
+        return m.parts
+    }
+
+    /// A Mosasaurus: a huge sea lizard with a long toothy snout, four flippers and a shark-like tail fluke.
+    static func mosasaurus() -> [ShapePart] {
+        var m = Model()
+        let top: UInt32 = 0x2E4A5A, stripe: UInt32 = 0x3E6272, belly: UInt32 = 0xC8CEC0, tooth: UInt32 = 0xF2EEDC, mouth: UInt32 = 0x6A2A2A
+        m.add(.body, .zero, [
+            b(-0.45, 0.2, -1.1, 0.45, 1.0, 1.05, top),
+            b(-0.4, 0.14, -1.0, 0.4, 0.34, 0.95, belly),
+            b(-0.08, 1.0, -0.8, 0.08, 1.12, 0.8, stripe),          // ridge along the back
+            b(-0.46, 0.55, -1.0, -0.44, 0.7, 0.9, stripe), b(0.44, 0.55, -1.0, 0.46, 0.7, 0.9, stripe),
+        ])
+        var head = [
+            b(-0.36, -0.2, -1.4, 0.36, 0.34, 0, top),              // skull and upper jaw
+            b(-0.3, -0.42, -1.3, 0.3, -0.22, -0.05, belly),        // lower jaw
+            b(-0.28, -0.22, -1.28, 0.28, -0.18, -0.1, mouth),      // inside of the mouth
+        ]
+        for k in 0..<6 {
+            let z = -1.25 + Float(k) * 0.2
+            head.append(b(-0.3, -0.26, z, -0.24, -0.16, z + 0.06, tooth))
+            head.append(b(0.24, -0.26, z, 0.3, -0.16, z + 0.06, tooth))
+        }
+        head += eyes(x: 0.36, y: 0.1, z: -0.55, size: 0.09)
+        m.add(.head, SIMD3(0, 0.6, -1.1), head)
+        m.add(.segment(0), SIMD3(0, 0.6, 1.0), [b(-0.36, -0.32, 0, 0.36, 0.32, 0.95, top), b(-0.3, -0.34, 0.05, 0.3, -0.2, 0.9, belly)])
+        m.add(.segment(1), SIMD3(0, 0.6, 1.9), [b(-0.26, -0.24, 0, 0.26, 0.24, 0.95, top)])
+        m.add(.tail, SIMD3(0, 0.6, 2.8), [
+            b(-0.14, -0.14, 0, 0.14, 0.14, 0.6, top),
+            b(-0.05, -0.05, 0.35, 0.05, 0.95, 0.85, stripe),        // upper fluke
+            b(-0.05, -0.55, 0.45, 0.05, -0.05, 0.8, stripe),        // lower fluke
+        ])
+        m.add(.wing(-1), SIMD3(-0.45, 0.35, -0.55), [b(-0.95, -0.04, -0.22, 0, 0.04, 0.26, stripe)])
+        m.add(.wing(1), SIMD3(0.45, 0.35, -0.55), [b(0, -0.04, -0.22, 0.95, 0.04, 0.26, stripe)])
+        m.add(.wing(-1), SIMD3(-0.45, 0.35, 0.7), [b(-0.7, -0.04, -0.18, 0, 0.04, 0.2, stripe)])
+        m.add(.wing(1), SIMD3(0.45, 0.35, 0.7), [b(0, -0.04, -0.18, 0.7, 0.04, 0.2, stripe)])
         return m.parts
     }
 

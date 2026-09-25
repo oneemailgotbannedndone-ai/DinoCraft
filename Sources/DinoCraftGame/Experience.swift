@@ -60,6 +60,7 @@ enum Experience {
     static func points(forDefeating species: MobSpecies) -> Int {
         switch species.kind {
         case .grumblesaurus: return 250
+        case .mosasaurus: return 120
         case .egg, .boat: return 0
         default:
             if species.hostile { return max(3, Int(species.maxHealth / 4)) + Int.random(in: 0...2) }

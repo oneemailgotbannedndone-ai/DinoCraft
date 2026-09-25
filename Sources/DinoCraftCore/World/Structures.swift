@@ -1,7 +1,7 @@
 import Foundation
 
 public enum StructureKind: String, Sendable, CaseIterable {
-    case dungeon, ruin, desertRuin, digSite, volcano
+    case dungeon, ruin, desertRuin, digSite, volcano, oceanTemple
 
     public var displayName: String {
         switch self {
@@ -10,6 +10,7 @@ public enum StructureKind: String, Sendable, CaseIterable {
         case .desertRuin: return "Desert Ruins"
         case .digSite: return "Fossil Dig Site"
         case .volcano: return "Volcano"
+        case .oceanTemple: return "Ocean Temple"
         }
     }
 }
@@ -31,6 +32,7 @@ extension TerrainGenerator {
     static let ruinCell = 176
     static let structureReach = 10
     static let digCell = 208
+    static let templeCell = 320
     static let volcanoCell = 288
     /// Blocks from a volcano's centre to the foot of its cone.
     public static let volcanoRadius = 26
@@ -99,7 +101,19 @@ extension TerrainGenerator {
         return StructureInfo(kind: .volcano, x: x, y: info.height, z: z, seed: h)
     }
 
-    /// Dungeons, ruins, dig sites and volcanoes within `radius` blocks of (x, z), nearest first.
+    /// An ocean temple: a stepped marble pyramid on the deep sea floor, home to a Mosasaurus.
+    public func oceanTemple(inCell cx: Int, _ cz: Int) -> StructureInfo? {
+        let h = Hashing.hash(seed, Int32(cx), 23, Int32(cz), salt: 909)
+        guard Double(h >> 11) / Double(1 << 53) < 0.6 else { return nil }
+        let cell = TerrainGenerator.templeCell
+        let x = cx * cell + 20 + Int((h >> 8) % UInt64(cell - 40))
+        let z = cz * cell + 20 + Int((h >> 20) % UInt64(cell - 40))
+        let info = baseColumnInfo(x: x, z: z)
+        guard info.biome == .ocean, TerrainGenerator.baseSeaLevel - info.height >= 16 else { return nil }
+        return StructureInfo(kind: .oceanTemple, x: x, y: info.height, z: z, seed: h)
+    }
+
+    /// Dungeons, ruins, dig sites, volcanoes and ocean temples within `radius` blocks of (x, z), nearest first.
     func baseStructures(near x: Int, z: Int, radius: Int) -> [StructureInfo] {
         var reach = radius + TerrainGenerator.structureReach
         var out: [StructureInfo] = []
@@ -116,6 +130,7 @@ extension TerrainGenerator {
         scan(TerrainGenerator.dungeonCell) { dungeon(inCell: $0, $1) }
         scan(TerrainGenerator.ruinCell) { ruin(inCell: $0, $1) }
         scan(TerrainGenerator.digCell) { digSite(inCell: $0, $1) }
+        scan(TerrainGenerator.templeCell) { oceanTemple(inCell: $0, $1) }
         reach = radius + TerrainGenerator.volcanoRadius + 2
         scan(TerrainGenerator.volcanoCell) { volcano(inCell: $0, $1) }
         return out.sorted { ($0.x - x) * ($0.x - x) + ($0.z - z) * ($0.z - z) < ($1.x - x) * ($1.x - x) + ($1.z - z) * ($1.z - z) }
@@ -136,6 +151,8 @@ extension TerrainGenerator {
             return [(s.x + 6, s.y, s.z - 3)]
         case .volcano:
             return []
+        case .oceanTemple:
+            return [(s.x, s.y + 1, s.z)]
         }
     }
 
@@ -172,6 +189,7 @@ extension TerrainGenerator {
             case .ruin, .desertRuin: buildRuin(s, chunk: chunk, ox: ox, oz: oz)
             case .digSite: buildDigSite(s, chunk: chunk, ox: ox, oz: oz)
             case .volcano: buildVolcano(s, chunk: chunk, ox: ox, oz: oz)
+            case .oceanTemple: buildTemple(s, chunk: chunk, ox: ox, oz: oz)
             }
         }
     }
@@ -367,5 +385,49 @@ extension TerrainGenerator {
                 }
             }
         }
+    }
+
+    private func buildTemple(_ s: StructureInfo, chunk: Chunk, ox: Int, oz: Int) {
+        func inChunk(_ x: Int, _ z: Int) -> Bool { x >= ox && x < ox + 16 && z >= oz && z < oz + 16 }
+        func set(_ x: Int, _ y: Int, _ z: Int, _ id: BlockID) {
+            guard inChunk(x, z), y > 0, y < TerrainGenerator.baseHeight else { return }
+            chunk.setRaw(x - ox, y, z - oz, id)
+        }
+        let y = s.y
+        let height = 12
+        for dz in -8...8 {
+            for dx in -8...8 {
+                let x = s.x + dx, z = s.z + dz
+                guard inChunk(x, z) else { continue }
+                let ring = max(abs(dx), abs(dz))
+                guard ring <= 7 else { continue }
+                // A solid foundation down to the sea floor.
+                let floor = baseColumnInfo(x: x, z: z).height
+                for fy in min(floor, y)..<y { set(x, fy, z, Blocks.marbleBricks) }
+                for dy in 0...height {
+                    let half = 7 - dy / 3
+                    let yy = y + dy
+                    if dy == 0 {
+                        set(x, yy, z, ring == 7 ? Blocks.slateTiles : Blocks.marbleBricks)
+                    } else if ring > half {
+                        continue
+                    } else if ring == half || dy == height {
+                        // Stepped walls in bands of marble and slate, with a doorway on each side.
+                        let doorway = (dx == 0 || dz == 0) && dy <= 3 && ring == 7
+                        let band = (dy / 3) % 2 == 0 ? Blocks.marbleBricks : Blocks.slateTiles
+                        let corner = abs(dx) == half && abs(dz) == half
+                        set(x, yy, z, doorway ? Blocks.water : (corner && dy % 3 == 1 ? Blocks.seaLantern : band))
+                    } else {
+                        set(x, yy, z, Blocks.water)
+                    }
+                }
+            }
+        }
+        // The treasure room: a chest on a gold dais, lit by sea lanterns.
+        for (dx, dz) in [(-1, 0), (1, 0), (0, -1), (0, 1)] { set(s.x + dx, y, s.z + dz, Blocks.goldBlock) }
+        set(s.x, y, s.z, Blocks.goldBlock)
+        for (dx, dz) in [(-3, -3), (3, -3), (-3, 3), (3, 3)] { set(s.x + dx, y + 1, s.z + dz, Blocks.seaLantern) }
+        let chest = chestPositions(s)[0]
+        set(chest.x, chest.y, chest.z, Blocks.chest[2])
     }
 }

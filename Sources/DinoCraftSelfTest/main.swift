@@ -713,6 +713,7 @@ section("Structures") {
     let far = gen.structures(near: 0, z: 0, radius: 4000)
     check(far.contains { $0.kind == .digSite }, "fossil dig sites generate")
     check(far.contains { $0.kind == .volcano }, "volcanoes generate in the Volcanic Wastes")
+    check(far.contains { $0.kind == .oceanTemple }, "ocean temples generate in deep ocean")
     if let site = far.first(where: { $0.kind == .digSite }) {
         let c = gen.generate(ChunkPos(Int32(site.x >> 4), Int32(site.z >> 4)))
         var deposits = 0

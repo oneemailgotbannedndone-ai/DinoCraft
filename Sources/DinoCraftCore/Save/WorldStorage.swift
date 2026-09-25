@@ -41,7 +41,7 @@ public struct WorldMetadata: Codable, Sendable, Identifiable {
     /// Hardcore worlds never allow commands.
     public var commandsAllowed: Bool { !isHardcore && (allowCommands ?? true) }
 
-    public static let gameRuleDefaults: [String: Bool] = ["keepInventory": false, "doDaylightCycle": true, "doMobSpawning": true, "doWeatherCycle": true]
+    public static let gameRuleDefaults: [String: Bool] = ["keepInventory": false, "doDaylightCycle": true, "doMobSpawning": true, "doWeatherCycle": true, "doFireTick": true]
 
     public func rule(_ name: String) -> Bool { gameRules?[name] ?? WorldMetadata.gameRuleDefaults[name] ?? true }
 

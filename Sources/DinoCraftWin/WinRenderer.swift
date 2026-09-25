@@ -115,7 +115,7 @@ struct WorldEffects {
 final class WinRenderer {
     private struct ChunkProgram {
         let id: UInt32
-        let viewProj, origin, worldOrigin, time, blocks, sunDaylight, skyLight, fogColorStart, fogParams, skyHorizon, brightness: Int32
+        let viewProj, origin, worldOrigin, time, blocks, sunDaylight, skyLight, fogColorStart, fogParams, skyHorizon, brightness, season, snow: Int32
 
         init(gl: GL, id: UInt32) {
             self.id = id
@@ -130,6 +130,8 @@ final class WinRenderer {
             fogParams = gl.uniform(id, "uFogParams")
             skyHorizon = gl.uniform(id, "uSkyHorizon")
             brightness = gl.uniform(id, "uBrightness")
+            season = gl.uniform(id, "uSeason")
+            snow = gl.uniform(id, "uSnow")
         }
     }
 
@@ -180,6 +182,9 @@ final class WinRenderer {
     private(set) var visibleChunks = 0
     /// The Brightness setting (0 moody … 1 bright), used by the chunk shader.
     var brightness: Float = 0.5
+    /// The season's leaf and grass colouring (see `Season`) and winter snow on top.
+    var season = SIMD4<Float>(1, 1, 1, 0)
+    var snow: Float = 0
 
     init(gl: GL, blocks: BlockRegistry, items: ItemRegistry, pack: TexturePack = TexturePackLibrary.defaultPack) throws {
         self.gl = gl
@@ -533,6 +538,8 @@ final class WinRenderer {
             gl.uniform2f(program.fogParams, fogEnd, underwater ? 1 : 0)
             gl.uniform3f(program.skyHorizon, sky.horizon.x, sky.horizon.y, sky.horizon.z)
             gl.uniform1f(program.brightness, brightness)
+            gl.uniform4f(program.season, season.x, season.y, season.z, season.w)
+            gl.uniform1f(program.snow, snow)
             gl.activeTexture(GLC.TEXTURE0)
             gl.bindTexture(GLC.TEXTURE_2D_ARRAY, blockTexture)
 
