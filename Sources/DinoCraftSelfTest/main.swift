@@ -275,6 +275,28 @@ section("Physics") {
     for _ in 0..<60 { a.update(dt: 1.0 / 60, input: walk, world: open); b.update(dt: 1.0 / 60, input: sprint, world: open) }
     check(abs(b.position.z) > abs(a.position.z) * 1.2, "sprinting covers more ground")
 
+    // Swimming: a deep pool (water from y 1 to 29, surface at 30) with a wall at x = 6
+    let pool = flatWorld(blocks, groundHeight: 1)
+    for z in -30..<30 { for x in -30..<30 { for y in 1..<30 { pool.set(x, y, z, x >= 6 ? Blocks.stone : Blocks.water) } } }
+    let swimmer = PlayerController(position: DVec3(0.5, 28, 0.5))
+    let idle = MovementInput()
+    for _ in 0..<300 { swimmer.update(dt: 1.0 / 60, input: idle, world: pool) }
+    check(swimmer.position.y > 27 && swimmer.position.y < 30, "you float at the surface (y \(String(format: "%.1f", swimmer.position.y)))")
+    var dive = MovementInput(); dive.forward = 1
+    swimmer.pitch = -0.8   // look down
+    swimmer.yaw = Double.pi / 2   // face -X, away from the wall
+    let startY = swimmer.position.y
+    for _ in 0..<120 { swimmer.update(dt: 1.0 / 60, input: dive, world: pool) }
+    check(swimmer.position.y < startY - 3, "swimming forward while looking down dives (to y \(String(format: "%.1f", swimmer.position.y)))")
+    swimmer.pitch = 0.9   // look up
+    for _ in 0..<240 { swimmer.update(dt: 1.0 / 60, input: dive, world: pool) }
+    check(swimmer.position.y > 26, "looking up swims back to the top (y \(String(format: "%.1f", swimmer.position.y)))")
+    let climber = PlayerController(position: DVec3(5.5, 28.6, 0.5))
+    climber.yaw = -Double.pi / 2   // face the wall (+X)
+    var climb = MovementInput(); climb.forward = 1; climb.jump = true
+    for _ in 0..<180 { climber.update(dt: 1.0 / 60, input: climb, world: pool) }
+    check(climber.position.y >= 30 && climber.position.x > 6, "jumping at the edge climbs out of the water (\(String(format: "%.1f, %.1f", climber.position.x, climber.position.y)))")
+
     // Sneaking prevents walking off a ledge
     let ledge = flatWorld(blocks)
     for z in -40..<40 { for x in 2..<40 { ledge.set(x, 9, z, Blocks.air) } }

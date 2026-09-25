@@ -19,6 +19,8 @@ struct HandAnimator {
     private var lastYaw: Double?, lastPitch: Double = 0
     private var landDip: Double = 0
     private var sprintLean: Double = 0
+    private var strokePhase: Double = 0
+    private var strokeAmount: Double = 0
     private(set) var eatTimer: Double = -1
     private(set) var motion = HandMotion()
 
@@ -54,6 +56,15 @@ struct HandAnimator {
         m.yaw = Float(swayX) * 0.6
         m.pitch = Float(-swayY) * 0.4 - Float(sprintLean) * 0.12
         m.roll = Float(sprintLean) * 0.08
+        // Swimming strokes: the arm sweeps back and forth while you move through water
+        let stroking = player.inWater && !player.onGround && player.horizontalSpeed > 0.6
+        strokeAmount += ((stroking ? 1 : 0) - strokeAmount) * (1 - exp(-6 * dt))
+        strokePhase += dt * (player.isSwimming ? 7 : 5)
+        if strokeAmount > 0.01 {
+            let k = Float(sin(strokePhase)) * Float(strokeAmount)
+            m.offset += SIMD3(k * 0.1, abs(k) * 0.06, -abs(k) * 0.05)
+            m.yaw += k * 0.35
+        }
         // Tool-specific swings (on top of the usual chop)
         let s = Float(sin(swing * .pi))
         switch tool {

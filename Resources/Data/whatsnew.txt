@@ -21,7 +21,7 @@ Deeper world
 - Reach the bottom for the new "Rock Bottom" advancement. Older worlds keep their old floor.
 
 Oceans, ice and swimming
-- Swim where you look: dive and rise with the camera, sprint to swim fast, sneak to sink.
+- Swimming: you float at the surface, swim where you look (dive down, come back up), sprint to swim fast, sneak to sink, and jump at an edge to climb out. Your arm paddles as you swim.
 - New worlds have gentler oceans and smaller icy regions. Cold seas get drifting ice floes and icebergs.
 
 Player reviews

@@ -71,6 +71,8 @@ public final class PlayerController {
     public private(set) var onGround = false
     public private(set) var inWater = false
     public private(set) var headInWater = false
+    /// Moving along under the water (for swimming animations).
+    public private(set) var isSwimming = false
     public private(set) var isSprinting = false
     public private(set) var isSneaking = false
     public private(set) var collidedHorizontally = false
@@ -203,20 +205,26 @@ public final class PlayerController {
             if input.sneak { vy -= speed * 0.75 }
             velocity.y += (vy - velocity.y) * (1 - exp(-12 * dt))
         } else if inWater {
-            let swimmingForward = headInWater && fwd > 0.1
-            if swimmingForward {
-                // Swim where you look: up, down or level, gently buoyant.
-                let targetY = sin(pitch) * speed * fwd + (input.jump ? 2.5 : 0) - (input.sneak ? 2.5 : 0)
-                velocity.y += (targetY - velocity.y) * (1 - exp(-5 * dt))
+            // Is the water surface just above your eyes? Then you float up to it.
+            let aboveEyes = world.blockIfLoaded(Int(floor(position.x)), Int(floor(position.y + eyeHeight + 0.6)), Int(floor(position.z))) ?? Blocks.air
+            let nearSurface = reg.shape[Int(aboveEyes)] != .liquid
+            let targetY: Double
+            if collidedHorizontally && input.jump {
+                targetY = 5.4                                       // climb out onto a ledge
+            } else if (headInWater || pitch < -0.35) && fwd > 0.1 {
+                // Swim where you look: dive, level out or head up.
+                targetY = sin(pitch) * speed * fwd + (input.jump ? 2.5 : 0) - (input.sneak ? 2.5 : 0)
+            } else if input.sneak {
+                targetY = -3                                        // sink
+            } else if input.jump {
+                targetY = headInWater ? 3.6 : 1.6                   // swim up / bob higher at the surface
+            } else if !headInWater || nearSurface {
+                targetY = 0.9 * (headInWater ? 1 : 0)               // float at the surface
             } else {
-                velocity.y -= tuning.waterGravity * (input.sneak ? 1.8 : 1) * dt
-                velocity.y *= exp(-2.2 * dt)
-                if input.jump {
-                    // Swim up; at the surface this keeps your head above the water, and next to a
-                    // ledge it lifts you out.
-                    velocity.y = min(velocity.y + 24 * dt, collidedHorizontally ? 5.4 : (headInWater ? 4.0 : 2.2))
-                }
+                targetY = -0.7                                      // drift slowly down in deep water
             }
+            velocity.y += (targetY - velocity.y) * (1 - exp(-5 * dt))
+            isSwimming = headInWater && horizontalSpeed > 1
             fallStartY = nil
         } else {
             if input.jump && onGround {
@@ -228,6 +236,7 @@ public final class PlayerController {
             velocity.y = max(velocity.y, -tuning.terminalVelocity)
         }
 
+        if !inWater { isSwimming = false }
         move(velocity * dt, world, sneakEdge: isSneaking && onGround)
 
         horizontalSpeed = sqrt(velocity.x * velocity.x + velocity.z * velocity.z)
