@@ -48,7 +48,7 @@ public struct GameRelease: Sendable {
 /// The launcher polls `state` every frame; installing the download is up to each app.
 public final class GameUpdater: @unchecked Sendable {
     /// The public repository the release workflow publishes to (the game's own code stays private).
-    public static let releasesRepository = "oneemailgotbannedndone-ai/DinoCraft-Releases"
+    public static let releasesRepository = "oneemailgotbannedndone-ai/DinoCraft"
 
     public enum State: Sendable {
         case idle

@@ -19,7 +19,7 @@ enum GameLinks {
     static var donateLabel: String { file?.donateLabel ?? "Support DinoCraft" }
 
     /// The public repository whose issues hold everyone's reviews.
-    static var reviewsRepo: String { file?.reviewsRepo ?? "oneemailgotbannedndone-ai/DinoCraft-Releases" }
+    static var reviewsRepo: String { file?.reviewsRepo ?? "oneemailgotbannedndone-ai/DinoCraft" }
 
     /// Shared by the launcher screens; loaded when the Reviews page opens.
     static let reviews = ReviewBoard(repository: reviewsRepo)

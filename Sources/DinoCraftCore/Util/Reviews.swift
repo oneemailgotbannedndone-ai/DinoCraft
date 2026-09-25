@@ -66,7 +66,7 @@ public final class ReviewBoard: @unchecked Sendable {
             if error != nil {
                 self.set(.failed("Couldn't reach the reviews. Check your internet connection."))
             } else if status == 404 {
-                self.set(.failed("Reviews open once the public DinoCraft-Releases page is set up."))
+                self.set(.failed("The reviews page couldn't be found on GitHub."))
             } else if status == 403 || status == 429 {
                 self.set(.failed("GitHub is busy right now. Try again in a little while."))
             } else if status == 200, let data {

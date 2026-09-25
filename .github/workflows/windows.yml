@@ -1,9 +1,7 @@
 name: Windows
 
 # Builds DinoCraft for Windows and Mac. On pushes to main (or when "publish" is ticked) both
-# downloads go to the public DinoCraft-Releases repository, where the launcher's update button finds them.
-# Publishing there needs a RELEASES_TOKEN secret: a GitHub token that can create releases in that repository.
-# Without it, each build is published on this repository's own Releases page instead.
+# downloads are published on this repository's Releases page, where the launcher's update button finds them.
 
 on:
   push:
@@ -11,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: Publish this build to DinoCraft-Releases
+        description: Publish this build on the Releases page
         type: boolean
         default: false
 
@@ -216,8 +214,7 @@ jobs:
 
       - name: Publish the release
         env:
-          RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
-          REPO_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           {
             echo "## Download"
@@ -232,24 +229,8 @@ jobs:
             if [ -s Resources/Data/whatsnew.txt ]; then cat Resources/Data/whatsnew.txt; else git log -1 --pretty=%B; fi
           } > notes.txt
           ls -la out
-          if [ -z "$RELEASES_TOKEN" ]; then
-            # No RELEASES_TOKEN yet: publish on this repository's own Releases page instead.
-            echo "::notice::RELEASES_TOKEN isn't set, so this build goes on this repository's Releases page."
-            GH_TOKEN="$REPO_TOKEN" gh release create "build-${{ github.run_number }}" out/*.zip \
-              --repo "${{ github.repository }}" \
-              --target "${{ github.sha }}" \
-              --title "DinoCraft build ${{ github.run_number }}" \
-              --notes-file notes.txt
-            exit 0
-          fi
-          export GH_TOKEN="$RELEASES_TOKEN"
           gh release create "build-${{ github.run_number }}" out/*.zip \
-            --repo oneemailgotbannedndone-ai/DinoCraft-Releases \
+            --repo "${{ github.repository }}" \
+            --target "${{ github.sha }}" \
             --title "DinoCraft build ${{ github.run_number }}" \
             --notes-file notes.txt
-          # Keep the download page (README with "latest" download links) up to date.
-          sha=$(gh api repos/oneemailgotbannedndone-ai/DinoCraft-Releases/contents/README.md --jq .sha 2>/dev/null || true)
-          gh api -X PUT repos/oneemailgotbannedndone-ai/DinoCraft-Releases/contents/README.md \
-            -f message="Download page for build ${{ github.run_number }}" \
-            -f content="$(base64 -w0 .github/releases-README.md)" \
-            ${sha:+-f sha="$sha"}
