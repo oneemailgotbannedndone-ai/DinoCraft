@@ -1,5 +1,12 @@
 DinoCraft - the Toonland update
 
+Better textures
+- Wood: planks with wavy grain, knots, lit edges and nail heads; bark with deep furrows; log ends with
+  growth rings, a drying crack and a rim of bark (oak, redwood and palm).
+- Dirt with crumbly clods, pebbles and roots; grass with little blades, and grass edges that drip down the side.
+- Sand with wind ripples; stone bricks as big bevelled blocks (plain, mossy and cracked); crisper clay bricks.
+- All 19 texture packs are updated to match.
+
 Fixes and controls
 - Fixed a crash while exploring cold seas: an iceberg next to land or a shallow bank crashed the game.
   It happened more often with a big render distance, since more of the world is being built.

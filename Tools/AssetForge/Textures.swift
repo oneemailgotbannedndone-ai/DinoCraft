@@ -730,6 +730,7 @@ enum TexturePainter {
         t["bone_block_top"] = paintBoneTop()
         NewTextures.add(to: &t)
         BetterTextures.add(to: &t)
+        RichTextures.add(to: &t)   // the everyday blocks, repainted with relief (overrides the older versions above)
         return t
     }
 }
