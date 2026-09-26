@@ -14,6 +14,7 @@
 //   DinoCraftSelfTest  Headless verification suite for the core (runs without
 //                      XCTest so it works with only the Command Line Tools).
 //   AssetForge         macOS build-time tool that paints textures and synthesizes audio.
+//   DinoCraftMobile    The offline iPhone/iPad edition (UIKit + the Mac's Metal renderer).
 import PackageDescription
 
 let optimizedCore: [SwiftSetting] = [
@@ -60,7 +61,16 @@ targets += [
         dependencies: ["DinoCraftCore"],
         path: "Tools/AssetForge"
     ),
+    // The offline phone edition (iPhone and iPad), cross-compiled from a Mac with
+    // Scripts/build_ios.sh. It has its own copy of the Mac app's renderer and screens.
+    .executableTarget(
+        name: "DinoCraftMobile",
+        dependencies: ["DinoCraftCore", "DinoCraftGame"],
+        path: "Sources/DinoCraftMobile",
+        swiftSettings: optimizedCore
+    ),
 ]
+products.append(.executable(name: "DinoCraftMobile", targets: ["DinoCraftMobile"]))
 #endif
 
 #if os(Windows)
@@ -81,7 +91,7 @@ targets += [
 
 let package = Package(
     name: "DinoCraft",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS(.v14), .iOS(.v16)],
     products: products,
     targets: targets
 )
