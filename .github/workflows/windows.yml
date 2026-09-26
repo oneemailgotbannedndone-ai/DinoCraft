@@ -268,6 +268,50 @@ jobs:
           name: mac-zip
           path: DinoCraft-Mac.zip
 
+      - name: Launch the Mac apps
+        # Actually start the launcher and the game on the runner, so a crash at startup shows up here
+        # (with the game's log and backtrace) instead of on a player's Mac.
+        run: |
+          set +e
+          mkdir -p mac-check
+          fail=0
+          run() {
+            name="$1"; shift
+            export DINOCRAFT_HOME="$RUNNER_TEMP/home-$name"
+            rm -rf "$DINOCRAFT_HOME"
+            "$@" > "mac-check/$name-stdout.txt" 2>&1 &
+            pid=$!
+            for i in $(seq 1 90); do kill -0 $pid 2>/dev/null || break; sleep 1; done
+            if kill -0 $pid 2>/dev/null; then
+              echo "$name was still running after 90s; stopping it"
+              kill $pid; sleep 2; kill -9 $pid 2>/dev/null
+              code=0
+            else
+              wait $pid; code=$?
+            fi
+            echo "=== $name exit code: $code ==="
+            cat "mac-check/$name-stdout.txt" | tail -60
+            for f in "$DINOCRAFT_HOME"/logs/*; do [ -f "$f" ] && { echo "--- $f"; tail -80 "$f"; cp "$f" "mac-check/$name-$(basename "$f")"; }; done
+            if [ $code -ne 0 ] || grep -q "crashed: fatal signal\|Fatal error\|FATAL" "mac-check/$name-stdout.txt" "$DINOCRAFT_HOME"/logs/* 2>/dev/null; then
+              echo "::error::The Mac $name did not start cleanly (exit $code)"
+              fail=1
+            fi
+          }
+          run launcher "dist/DinoCraft Launcher.app/Contents/MacOS/DinoCraft Launcher" --windowed \
+              --screenshot "$PWD/mac-check/launcher.png" --screenshot-after 8 --exit-after 14
+          run game dist/DinoCraft.app/Contents/MacOS/DinoCraft --windowed --skip-launcher --world ci --seed 42 \
+              --screenshot "$PWD/mac-check/game.png" --screenshot-after 25 --exit-after 35
+          ls -la mac-check
+          ls ~/Library/Logs/DiagnosticReports 2>/dev/null | grep -i dino && cp ~/Library/Logs/DiagnosticReports/*DinoCraft* mac-check/ 2>/dev/null
+          exit $fail
+
+      - name: Upload Mac check
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-check
+          path: mac-check
+
   release:
     needs: [build, mac]
     if: always() && needs.build.result == 'success' && (github.event_name == 'push' || inputs.publish)

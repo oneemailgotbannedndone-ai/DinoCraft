@@ -96,6 +96,8 @@ final class GameSession {
 
     let entities = EntityManager()
     let mobs = MobManager()
+    /// How your own explorer turns, leans and jumps when you see yourself in F5.
+    let selfMotion = AvatarMotion()
 
     /// (sound name, volume, pitch)
     var onSound: ((String, Float, Float) -> Void)?
@@ -450,6 +452,8 @@ final class GameSession {
         updateFishing(dt)
         updateOrbs(dt)
         mobs.animateAll(dt: dt, session: self)
+        selfMotion.update(dt: dt, yaw: player.yaw, moving: player.onGround ? min(1, player.horizontalSpeed / 4.3) : 0,
+                          airborne: !player.onGround && !player.flying && !player.inWater, sprinting: player.isSprinting)
         updateHazards(dt)
         updateFire(dt)
         if !isRemote { circuits.update(dt: dt, session: self) }

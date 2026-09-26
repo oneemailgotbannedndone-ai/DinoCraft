@@ -453,13 +453,15 @@ enum CreatureModels {
 
     /// A player with the shared explorer model (and their cosmetics), animated like on the Mac.
     static func appendPlayer(_ v: inout [Float], name: String, look: String?, at rel: SIMD3<Float>, yaw: Float, pitch: Float, walk: Float,
-                             moving: Float, sneaking: Bool, swing: Float, hurt: Float) {
+                             moving: Float, sneaking: Bool, swing: Float, hurt: Float, headYaw: Float = 0, air: Float = 0, sprint: Float = 0) {
         let tint: SIMD4<Float> = hurt > 0 ? SIMD4(0.9, 0.1, 0.1, min(1, hurt / 0.35) * 0.6) : SIMD4(0, 0, 0, 0)
-        let base = MathUtil.translation(rel - SIMD3(0, sneaking ? 0.25 : 0, 0)) * MathUtil.rotationY(yaw)
+        // `yaw` is the body's facing; the head turns a further `headYaw`.
+        let base = PlayerAvatar.base(at: rel, bodyYaw: yaw, sneaking: sneaking, sprint: sprint)
         let idle = Float(Date().timeIntervalSince1970.truncatingRemainder(dividingBy: 3600)) + Float(name.hashValue & 63)
         for part in PlayerAvatar.parts(PlayerLook.resolve(look, name: name)) {
             let model = base * MathUtil.translation(part.pivot)
-                * PlayerAvatar.pose(kind: part.kind, pitch: pitch, walk: walk, moving: moving, sneaking: sneaking, swing: swing, idle: idle)
+                * PlayerAvatar.pose(kind: part.kind, pitch: pitch, walk: walk, moving: moving, sneaking: sneaking, swing: swing, idle: idle,
+                                    headYaw: headYaw, air: air, sprint: sprint)
             for box in part.boxes { appendBox(&v, model, box.0, box.1, box.2, glow: false, tint: tint) }
         }
     }

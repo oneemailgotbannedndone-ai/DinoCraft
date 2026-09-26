@@ -223,6 +223,31 @@ extension WinSolo {
             appendItem(&solid, f.stack.item, m, light: light)
         }
 
+        // What players are holding, in their right hand (you too, in F5), following the arm's swing.
+        func held(_ item: ItemID, at position: DVec3, yaw: Float, headYaw: Float, sneaking: Bool, walk: Float, moving: Float,
+                  swing: Float, air: Float, sprint: Float, seed: Int) {
+            let r = rel(position)
+            guard Double(simd_length(r)) < maxDistance, let info = items[item] else { return }
+            let idle = Float(Date().timeIntervalSince1970.truncatingRemainder(dividingBy: 3600)) + Float(seed & 63)
+            let m = PlayerAvatar.base(at: r, bodyYaw: yaw, sneaking: sneaking, sprint: sprint) * MathUtil.translation(SIMD3(0.37, 1.4, 0))
+                * PlayerAvatar.pose(kind: 3, pitch: 0, walk: walk, moving: moving, sneaking: sneaking, swing: swing, idle: idle,
+                                    headYaw: headYaw, air: air, sprint: sprint)
+                * MathUtil.translation(SIMD3(0, -0.72, -0.18)) * MathUtil.rotationX(-.pi / 2)
+                * MathUtil.scale(SIMD3(repeating: isCubeItem(info) ? 0.25 : 0.45))
+            appendItem(&solid, item, m, light: brightness(s.world.light(at: position + DVec3(0, 1.2, 0))))
+        }
+        if cameraView != .firstPerson && !s.isDead, let stack = s.inventory.selectedStack {
+            let p = s.player, m = s.selfMotion
+            held(stack.item, at: p.position, yaw: Float(m.body(p.yaw)), headYaw: Float(m.headYaw(p.yaw)), sneaking: p.isSneaking,
+                 walk: Float(s.bobPhase * .pi), moving: Float(p.onGround ? min(1, p.horizontalSpeed / 4.3) : 0),
+                 swing: Float(s.swingProgress), air: Float(m.air), sprint: Float(m.sprint), seed: settings.username.hashValue)
+        }
+        for p in client?.remotePlayers ?? [] where !p.dead {
+            guard let name = p.held, let item = items.id(named: name) else { continue }
+            held(item, at: p.position, yaw: Float(p.motion.body(p.yaw)), headYaw: Float(p.motion.headYaw(p.yaw)), sneaking: p.sneaking,
+                 walk: Float(p.walkPhase), moving: Float(p.moving), swing: Float(p.swing), air: Float(p.motion.air), sprint: 0, seed: p.name.hashValue)
+        }
+
         // The block you're aiming at
         if let hit = s.target, !s.spectator, cameraView != .front {
             let origin = rel(DVec3(Double(hit.block.x), Double(hit.block.y), Double(hit.block.z)))

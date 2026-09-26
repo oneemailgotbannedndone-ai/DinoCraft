@@ -956,6 +956,7 @@ final class GameEngine: NSObject, MTKViewDelegate {
                         selfModel.sneaking = p.isSneaking
                         selfModel.swing = s.swingProgress
                         selfModel.held = s.inventory.selectedStack.flatMap { items[$0.item]?.name }
+                        selfModel.motion = s.selfMotion
                         shown.append(selfModel)
                     }
                     playerModels.encode(enc, players: shown, world: world, camera: camera, frame: &uniforms, renderer: modelRenderer, items: items)

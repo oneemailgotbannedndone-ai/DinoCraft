@@ -35,12 +35,15 @@ final class PlayerModelLibrary {
             if simd_length(rel + SIMD3(0, 0.9, 0)) < 1.0 { continue }
             let light = world.light(at: p.position + DVec3(0, 1.5, 0))
             let tint: SIMD4<Float> = p.hurtTimer > 0 ? SIMD4(0.9, 0.1, 0.1, Float(p.hurtTimer / 0.35) * 0.6) : .zero
-            let base = MathUtil.translation(rel - SIMD3(0, p.sneaking ? 0.25 : 0, 0)) * MathUtil.rotationY(Float(p.yaw))
+            let m = p.motion
+            let base = PlayerAvatar.base(at: rel, bodyYaw: Float(m.body(p.yaw)), sneaking: p.sneaking, sprint: Float(m.sprint))
+            let headYaw = Float(m.headYaw(p.yaw)), air = Float(m.air), sprint = Float(m.sprint)
             let idle = Float(Date().timeIntervalSince1970.truncatingRemainder(dividingBy: 3600)) + Float(p.name.hashValue & 63)
             for part in parts(PlayerLook.resolve(p.look, name: p.name)) {
                 let local = MathUtil.translation(part.pivot)
                     * PlayerAvatar.pose(kind: part.kind, pitch: Float(p.pitch), walk: Float(p.walkPhase), moving: Float(p.moving),
-                                        sneaking: p.sneaking, swing: Float(p.swing), idle: idle)
+                                        sneaking: p.sneaking, swing: Float(p.swing), idle: idle,
+                                        headYaw: headYaw, air: air, sprint: sprint)
                 let model = base * local
                 var u = ModelUniforms(mvp: frame.viewProj * model, model: model, light: SIMD4(light.sky, light.block, 0, 0),
                                       tint: tint, viewPos: SIMD4(rel, 1))
@@ -49,7 +52,7 @@ final class PlayerModelLibrary {
             if let heldName = p.held, let info = items.info(named: heldName), let mesh = renderer.mesh(for: info) {
                 let hand = base * MathUtil.translation(SIMD3(0.37, 1.4, 0))
                     * PlayerAvatar.pose(kind: 3, pitch: 0, walk: Float(p.walkPhase), moving: Float(p.moving), sneaking: p.sneaking,
-                                        swing: Float(p.swing), idle: idle)
+                                        swing: Float(p.swing), idle: idle, air: air, sprint: sprint)
                     * MathUtil.translation(SIMD3(0, -0.72, -0.18)) * MathUtil.rotationX(-.pi / 2)
                     * MathUtil.scale(SIMD3(repeating: renderer.isCube(info) ? 0.25 : 0.45))
                 var u = ModelUniforms(mvp: frame.viewProj * hand, model: hand, light: SIMD4(light.sky, light.block, 0, 0),

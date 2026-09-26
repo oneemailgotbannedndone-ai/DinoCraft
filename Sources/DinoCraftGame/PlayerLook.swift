@@ -457,6 +457,11 @@ enum PlayerAvatar {
         return parts
     }
 
+    /// Where the whole model stands: at its feet, facing the body's way, leaning a touch into a sprint.
+    static func base(at rel: SIMD3<Float>, bodyYaw: Float, sneaking: Bool, sprint: Float) -> Mat4 {
+        MathUtil.translation(rel - SIMD3(0, sneaking ? 0.25 : 0, 0)) * MathUtil.rotationY(bodyYaw) * MathUtil.rotationX(-0.12 * sprint)
+    }
+
     /// Thin boxes for every painted pixel on a body part's sides, merging runs in each row.
     private static func paintedRegions(_ look: PlayerLook, kind: Int) -> [Box] {
         var boxes: [Box] = []
@@ -499,22 +504,60 @@ enum PlayerAvatar {
 
     /// The joint rotation for a part (the same animation on Mac and Windows).
     /// `idle` is a running clock for the gentle breathing sway of the arms and head when standing still.
-    static func pose(kind: Int, pitch: Float, walk: Float, moving: Float, sneaking: Bool, swing: Float, idle: Float = 0) -> Mat4 {
-        let swingLeg = sin(walk) * 0.8 * min(1, moving)
+    /// `headYaw` turns the head relative to the body, `air` (0…1) blends into a jumping pose with arms out and
+    /// legs apart, and `sprint` (0…1) makes the stride and arm swing bigger.
+    static func pose(kind: Int, pitch: Float, walk: Float, moving: Float, sneaking: Bool, swing: Float, idle: Float = 0,
+                     headYaw: Float = 0, air: Float = 0, sprint: Float = 0) -> Mat4 {
+        let ground = 1 - air
+        let stride = sin(walk) * (0.75 + sprint * 0.35) * min(1, moving) * ground
         let armSwing = sin(swing * .pi)
-        let still = max(0, 1 - min(1, moving) * 2)
+        let still = max(0, 1 - min(1, moving) * 2) * ground
         let breathe = sin(idle * 1.7) * still
+        let spread = 0.05 * still + air * 0.4
         switch kind {
         case 0: return sneaking ? MathUtil.rotationX(-0.4) : matrix_identity_float4x4
-        case 1: return MathUtil.rotationX(pitch * 0.8 + breathe * 0.025)
-        case 2: return MathUtil.rotationZ(-(0.05 + breathe * 0.03) * still) * MathUtil.rotationX(swingLeg + breathe * 0.03)
-        case 3: return MathUtil.rotationZ((0.05 + breathe * 0.03) * still) * MathUtil.rotationX(-swingLeg - armSwing * 1.6 - breathe * 0.03)
-        case 4: return MathUtil.rotationX(-swingLeg)
-        case 5: return MathUtil.rotationX(swingLeg)
+        case 1: return MathUtil.rotationY(max(-1.2, min(1.2, headYaw))) * MathUtil.rotationX(pitch * 0.8 + breathe * 0.025)
+        case 2: return MathUtil.rotationZ(-(spread + breathe * 0.03)) * MathUtil.rotationX(stride * 0.9 + breathe * 0.03 - air * 0.35)
+        case 3: return MathUtil.rotationZ(spread + breathe * 0.03) * MathUtil.rotationX(-stride * 0.9 - armSwing * 1.6 - breathe * 0.03 - air * 0.35)
+        case 4: return MathUtil.rotationX(-stride - air * 0.35)
+        case 5: return MathUtil.rotationX(stride + air * 0.3)
         case 6: return MathUtil.rotationX(-(0.08 + min(1, moving) * 0.55 + abs(sin(walk)) * 0.08 * moving + (sneaking ? 0.4 : 0)))
         default: return MathUtil.rotationY(sin(walk * 0.5) * 0.35 * max(0.3, moving)) * MathUtil.rotationX(-0.15)
         }
     }
+}
+
+/// Smoothed body motion for a player model: the body turns lazily behind where the head looks (and
+/// swings round to follow when walking), a lean into sprints, and a blend into a jumping or falling pose.
+final class AvatarMotion {
+    private(set) var bodyYaw: Double?
+    private(set) var air = 0.0
+    private(set) var sprint = 0.0
+
+    static func wrap(_ a: Double) -> Double {
+        var d = a.truncatingRemainder(dividingBy: 2 * .pi)
+        if d > .pi { d -= 2 * .pi }
+        if d < -.pi { d += 2 * .pi }
+        return d
+    }
+
+    func update(dt: Double, yaw: Double, moving: Double, airborne: Bool, sprinting: Bool) {
+        guard var body = bodyYaw else { bodyYaw = yaw; return }
+        // Walking turns the body to face where you're heading; standing, it only follows once the head
+        // has turned well past the shoulders (then settles slowly).
+        let rate = moving > 0.1 ? 9.0 : 1.2
+        body += AvatarMotion.wrap(yaw - body) * min(1, dt * rate)
+        let limit = 0.9, diff = AvatarMotion.wrap(yaw - body)
+        if diff > limit { body = yaw - limit } else if diff < -limit { body = yaw + limit }
+        bodyYaw = AvatarMotion.wrap(body)
+        air += ((airborne ? 1 : 0) - air) * min(1, dt * 7)
+        sprint += ((sprinting && moving > 0.3 ? 1 : 0) - sprint) * min(1, dt * 6)
+    }
+
+    /// The body's facing (falls back to the look direction before the first update).
+    func body(_ yaw: Double) -> Double { bodyYaw ?? yaw }
+    /// How far the head is turned from the body.
+    func headYaw(_ yaw: Double) -> Double { AvatarMotion.wrap(yaw - body(yaw)) }
 }
 
 /// The camera modes F5 cycles through.

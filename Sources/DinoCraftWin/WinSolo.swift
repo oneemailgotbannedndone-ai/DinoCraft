@@ -826,17 +826,19 @@ final class WinSolo: CommandHost {
         if cameraView != .firstPerson && !s.isDead, let r = rel(s.player.position) {
             // You, wearing your cosmetics and skin.
             let p = s.player
+            let m = s.selfMotion
             CreatureModels.appendPlayer(&v, name: settings.username, look: settings.cosmetics.isEmpty ? nil : settings.cosmetics, at: r,
-                                        yaw: Float(p.yaw), pitch: Float(p.pitch), walk: Float(s.bobPhase * .pi),
+                                        yaw: Float(m.body(p.yaw)), pitch: Float(p.pitch), walk: Float(s.bobPhase * .pi),
                                         moving: Float(p.onGround ? min(1, p.horizontalSpeed / 4.3) : 0), sneaking: p.isSneaking,
-                                        swing: Float(s.swingProgress), hurt: Float(s.damageFlash > 0.7 ? 0.3 : 0))
+                                        swing: Float(s.swingProgress), hurt: Float(s.damageFlash > 0.7 ? 0.3 : 0),
+                                        headYaw: Float(m.headYaw(p.yaw)), air: Float(m.air), sprint: Float(m.sprint))
         }
         for p in client?.remotePlayers ?? [] where !p.dead {
             // Skip a friend standing right where the camera is (you'd see the inside of their model).
             guard let r = rel(p.position), simd_length(r + SIMD3(0, 0.9, 0)) > 1.0 else { continue }
-            CreatureModels.appendPlayer(&v, name: p.name, look: p.look, at: r, yaw: Float(p.yaw), pitch: Float(p.pitch),
+            CreatureModels.appendPlayer(&v, name: p.name, look: p.look, at: r, yaw: Float(p.motion.body(p.yaw)), pitch: Float(p.pitch),
                                         walk: Float(p.walkPhase), moving: Float(p.moving), sneaking: p.sneaking, swing: Float(p.swing),
-                                        hurt: Float(p.hurtTimer))
+                                        hurt: Float(p.hurtTimer), headYaw: Float(p.motion.headYaw(p.yaw)), air: Float(p.motion.air))
         }
         for p in hostEntities.values where p.dying == 0 {
             guard let r = rel(p.position), simd_length(r + SIMD3(0, 0.9, 0)) > 1.0 else { continue }
