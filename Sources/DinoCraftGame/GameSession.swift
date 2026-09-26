@@ -98,6 +98,8 @@ final class GameSession {
     let mobs = MobManager()
     /// How your own explorer turns, leans and jumps when you see yourself in F5.
     let selfMotion = AvatarMotion()
+    /// A lower render distance the app asked for (when the graphics card is running out of memory).
+    var renderDistanceCap: Int?
 
     /// (sound name, volume, pitch)
     var onSound: ((String, Float, Float) -> Void)?
@@ -377,8 +379,8 @@ final class GameSession {
             }
             if network == nil { containers.dirty.removeAll() }
         }
-        renderDistance = settings.renderDistance
-        world.renderDistance = settings.renderDistance
+        renderDistance = min(settings.renderDistance, renderDistanceCap ?? .max)
+        world.renderDistance = renderDistance
         world.update(focus: player.position)
         damageFlash = max(0, damageFlash - dt * 1.6)
         eatFlash = max(0, eatFlash - dt * 1.2)

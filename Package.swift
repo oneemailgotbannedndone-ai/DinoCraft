@@ -68,9 +68,11 @@ products.append(.executable(name: "DinoCraftWin", targets: ["DinoCraftWin"]))
 targets += [
     // SDL3 headers and import library come from the Windows build (see .github/workflows/windows.yml).
     .systemLibrary(name: "CSDL3", path: "Sources/CSDL3"),
+    // Exports the flags that make laptop drivers run the game on the NVIDIA or AMD GPU.
+    .target(name: "CGPUPreference", path: "Sources/CGPUPreference"),
     .executableTarget(
         name: "DinoCraftWin",
-        dependencies: ["DinoCraftCore", "DinoCraftGame", "CSDL3"],
+        dependencies: ["DinoCraftCore", "DinoCraftGame", "CSDL3", "CGPUPreference"],
         path: "Sources/DinoCraftWin",
         swiftSettings: optimizedCore
     ),

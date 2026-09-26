@@ -206,9 +206,10 @@ final class Renderer {
         for (name, actual, expected) in checks where actual != expected {
             throw RendererError.resource("ChunkVertex.\(name) is at offset \(actual ?? -1), expected \(expected)")
         }
-        // FrameUniforms: 2 × float4x4 + 8 × float4. ChunkUniforms: 2 × float4.
+        // FrameUniforms: 2 × float4x4 + 10 × float4 (matching 00_Common.metal). ChunkUniforms: 2 × float4.
+        // Update this whenever a field is added to FrameUniforms, or the game refuses to start.
         guard MemoryLayout<ChunkVertex>.stride == 18,
-              MemoryLayout<FrameUniforms>.stride == 2 * 64 + 9 * 16,
+              MemoryLayout<FrameUniforms>.stride == 2 * 64 + 10 * 16,
               MemoryLayout<ChunkUniforms>.stride == 2 * 16 else {
             throw RendererError.resource("Uniform/vertex struct sizes do not match the shaders")
         }

@@ -72,6 +72,7 @@ final class WinMenus {
     private enum Page { case launcher, cosmetics, skin, title, worlds, create, multiplayer, settings, connecting, reviews, friends, leaderboard, credits }
 
     private let window: OpaquePointer
+    private lazy var pacer = FramePacer(window: window)
     private let renderer: WinRenderer
     private let store: SettingsStore
     private let audio: WinAudio?
@@ -248,6 +249,7 @@ final class WinMenus {
                 return .quit
             }
             SDL_GL_SwapWindow(window)
+            pacer.frameDone(vsync: store.settings.vsync && options.screenshotPath == nil)
         }
     }
 

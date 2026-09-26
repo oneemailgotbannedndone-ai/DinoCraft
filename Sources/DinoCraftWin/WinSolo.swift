@@ -250,6 +250,8 @@ final class WinSolo: CommandHost {
     }
 
     func showToast(_ text: String) { toast = (text, clock) }
+    private var videoMemoryTimer = 5.0
+    private lazy var pacer = FramePacer(window: window)
 
     func announceAdvancement(_ def: AdvancementDef) {
         advancementToasts.removeAll { clock - $0.time > 6 }
@@ -530,9 +532,27 @@ final class WinSolo: CommandHost {
         }
     }
 
+    /// Keeps chunk meshes within the graphics card's memory: when they outgrow it (or the card is nearly
+    /// full), the render distance steps down for this session instead of the game slowing to a crawl.
+    private func checkVideoMemory(_ s: GameSession, dt: Double) {
+        videoMemoryTimer -= dt
+        guard videoMemoryTimer <= 0, !s.isLoading else { return }
+        videoMemoryTimer = 2
+        let rd = s.world.renderDistance
+        guard rd > 6 else { return }
+        let overBudget = renderer.meshBytes > renderer.meshBudgetBytes
+        let nearlyFull = (renderer.freeVideoMemoryMB().map { $0 < 350 } ?? false) && renderer.meshBytes > 256 * 1_048_576
+        guard overBudget || nearlyFull else { return }
+        let lower = max(6, rd - (rd > 16 ? 4 : 2))
+        s.renderDistanceCap = lower
+        Log.warning("Chunk meshes use \(renderer.meshBytes / 1_048_576) MB of video memory (budget \(renderer.meshBudgetBytes / 1_048_576) MB, free \(renderer.freeVideoMemoryMB().map(String.init) ?? "?") MB); render distance \(rd) → \(lower)", category: "Renderer")
+        showToast("Render distance lowered to \(lower) to fit your graphics card's memory")
+    }
+
     private func update(dt: Double) {
         guard let s = session else { return }
         audio?.update(dt: dt)
+        checkVideoMemory(s, dt: dt)
         if let host {
             pollMapping()
             host.poll()
@@ -715,6 +735,7 @@ final class WinSolo: CommandHost {
             showToast("Saved screenshot \(url.lastPathComponent)")
         }
         SDL_GL_SwapWindow(window)
+        if options.screenshotPath == nil { pacer.frameDone(vsync: settings.vsync) }
     }
 
     private func saveScreenshot(to url: URL, width: Int32, height: Int32) {

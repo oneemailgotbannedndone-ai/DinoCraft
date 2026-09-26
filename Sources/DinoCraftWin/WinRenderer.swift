@@ -180,6 +180,18 @@ final class WinRenderer {
     private let modelVertexArray: UInt32
     private let modelBuffer: UInt32
     private(set) var visibleChunks = 0
+    /// Video memory held by chunk meshes right now.
+    private(set) var meshBytes = 0
+    /// The graphics card's dedicated memory in MB (nil when the driver doesn't say).
+    private(set) lazy var videoMemory: (total: Int, free: Int)? = gl.videoMemoryMB()
+    /// How much chunk mesh memory to allow before lowering the render distance: about half the card
+    /// (leaving room for the desktop, the browser and other programs), or 1.5 GB when unknown.
+    var meshBudgetBytes: Int {
+        let mb = videoMemory.map { max(512, min($0.total / 2, $0.total - 1536)) } ?? 1536
+        return mb * 1_048_576
+    }
+    /// Free video memory now, in MB, if the driver reports it.
+    func freeVideoMemoryMB() -> Int? { gl.videoMemoryMB()?.free }
     /// The Brightness setting (0 moody … 1 bright), used by the chunk shader.
     var brightness: Float = 0.5
     /// The season's leaf and grass colouring (see `Season`) and winter snow on top.
@@ -309,6 +321,10 @@ final class WinRenderer {
                     rgba = image.rgba
                 }
             }
+            if rgba == nil && name.hasPrefix("crack_") {
+                // A missing break-crack picture is drawn as nothing rather than the missing-texture checkerboard.
+                rgba = [UInt8](repeating: 0, count: size * size * 4)
+            }
             if rgba == nil {
                 missing += 1
                 var checker = [UInt8](repeating: 255, count: size * size * 4)
@@ -402,6 +418,7 @@ final class WinRenderer {
         gl.bindVertexArray(vao)
         gl.bindBuffer(GLC.ARRAY_BUFFER, vbo)
         payload.vertices.withUnsafeBytes { gl.bufferData(GLC.ARRAY_BUFFER, $0.count, $0.baseAddress, GLC.STATIC_DRAW) }
+        meshBytes += quads * 4 * MemoryLayout<ChunkVertex>.stride
         gl.bindBuffer(GLC.ELEMENT_ARRAY_BUFFER, quadIndices)
 
         let stride = Int32(MemoryLayout<ChunkVertex>.stride)
@@ -422,6 +439,7 @@ final class WinRenderer {
     }
 
     func deleteMesh(_ mesh: GPUMesh) {
+        meshBytes -= mesh.memoryBytes
         gl.deleteBuffer(mesh.buffer)
         gl.deleteVertexArray(mesh.vertexArray)
     }
@@ -519,12 +537,14 @@ final class WinRenderer {
             visible.append((mesh, Float(ox), Float(oy), Float(oz), 1 - (1 - fade) * (1 - fade), d2, pos))
         }
         visibleChunks = visible.count
+        let nearToFar = visible.indices.sorted { visible[$0].d2 < visible[$1].d2 }
 
         gl.enable(GLC.DEPTH_TEST)
         gl.depthFunc(GLC.LESS)
         let fogEnd = Float(world.renderDistance * 16) - 6
         for (pass, program) in chunkPrograms.enumerated() {
             if pass == 2 {
+                gl.disable(GLC.CULL_FACE)
                 if !models.isEmpty { drawModels(models, viewProj: viewProj, sky: sky, fogEnd: fogEnd) }
                 if !effects.solid.isEmpty { drawEffects(effects.solid, viewProj: viewProj, sky: sky, fogEnd: fogEnd, blended: false) }
             }
@@ -543,12 +563,20 @@ final class WinRenderer {
             gl.activeTexture(GLC.TEXTURE0)
             gl.bindTexture(GLC.TEXTURE_2D_ARRAY, blockTexture)
 
-            var order = Array(visible.indices)
+            let order: [Int]
             if pass == 2 {
+                gl.disable(GLC.CULL_FACE)
                 gl.enable(GLC.BLEND)
                 gl.blendFunc(GLC.ONE, GLC.ONE_MINUS_SRC_ALPHA)
                 gl.depthMask(0)
-                order.sort { visible[$0].d2 > visible[$1].d2 }
+                order = nearToFar.reversed()
+            } else {
+                // Solid and cutout chunks near to far, with back faces skipped (as on the Mac), so the GPU can
+                // throw away hidden pixels before shading them.
+                gl.enable(GLC.CULL_FACE)
+                gl.cullFace(GLC.BACK)
+                gl.frontFace(GLC.CCW)
+                order = nearToFar
             }
             for i in order {
                 let v = visible[i]

@@ -1,5 +1,6 @@
 import Foundation
 import CSDL3
+import CGPUPreference
 import DinoCraftCore
 @testable import DinoCraftGame
 #if os(Windows)
@@ -152,11 +153,14 @@ _ = SDL_GL_MakeCurrent(window, context)
 let settingsStore = SettingsStore()
 PlayerLook.settle(settingsStore)
 GameLinks.setUpStats(settingsStore)
-_ = SDL_GL_SetSwapInterval(options.screenshotPath == nil && settingsStore.settings.vsync ? 1 : 0)
+let wantsVSync = options.screenshotPath == nil && settingsStore.settings.vsync
+if !SDL_GL_SetSwapInterval(wantsVSync ? 1 : 0) { Log.warning("The driver refused to set VSync \(wantsVSync ? "on" : "off")", category: "Renderer") }
 
 do {
     let gl = try GL()
     Log.info("OpenGL \(gl.string(GLC.VERSION)) · \(gl.string(GLC.RENDERER)) · \(gl.string(GLC.VENDOR))", category: "Renderer")
+    Log.info("Asks for the discrete GPU on dual-GPU laptops: \(dinocraft_prefers_discrete_gpu() == 1 ? "yes" : "no")", category: "Renderer")
+    if let vram = gl.videoMemoryMB() { Log.info("Video memory: \(vram.total) MB, \(vram.free) MB free", category: "Renderer") }
     let blocks = try BlockRegistry.loadDefault()
     let items = try ItemRegistry.loadDefault(blocks: blocks)
     let recipes = try RecipeRegistry.loadDefault(items: items)

@@ -1,5 +1,19 @@
 DinoCraft - the Toonland update
 
+Fixes and speed
+- Mac: the game and the launcher start again (a startup check had not been updated for the seasons update,
+  so both stopped before opening).
+- Windows: the block-breaking cracks show properly instead of a purple checkerboard (their pictures were
+  missing from the download).
+- Windows runs faster: hidden faces of blocks are skipped, nearby chunks are drawn first so hidden pixels
+  are thrown away early, and on laptops with an NVIDIA or AMD graphics card the game now asks to run on it
+  instead of the slower built-in graphics.
+- If chunk meshes outgrow your graphics card's memory, the render distance steps down for that session
+  (with a message) instead of the game slowing to a crawl.
+- With VSync on, if the graphics driver ignores it, the game paces frames to your screen itself.
+- Third person (F5): your body turns naturally behind your head, you lean into sprints, arms and legs
+  spread when you jump or fall, and on Windows you can see what you're holding.
+
 Five new dinosaurs, livelier creatures and a more detailed explorer
 - Protoceratops graze in plains, savanna and deserts. Styracosaurus roam the plains with a spiky frill and
   charge if you hit them. Corythosaurus, with their tall crests, wander the forests. Quetzalcoatlus soar over

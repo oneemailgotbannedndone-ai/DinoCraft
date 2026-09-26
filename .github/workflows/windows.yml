@@ -82,6 +82,7 @@ jobs:
           Copy-Item Resources/Data "$out/Resources/Data" -Recurse
           Copy-Item Resources/Textures/blocks "$out/Resources/Textures/blocks" -Recurse
           Copy-Item Resources/Textures/items "$out/Resources/Textures/items" -Recurse
+          Copy-Item Resources/Textures/misc "$out/Resources/Textures/misc" -Recurse
           Copy-Item Resources/TexturePacks "$out/Resources/TexturePacks" -Recurse
           Copy-Item Resources/Sounds "$out/Resources/Sounds" -Recurse
           Copy-Item Resources/Music "$out/Resources/Music" -Recurse
