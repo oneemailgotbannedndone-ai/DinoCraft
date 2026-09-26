@@ -15,7 +15,7 @@ struct WinCamera {
     /// OpenGL perspective (depth -1…1) times a rotation-only view; geometry is drawn camera-relative.
     func viewProjection(aspect: Float) -> Mat4 {
         let f = 1 / Float(tan(fovY / 2))
-        let near: Float = 0.08, far: Float = 1600
+        let near: Float = 0.1, far: Float = 2400
         let projection = Mat4(columns: (
             SIMD4(f / aspect, 0, 0, 0),
             SIMD4(0, f, 0, 0),
@@ -80,6 +80,13 @@ struct SkyState {
             s.horizon = lin(1.0, 0.86, 0.6)
             s.skyLight = SIMD3(1, 0.95, 0.85)
             return s
+        case .toonland:
+            // Always a warm, golden late afternoon over the meadows.
+            var s = SkyState.at(worldTime: 300)
+            s.zenith = lin(0.42, 0.62, 0.9)
+            s.horizon = lin(1.0, 0.86, 0.62)
+            s.skyLight = SIMD3(1, 0.93, 0.8)
+            return s
         default:
             var s = SkyState.at(worldTime: worldTime)
             guard weather > 0 else { return s }
@@ -108,7 +115,7 @@ struct WorldEffects {
 final class WinRenderer {
     private struct ChunkProgram {
         let id: UInt32
-        let viewProj, origin, worldOrigin, time, blocks, sunDaylight, skyLight, fogColorStart, fogParams, skyHorizon, brightness: Int32
+        let viewProj, origin, worldOrigin, time, blocks, sunDaylight, skyLight, fogColorStart, fogParams, skyHorizon, brightness, season, snow: Int32
 
         init(gl: GL, id: UInt32) {
             self.id = id
@@ -123,6 +130,8 @@ final class WinRenderer {
             fogParams = gl.uniform(id, "uFogParams")
             skyHorizon = gl.uniform(id, "uSkyHorizon")
             brightness = gl.uniform(id, "uBrightness")
+            season = gl.uniform(id, "uSeason")
+            snow = gl.uniform(id, "uSnow")
         }
     }
 
@@ -137,7 +146,15 @@ final class WinRenderer {
     private var sceneTarget: (framebuffer: UInt32, color: UInt32, depth: UInt32, width: Int32, height: Int32)?
     /// Shader pack: 0 off, 1 vibrant, 2 cinematic, 3 retro, 4 dreamy (the Mac's `ShaderPack` order).
     var shaderPack = 0
+    /// 1 shows the scene in black and white (no dimension uses it now).
+    var mono: Float = 0
+    /// Your eyes are under water: thick blue-green fog all round, like on the Mac.
+    var underwater = false
+    /// Set when the driver can't render offscreen, so post-processing stays off.
+    private var postUnavailable = false
     var shaderStrength: Float = 1
+    /// Clouds in the sky (Settings > Clouds).
+    var clouds = true
     private let effectVertexArray: UInt32
     private let effectBuffer: UInt32
     private var blockTexture: UInt32
@@ -148,6 +165,9 @@ final class WinRenderer {
     /// Average colour (linear) of each block and item texture layer, for dropped items.
     private var blockLayerColors: [SIMD3<Float>]
     private var itemLayerColors: [SIMD3<Float>]
+    /// Which pixels of each texture are solid, for 3D (extruded) items.
+    private var blockLayerMasks: [[Bool]] = []
+    private var itemLayerMasks: [[Bool]] = []
     private let blockNames: [String]
     private let itemNames: [String]
     /// The texture pack whose art is loaded ("dino" is DinoCraft's own).
@@ -160,8 +180,23 @@ final class WinRenderer {
     private let modelVertexArray: UInt32
     private let modelBuffer: UInt32
     private(set) var visibleChunks = 0
+    /// Video memory held by chunk meshes right now.
+    private(set) var meshBytes = 0
+    /// The graphics card's dedicated memory in MB (nil when the driver doesn't say).
+    private(set) lazy var videoMemory: (total: Int, free: Int)? = gl.videoMemoryMB()
+    /// How much chunk mesh memory to allow before lowering the render distance: about half the card
+    /// (leaving room for the desktop, the browser and other programs), or 1.5 GB when unknown.
+    var meshBudgetBytes: Int {
+        let mb = videoMemory.map { max(512, min($0.total / 2, $0.total - 1536)) } ?? 1536
+        return mb * 1_048_576
+    }
+    /// Free video memory now, in MB, if the driver reports it.
+    func freeVideoMemoryMB() -> Int? { gl.videoMemoryMB()?.free }
     /// The Brightness setting (0 moody … 1 bright), used by the chunk shader.
     var brightness: Float = 0.5
+    /// The season's leaf and grass colouring (see `Season`) and winter snow on top.
+    var season = SIMD4<Float>(1, 1, 1, 0)
+    var snow: Float = 0
 
     init(gl: GL, blocks: BlockRegistry, items: ItemRegistry, pack: TexturePack = TexturePackLibrary.defaultPack) throws {
         self.gl = gl
@@ -174,19 +209,21 @@ final class WinRenderer {
         effectProgram = try gl.makeProgram(vertex: Shaders.effectVertex, fragment: Shaders.effectFragment, label: "effects")
         postProgram = try gl.makeProgram(vertex: Shaders.postVertex, fragment: Shaders.postFragment, label: "shader pack")
 
-        blockNames = blocks.textureNames
+        blockNames = blocks.textureNames + WinRenderer.crackNames
         itemNames = items.textureNames
         texturePack = pack
-        let blockArray = WinRenderer.loadTextureArray(gl: gl, names: blocks.textureNames, folders: ["blocks"], pack: pack)
+        let blockArray = WinRenderer.loadTextureArray(gl: gl, names: blocks.textureNames + WinRenderer.crackNames, folders: ["blocks", "misc"], pack: pack)
         blockTexture = blockArray.texture
         blockLayers = blockArray.layers
         blockLayerColors = blockArray.colors
+        blockLayerMasks = blockArray.masks
         let layers = blockArray.layers
         blocks.bindTextureLayers { layers[$0] ?? 0 }
         let itemArray = WinRenderer.loadTextureArray(gl: gl, names: items.textureNames, folders: ["items", "blocks"], pack: pack)
         itemTexture = itemArray.texture
         itemLayers = itemArray.layers
         itemLayerColors = itemArray.colors
+        itemLayerMasks = itemArray.masks
         gl.activeTexture(GLC.TEXTURE0)
 
         // Shared quad index buffer: (0,1,2)(0,2,3) per quad.
@@ -239,29 +276,41 @@ final class WinRenderer {
     }
 
     /// Loads 32×32 PNGs into an sRGB texture array (premultiplied alpha), trying each folder in order.
+    /// Break-crack pictures, stage 0 (barely) to 9 (about to break), from Textures/misc.
+    static let crackNames = (0..<10).map { "crack_\($0)" }
+
+    /// The block texture layer for a break-crack stage.
+    func crackLayer(stage: Int) -> Float? {
+        blockLayers["crack_\(max(0, min(9, stage)))"].map { Float($0) }
+    }
+
     /// Switches to another texture pack's art. Layers keep their numbers, so chunk meshes stay valid.
     func applyTexturePack(_ pack: TexturePack) {
         guard pack.id != texturePack.id else { return }
-        let blockArray = WinRenderer.loadTextureArray(gl: gl, names: blockNames, folders: ["blocks"], pack: pack)
+        let blockArray = WinRenderer.loadTextureArray(gl: gl, names: blockNames, folders: ["blocks", "misc"], pack: pack)
         let itemArray = WinRenderer.loadTextureArray(gl: gl, names: itemNames, folders: ["items", "blocks"], pack: pack)
         gl.deleteTexture(blockTexture)
         gl.deleteTexture(itemTexture)
         blockTexture = blockArray.texture
         blockLayerColors = blockArray.colors
+        blockLayerMasks = blockArray.masks
         itemTexture = itemArray.texture
         itemLayerColors = itemArray.colors
+        itemLayerMasks = itemArray.masks
         texturePack = pack
+        EffectBuilder.extrusionCache.removeAll()
         Log.info("Texture pack '\(pack.name)' active", category: "Renderer")
     }
 
     private static func loadTextureArray(gl: GL, names rawNames: [String], folders: [String], pack: TexturePack)
-        -> (texture: UInt32, layers: [String: UInt16], colors: [SIMD3<Float>]) {
+        -> (texture: UInt32, layers: [String: UInt16], colors: [SIMD3<Float>], masks: [[Bool]]) {
         var seen = Set<String>()
         let names = rawNames.filter { seen.insert($0).inserted }
         let size = 32
         var pixels = [UInt8](repeating: 0, count: size * size * 4 * max(1, names.count))
         var layers: [String: UInt16] = [:]
         var colors: [SIMD3<Float>] = []
+        var masks: [[Bool]] = []
         var missing = 0
         for (i, name) in names.enumerated() {
             layers[name] = UInt16(i)
@@ -271,6 +320,10 @@ final class WinRenderer {
                    let image = try? PNG.decode(Data(contentsOf: url)), image.width == size, image.height == size {
                     rgba = image.rgba
                 }
+            }
+            if rgba == nil && name.hasPrefix("crack_") {
+                // A missing break-crack picture is drawn as nothing rather than the missing-texture checkerboard.
+                rgba = [UInt8](repeating: 0, count: size * size * 4)
             }
             if rgba == nil {
                 missing += 1
@@ -288,6 +341,7 @@ final class WinRenderer {
                 weight += 1
             }
             colors.append(weight > 0 ? sum / weight : SIMD3(0.5, 0.5, 0.5))
+            masks.append((0..<(size * size)).map { source[$0 * 4 + 3] > 127 })
             for p in 0..<(size * size) {
                 let a = UInt16(source[p * 4 + 3])
                 pixels[base + p * 4] = UInt8(UInt16(source[p * 4]) * a / 255)
@@ -310,7 +364,7 @@ final class WinRenderer {
         gl.texParameteri(GLC.TEXTURE_2D_ARRAY, GLC.TEXTURE_WRAP_S, GLC.REPEAT)
         gl.texParameteri(GLC.TEXTURE_2D_ARRAY, GLC.TEXTURE_WRAP_T, GLC.REPEAT)
         Log.info("Loaded \(names.count) textures from \(folders.first ?? "?")", category: "Renderer")
-        return (texture, layers, colors)
+        return (texture, layers, colors, masks)
     }
 
     /// The overlay layer for an item's icon (see `UIBuilder.icon`), or -1 when it has none.
@@ -322,6 +376,16 @@ final class WinRenderer {
         }
         if let block = info.block { return Float(blocks.faceLayers[Int(block) * 6 + BlockFace.south.rawValue]) }
         return -1
+    }
+
+    /// Solid pixels of an icon layer (from `iconLayer`), for drawing it as a 3D item.
+    func alphaMask(layer: Float) -> [Bool]? {
+        if layer >= UIBuilder.itemLayerOffset {
+            let i = Int(layer - UIBuilder.itemLayerOffset)
+            return i < itemLayerMasks.count ? itemLayerMasks[i] : nil
+        }
+        let i = Int(layer)
+        return i >= 0 && i < blockLayerMasks.count ? blockLayerMasks[i] : nil
     }
 
     /// The average colour of an item's icon, for drawing it as a small model.
@@ -354,6 +418,7 @@ final class WinRenderer {
         gl.bindVertexArray(vao)
         gl.bindBuffer(GLC.ARRAY_BUFFER, vbo)
         payload.vertices.withUnsafeBytes { gl.bufferData(GLC.ARRAY_BUFFER, $0.count, $0.baseAddress, GLC.STATIC_DRAW) }
+        meshBytes += quads * 4 * MemoryLayout<ChunkVertex>.stride
         gl.bindBuffer(GLC.ELEMENT_ARRAY_BUFFER, quadIndices)
 
         let stride = Int32(MemoryLayout<ChunkVertex>.stride)
@@ -374,6 +439,7 @@ final class WinRenderer {
     }
 
     func deleteMesh(_ mesh: GPUMesh) {
+        meshBytes -= mesh.memoryBytes
         gl.deleteBuffer(mesh.buffer)
         gl.deleteVertexArray(mesh.vertexArray)
     }
@@ -398,12 +464,14 @@ final class WinRenderer {
         gl.uniform3f(gl.uniform(skyProgram, "uCamPos"), Float(camera.position.x.truncatingRemainder(dividingBy: 65536)),
                      Float(camera.position.y), Float(camera.position.z.truncatingRemainder(dividingBy: 65536)))
         gl.uniform1f(gl.uniform(skyProgram, "uTime"), time)
+        gl.uniform1f(gl.uniform(skyProgram, "uClouds"), clouds ? 1 : 0)
         gl.bindVertexArray(emptyVertexArray)
         gl.drawArrays(GLC.TRIANGLES, 0, 3)
     }
 
     /// Menu background: a slowly turning evening sky with drifting clouds, plus the menu UI.
     func renderMenu(width: Int32, height: Int32, time: Double, ui: [Float], models: [Float] = []) {
+        underwater = false
         gl.viewport(0, 0, width, height)
         gl.enable(GLC.FRAMEBUFFER_SRGB)
         gl.depthMask(1)
@@ -431,10 +499,16 @@ final class WinRenderer {
 
     func render(world: World, camera: WinCamera, sky: SkyState, time: Double, now: Double,
                 width: Int32, height: Int32, ui: [Float], models: [Float] = [], effects: WorldEffects = WorldEffects()) {
+        var sky = sky
+        if underwater {
+            // The sky disappears into the water's colour (the same colour the fog fades to).
+            let water = SIMD3<Float>(0.03, 0.14, 0.26) * max(0.25, sky.daylight)
+            sky.zenith = water; sky.horizon = water; sky.stars = 0; sky.sunsetGlow = 0
+        }
         let aspect = Float(width) / Float(max(1, height))
         let viewProj = camera.viewProjection(aspect: aspect)
         let t = Float(time.truncatingRemainder(dividingBy: 3600))
-        let post = shaderPack > 0 && bindSceneTarget(width: width, height: height)
+        let post = (shaderPack > 0 || mono > 0) && !postUnavailable && bindSceneTarget(width: width, height: height)
 
         gl.viewport(0, 0, width, height)
         gl.enable(GLC.FRAMEBUFFER_SRGB)
@@ -463,12 +537,14 @@ final class WinRenderer {
             visible.append((mesh, Float(ox), Float(oy), Float(oz), 1 - (1 - fade) * (1 - fade), d2, pos))
         }
         visibleChunks = visible.count
+        let nearToFar = visible.indices.sorted { visible[$0].d2 < visible[$1].d2 }
 
         gl.enable(GLC.DEPTH_TEST)
         gl.depthFunc(GLC.LESS)
         let fogEnd = Float(world.renderDistance * 16) - 6
         for (pass, program) in chunkPrograms.enumerated() {
             if pass == 2 {
+                gl.disable(GLC.CULL_FACE)
                 if !models.isEmpty { drawModels(models, viewProj: viewProj, sky: sky, fogEnd: fogEnd) }
                 if !effects.solid.isEmpty { drawEffects(effects.solid, viewProj: viewProj, sky: sky, fogEnd: fogEnd, blended: false) }
             }
@@ -479,18 +555,28 @@ final class WinRenderer {
             gl.uniform4f(program.sunDaylight, sky.sunDirection.x, sky.sunDirection.y, sky.sunDirection.z, sky.daylight)
             gl.uniform3f(program.skyLight, sky.skyLight.x, sky.skyLight.y, sky.skyLight.z)
             gl.uniform4f(program.fogColorStart, sky.horizon.x, sky.horizon.y, sky.horizon.z, fogEnd * 0.55)
-            gl.uniform2f(program.fogParams, fogEnd, 0)
+            gl.uniform2f(program.fogParams, fogEnd, underwater ? 1 : 0)
             gl.uniform3f(program.skyHorizon, sky.horizon.x, sky.horizon.y, sky.horizon.z)
             gl.uniform1f(program.brightness, brightness)
+            gl.uniform4f(program.season, season.x, season.y, season.z, season.w)
+            gl.uniform1f(program.snow, snow)
             gl.activeTexture(GLC.TEXTURE0)
             gl.bindTexture(GLC.TEXTURE_2D_ARRAY, blockTexture)
 
-            var order = Array(visible.indices)
+            let order: [Int]
             if pass == 2 {
+                gl.disable(GLC.CULL_FACE)
                 gl.enable(GLC.BLEND)
                 gl.blendFunc(GLC.ONE, GLC.ONE_MINUS_SRC_ALPHA)
                 gl.depthMask(0)
-                order.sort { visible[$0].d2 > visible[$1].d2 }
+                order = nearToFar.reversed()
+            } else {
+                // Solid and cutout chunks near to far, with back faces skipped (as on the Mac), so the GPU can
+                // throw away hidden pixels before shading them.
+                gl.enable(GLC.CULL_FACE)
+                gl.cullFace(GLC.BACK)
+                gl.frontFace(GLC.CCW)
+                order = nearToFar
             }
             for i in order {
                 let v = visible[i]
@@ -526,8 +612,8 @@ final class WinRenderer {
     private func drawModels(_ v: [Float], viewProj: Mat4, sky: SkyState, fogEnd: Float) {
         gl.useProgram(modelProgram)
         gl.setMatrix(gl.uniform(modelProgram, "uViewProj"), viewProj)
-        gl.uniform4f(gl.uniform(modelProgram, "uFogColorStart"), sky.horizon.x, sky.horizon.y, sky.horizon.z, fogEnd * 0.55)
-        gl.uniform1f(gl.uniform(modelProgram, "uFogEnd"), fogEnd)
+        gl.uniform4f(gl.uniform(modelProgram, "uFogColorStart"), sky.horizon.x, sky.horizon.y, sky.horizon.z, underwater ? 1 : fogEnd * 0.55)
+        gl.uniform1f(gl.uniform(modelProgram, "uFogEnd"), underwater ? min(fogEnd, 34) : fogEnd)
         gl.uniform1f(gl.uniform(modelProgram, "uDaylight"), sky.daylight)
         gl.bindVertexArray(modelVertexArray)
         gl.bindBuffer(GLC.ARRAY_BUFFER, modelBuffer)
@@ -538,8 +624,8 @@ final class WinRenderer {
     private func drawEffects(_ v: [Float], viewProj: Mat4, sky: SkyState, fogEnd: Float, blended: Bool) {
         gl.useProgram(effectProgram)
         gl.setMatrix(gl.uniform(effectProgram, "uViewProj"), viewProj)
-        gl.uniform4f(gl.uniform(effectProgram, "uFogColorStart"), sky.horizon.x, sky.horizon.y, sky.horizon.z, fogEnd * 0.55)
-        gl.uniform1f(gl.uniform(effectProgram, "uFogEnd"), fogEnd)
+        gl.uniform4f(gl.uniform(effectProgram, "uFogColorStart"), sky.horizon.x, sky.horizon.y, sky.horizon.z, underwater ? 1 : fogEnd * 0.55)
+        gl.uniform1f(gl.uniform(effectProgram, "uFogEnd"), underwater ? min(fogEnd, 34) : fogEnd)
         gl.uniform1f(gl.uniform(effectProgram, "uDaylight"), sky.daylight)
         gl.uniform1i(gl.uniform(effectProgram, "uBlocks"), 0)
         gl.uniform1i(gl.uniform(effectProgram, "uItems"), 1)
@@ -600,6 +686,7 @@ final class WinRenderer {
             gl.deleteRenderbuffers(1, &depth)
             gl.deleteTexture(color)
             shaderPack = 0
+            postUnavailable = true
             return false
         }
         sceneTarget = (framebuffer, color, depth, width, height)
@@ -619,6 +706,7 @@ final class WinRenderer {
         gl.uniform1i(gl.uniform(postProgram, "uScene"), 0)
         gl.uniform4f(gl.uniform(postProgram, "uParams"), Float(shaderPack), time, Float(width), Float(height))
         gl.uniform1f(gl.uniform(postProgram, "uStrength"), shaderStrength)
+        gl.uniform1f(gl.uniform(postProgram, "uMono"), mono)
         gl.bindVertexArray(emptyVertexArray)
         gl.drawArrays(GLC.TRIANGLES, 0, 3)
     }

@@ -17,7 +17,7 @@ final class PauseScreen: Screen {
         let W = ui.size.x, H = ui.size.y
         d.opacity = a
         d.outlinedText("Paused", x: W / 2, y: H * 0.2 - (1 - a) * 12, size: 64, fill: Color(hex: 0xFFE69A), fillBottom: Color(hex: 0xF08A2E),
-                       outline: Color(hex: 0x2A1740), outlineWidth: 5)
+                       outline: Color(hex: 0x3A2414), outlineWidth: 5)
         if let s = e.session {
             d.text("\(s.meta.name)  ·  \(s.modeName)  ·  \(s.dimension == .overworld ? SkyModel.periodName(worldTime: s.worldTime) : s.dimension.displayName)",
                    x: W / 2, y: H * 0.2 + 84, size: 16, color: Theme.text.alpha(0.85), align: .center, shadow: Color(linear: 0, 0, 0, 0.6))
@@ -110,31 +110,17 @@ final class DeathScreen: Screen {
 final class CreditsScreen: Screen {
     override var scene: GameActivityState.Scene { .credits }
 
-    private let lines: [(String, Float, Bool)] = [
-        ("DinoCraft", 44, true),
-        ("A prehistoric voxel adventure", 18, false),
-        ("", 20, false),
-        ("DESIGN & ENGINEERING", 14, true),
-        ("Built for you, from scratch, in Swift", 18, false),
-        ("", 16, false),
-        ("TECHNOLOGY", 14, true),
-        ("Native AppKit · Metal · AVAudioEngine", 18, false),
-        ("Multithreaded chunk streaming on Apple Silicon", 18, false),
-        ("Greedy meshing with smooth lighting & ambient occlusion", 18, false),
-        ("", 16, false),
-        ("ART & AUDIO", 14, true),
-        ("All textures painted procedurally by AssetForge", 18, false),
-        ("All sounds and music synthesized from scratch", 18, false),
-        ("", 16, false),
-        ("SOUNDTRACK", 14, true),
-        ("Where Giants Roamed · Fernlight · Amber Dusk", 18, false),
-        ("Deep Strata · Titan Valley", 18, false),
-        ("", 16, false),
-        ("SPECIAL THANKS", 14, true),
-        ("Every dinosaur that ever roamed the Earth", 18, false),
-        ("", 30, false),
-        ("Thank you for playing.", 22, true),
-    ]
+    private let lines: [(String, Float, Bool)] = GameCredits.lines(technology: [
+        "Native AppKit · Metal · AVAudioEngine", "Tuned for Apple Silicon",
+    ]).map { line -> (String, Float, Bool) in
+        switch line.style {
+        case .title: return (line.text, 44, true)
+        case .heading: return (line.text, 14, true)
+        case .line: return (line.text, 18, false)
+        case .spacer: return ("", 16, false)
+        case .thanks: return (line.text, 22, true)
+        }
+    }
 
     override func draw(_ ui: UIContext, _ e: GameEngine) {
         MenuBackdrop.draw(ui)
@@ -153,7 +139,7 @@ final class CreditsScreen: Screen {
             if !text.isEmpty {
                 if size > 40 {
                     d.outlinedText(text, x: W / 2, y: y, size: size, fill: Color(hex: 0xFFE69A), fillBottom: Color(hex: 0xF08A2E),
-                                   outline: Color(hex: 0x2A1740), outlineWidth: 4)
+                                   outline: Color(hex: 0x3A2414), outlineWidth: 4)
                 } else {
                     d.text(text, x: W / 2, y: y, size: size, color: strong ? Theme.amber : Theme.text, face: strong ? .display : .body,
                            align: .center, tracking: strong ? 0.12 : 0, shadow: Color(linear: 0, 0, 0, 0.7))
@@ -219,7 +205,8 @@ final class SettingsScreen: Screen {
         switch tab {
         case 0:
             var rd = Double(s.renderDistance)
-            if ui.slider("set.rd", "Render Distance", next(), &rd, range: 4...24, step: 1, format: { "\(Int($0)) chunks" }) { s.renderDistance = Int(rd) }
+            if ui.slider("set.rd", "Render Distance", next(), &rd, range: 4...Double(GameSettings.maxRenderDistance), step: 1,
+                         format: { "\(Int($0)) chunks\($0 > 32 ? " · needs a strong Mac" : "")" }) { s.renderDistance = Int(rd) }
             ui.slider("set.fov", "Field of View", next(), &s.fov, range: 50...110, step: 1, format: { "\(Int($0))°" })
             ui.slider("set.brightness", "Brightness", next(), &s.brightness, range: 0...1, step: 0.01, format: { $0 < 0.05 ? "Moody" : ($0 > 0.95 ? "Bright" : "\(Int($0 * 100))%") })
             var q = GraphicsQuality.allCases.firstIndex(of: s.graphicsQuality) ?? 2
@@ -243,9 +230,16 @@ final class SettingsScreen: Screen {
             ui.toggle("set.bob", "View Bobbing", next(), &s.viewBobbing)
             ui.toggle("set.clouds", "Clouds", next(), &s.clouds)
             ui.toggle("set.fps", "Show FPS Counter", next(), &s.showFPS)
+            let mr = next()
+            d.text("Map (M)", in: Rect(mr.x + 16, mr.y, 200, mr.h), size: 16, color: Theme.text, align: .left)
+            var mapMode = max(0, min(2, s.minimapMode))
+            if ui.segmented("set.map", Rect(mr.maxX - 360, mr.y + 7, 344, mr.h - 14), options: ["Hidden", "Corner", "Big"], selected: &mapMode) {
+                s.minimapMode = mapMode
+            }
             ui.slider("set.gui", "Interface Scale", next(), &s.guiScale, range: 0.75...1.5, step: 0.05, format: { "\(Int($0 * 100))%" })
             var fps = Double(s.maxFPS)
-            if ui.slider("set.maxfps", "Max FPS (VSync off)", next(), &fps, range: 30...240, step: 10, format: { "\(Int($0))" }) { s.maxFPS = Int(fps) }
+            if ui.slider("set.maxfps", "Max FPS (VSync off)", next(), &fps, range: 0...360, step: 10,
+                         format: { $0 < 5 ? "Unlimited" : "\(Int($0))" }) { s.maxFPS = fps < 5 ? 0 : Int(fps) }
         case 1:
             ui.slider("set.master", "Master Volume", next(), &s.masterVolume, range: 0...1, step: 0.01, format: { "\(Int($0 * 100))%" })
             ui.slider("set.music", "Music", next(), &s.musicVolume, range: 0...1, step: 0.01, format: { "\(Int($0 * 100))%" })
@@ -339,7 +333,13 @@ enum LoadingView {
     static func draw(_ ui: UIContext, session: GameSession) {
         let d = ui.draw
         let W = ui.size.x, H = ui.size.y
-        d.fill(Rect(0, 0, W, H), Color(hex: 0x1C1236), bottom: Color(hex: 0x0A0614))
+        // Each dimension has its own loading backdrop
+        switch session.dimension {
+        case .underworld: d.fill(Rect(0, 0, W, H), Color(hex: 0x3A0E0A), bottom: Color(hex: 0x120404))
+        case .skylands: d.fill(Rect(0, 0, W, H), Color(hex: 0x6A5A9A), bottom: Color(hex: 0xE8A04A))
+        case .toonland: d.fill(Rect(0, 0, W, H), Color(hex: 0x6A8AC8), bottom: Color(hex: 0xE8B25A))
+        default: d.fill(Rect(0, 0, W, H), Color(hex: 0x2A1A0C), bottom: Color(hex: 0x140A04))
+        }
         // Drifting voxel silhouettes
         for i in 0..<18 {
             let h1 = Float(Hashing.unit(7, Int32(i), 0, 0)), h2 = Float(Hashing.unit(7, Int32(i), 1, 0))
@@ -351,14 +351,14 @@ enum LoadingView {
         MenuBackdrop.draw(ui, strength: 0.6)
         let bob = Float(sin(ui.time * 1.5)) * 4
         d.outlinedText(Brand.title, x: W / 2, y: H * 0.26 + bob, size: 80, fill: Color(hex: Brand.top), fillBottom: Color(hex: Brand.bottom),
-                       outline: Color(hex: 0x2A1740), outlineWidth: 6)
+                       outline: Color(hex: 0x3A2414), outlineWidth: 6)
         let title = session.loadingTitle
         d.text(title, x: W / 2, y: H * 0.26 + 110, size: 24, color: Theme.text, face: .display, align: .center, shadow: Color(linear: 0, 0, 0, 0.6))
         d.text(session.meta.name, x: W / 2, y: H * 0.26 + 146, size: 16, color: Theme.textMuted, align: .center)
 
         let bar = Rect(W / 2 - 240, H * 0.26 + 196, 480, 14)
         let progress = ui.anim("loading.progress", session.loadingProgress, speed: 6)
-        d.fill(bar, Color(hex: 0x0F0A1C, alpha: 0.9), radius: 7)
+        d.fill(bar, Color(hex: 0x24150A, alpha: 0.9), radius: 7)
         d.stroke(bar, Theme.amber.alpha(0.3), radius: 7, width: 1)
         let fill = Rect(bar.x + 2, bar.y + 2, max(10, (bar.w - 4) * progress), bar.h - 4)
         d.fill(fill, Theme.amberDeep, radius: 5, bottom: Theme.amber)
@@ -366,7 +366,11 @@ enum LoadingView {
         d.fill(Rect(shimmerX - 20, fill.y, 40, fill.h), Color(linear: 1, 1, 1, 0.25), radius: 5, blur: 6)
         d.text("\(Int(progress * 100))%  ·  \(session.loadingDetail)", x: W / 2, y: bar.maxY + 14, size: 14, color: Theme.textMuted, align: .center)
 
-        let tip = tips[Int(ui.time / 5) % tips.count]
+        if let goal = GameGuide.current(session.advancements), !session.isRemote {
+            d.text("NEXT GOAL: \(goal.step.title.uppercased())", x: W / 2, y: H - 150, size: 13, color: Theme.jungle, face: .display, align: .center, tracking: 0.1)
+        }
+        let allTips = tips + GameGuide.tips
+        let tip = allTips[Int(ui.time / 5) % allTips.count]
         d.text("TIP", x: W / 2, y: H - 110, size: 12, color: Theme.amber, face: .display, align: .center, tracking: 0.2)
         d.text(tip, x: W / 2, y: H - 88, size: 16, color: Theme.text.alpha(0.85), align: .center)
     }
@@ -375,6 +379,74 @@ enum LoadingView {
 // MARK: - HUD
 
 enum HUD {
+    /// The minimap in the top-right corner (M makes it big or hides it). Returns the y just below it.
+    static func minimap(_ ui: UIContext, session s: GameSession, engine e: GameEngine) -> Float {
+        let mode = e.settings.minimapMode
+        guard mode > 0, !e.showDebug else { return 0 }
+        let d = ui.draw
+        let W = ui.size.x
+        let map = s.minimap
+        map.refresh(s)
+        let view = mode == 1 ? 32 : Minimap.radius
+        let cells = 2 * view + 1
+        let size: Float = mode == 1 ? 176 : 300
+        let cell = size / Float(cells)
+        let box = Rect(W - size - 18, 18, size, size)
+        d.shadow(box.inset(-6), radius: 10, blur: 10, color: Color(linear: 0, 0, 0, 0.45), offset: 3)
+        d.fill(box.inset(-6), Color(hex: 0x5A3A1C), radius: 8)
+        d.fill(box.inset(-2), Color(hex: 0x2A1A0C), radius: 3)
+        d.fill(box, Color(hex: 0x050505))
+        let n = Minimap.size, offset = Minimap.radius - view
+        // Terrain, merging runs of the same colour along each row.
+        for j in 0..<cells {
+            let row = (offset + j) * n + offset
+            var i = 0
+            while i < cells {
+                let color = map.cells[row + i]
+                var run = 1
+                while i + run < cells && map.cells[row + i + run] == color { run += 1 }
+                if color != 0 {
+                    d.fill(Rect(box.x + Float(i) * cell, box.y + Float(j) * cell, Float(run) * cell + 0.4, cell + 0.4), Color(hex: color))
+                }
+                i += run
+            }
+        }
+        let cx = box.x + size / 2, cy = box.y + size / 2
+        for m in map.markers(for: s, radius: view) {
+            let mx = cx + m.dx * cell, my = cy + m.dz * cell
+            switch m.kind {
+            case .you:
+                // An arrow of three dots pointing the way you face.
+                let look = s.player.lookDirection
+                let flat = SIMD2<Float>(Float(look.x), Float(look.z))
+                let dir = simd_length(flat) > 0.01 ? simd_normalize(flat) : SIMD2(0, -1)
+                for k in 0..<3 {
+                    let px = mx + dir.x * Float(k) * 3, py = my + dir.y * Float(k) * 3
+                    let half: Float = k == 0 ? 3 : 2.2
+                    d.fill(Rect(px - half - 1, py - half - 1, half * 2 + 2, half * 2 + 2), Color(linear: 0, 0, 0, 0.8), radius: half + 1)
+                    d.fill(Rect(px - half, py - half, half * 2, half * 2), k == 2 ? Color(hex: 0xFF5A3C) : .white, radius: half)
+                }
+            case .death:
+                d.text("X", x: mx, y: my - 8, size: 14, color: Color(hex: m.color), face: .display, align: .center,
+                       shadow: Color(linear: 0, 0, 0, 0.9))
+            case .player, .pet:
+                let half: Float = m.kind == .pet ? 2.5 : 3.5
+                d.fill(Rect(mx - half - 1, my - half - 1, half * 2 + 2, half * 2 + 2), Color(linear: 0, 0, 0, 0.85))
+                d.fill(Rect(mx - half, my - half, half * 2, half * 2), Color(hex: m.color))
+                if mode == 2 && m.kind == .player {
+                    d.text(m.label, x: mx, y: m.dz > 0 ? my - 20 : my + 6, size: 11, color: .white, face: .display, align: .center,
+                           shadow: Color(linear: 0, 0, 0, 0.9))
+                }
+            }
+        }
+        // North marker and your position under the map.
+        d.text("N", x: cx, y: box.y + 3, size: 12, color: .white, face: .display, align: .center, shadow: Color(linear: 0, 0, 0, 0.9))
+        let p = s.player.position
+        let coords = "\(Int(floor(p.x))), \(Int(floor(p.y)) - s.world.generator.depthOffset), \(Int(floor(p.z)))" + (map.caveMode ? "  (cave)" : "")
+        d.text(coords, x: cx, y: box.maxY + 10, size: 13, color: Theme.text, face: .display, align: .center, shadow: Color(linear: 0, 0, 0, 0.85))
+        return box.maxY + 32
+    }
+
     static func draw(_ ui: UIContext, session s: GameSession, engine e: GameEngine) {
         let d = ui.draw
         let W = ui.size.x, H = ui.size.y
@@ -406,22 +478,49 @@ enum HUD {
 
         if s.portalProgress > 0 {
             let a = Float(min(1, s.portalProgress))
-            let tint = s.portalKind == Blocks.skylandsPortal ? Color(hex: 0xF2B04A) : Color(hex: 0x8A1A4A)
+            let tint = s.portalKind == Blocks.skylandsPortal ? Color(hex: 0xF2B04A)
+                : (s.portalKind == Blocks.toonlandPortal ? Color(hex: 0xF2B84A) : Color(hex: 0x8A1A4A))
             d.fill(Rect(0, 0, W, H), tint.alpha(a * 0.5), bottom: tint.alpha(a * 0.8))
         }
-        if let mob = s.targetMob {
+        if let boss = s.mobs.boss(near: s.player.position) {
+            // Boss health bar across the top of the screen
+            let frac = Float(max(0, boss.health) / boss.species.maxHealth)
+            let bar = Rect(W / 2 - 260, 44, 520, 14)
+            d.text(boss.species.displayName, x: W / 2, y: 14, size: 20, color: Theme.text, face: .display, align: .center,
+                   shadow: Color(linear: 0, 0, 0, 0.85))
+            d.fill(bar.inset(-3), Color(linear: 0, 0, 0, 0.7), radius: 5)
+            d.fill(bar, Color(hex: 0x3A3A3A), radius: 4)
+            d.fill(Rect(bar.x, bar.y, bar.w * frac, bar.h), boss.enraged ? Theme.danger : Color(hex: 0xF2F2F2), radius: 4)
+        } else if let mob = s.targetMob {
             let frac = Float(max(0, mob.health) / mob.species.maxHealth)
             let bar = Rect(W / 2 - 110, 74, 220, 8)
-            d.text(mob.species.displayName, x: W / 2, y: 48, size: 15, color: mob.species.hostile ? Color(hex: 0xFF8A80) : Theme.text,
+            d.text(mob.label, x: W / 2, y: 48, size: 15, color: mob.species.hostile && !mob.isTamed ? Color(hex: 0xFF8A80) : Theme.text,
                    face: .display, align: .center, shadow: Color(linear: 0, 0, 0, 0.8))
             d.fill(bar, Color(linear: 0, 0, 0, 0.55), radius: 4)
             d.fill(Rect(bar.x, bar.y, bar.w * frac, bar.h), mob.species.hostile ? Theme.danger : Theme.jungle, radius: 4)
+        }
+        if e.settings.showGuide, !e.showDebug, !s.isRemote, let goal = GameGuide.current(s.advancements) {
+            // The guide to beating the game, in the top-left corner
+            let box = Rect(14, 118, 420, 84)
+            d.fill(box, Color(hex: 0x120A20, alpha: 0.62), radius: 10)
+            d.fill(Rect(box.x, box.y + 8, 3, box.h - 16), Theme.amber, radius: 1.5)
+            d.text("GUIDE \(goal.number)/\(GameGuide.steps.count)  (G)", x: box.x + 14, y: box.y + 8, size: 12, color: Theme.amber, face: .display)
+            d.text(goal.step.title, x: box.x + 14, y: box.y + 30, size: 16, color: Theme.text, face: .display)
+            d.text(goal.step.hint, x: box.x + 14, y: box.y + 56, size: 13, color: Theme.text.alpha(0.7))
+        }
+        if s.dimension == .toonland, let line = SongLyrics.line(track: e.audio.currentTrack, time: e.audio.musicTime) {
+            // Sing-along lyrics
+            let text = "\u{266A} \(line) \u{266A}"
+            let y = H - 150
+            d.fill(Rect(W / 2 - 300, y - 8, 600, 34), Color(linear: 0, 0, 0, 0.5), radius: 10)
+            d.text(text, x: W / 2, y: y, size: 18, color: Theme.text, face: .display, align: .center, shadow: Color(linear: 0, 0, 0, 0.85))
         }
         if e.settings.showFPS && !e.showDebug {
             d.text(String(format: "%.0f FPS", e.profiler.fps), x: 14, y: 12, size: 14, color: Theme.jungle, face: .display,
                    shadow: Color(linear: 0, 0, 0, 0.85))
         }
 
+        e.minimapBottom = minimap(ui, session: s, engine: e)
         MultiplayerHUD.draw(ui, engine: e)
 
         // Hotbar
@@ -430,14 +529,15 @@ enum HUD {
         let hx = W / 2 - total / 2, hy = H - slot - 18
         let backing = Rect(hx - 8, hy - 8, total + 16, slot + 16)
         d.shadow(backing, radius: 16, blur: 14, color: Color(linear: 0, 0, 0, 0.45), offset: 4)
-        d.fill(backing, Color(hex: 0x1A1230, alpha: 0.72), radius: 16)
+        d.fill(backing, Color(hex: 0x2A1A0C, alpha: 0.72), radius: 16)
         d.stroke(backing, Theme.amber.alpha(0.18), radius: 16, width: 1)
         let selX = ui.anim("hud.sel", Float(s.inventory.selected), speed: 22)
         for i in 0..<9 {
             let r = Rect(hx + Float(i) * (slot + gap), hy, slot, slot)
-            d.fill(r, Color(hex: 0x0D0818, alpha: 0.55), radius: 10)
+            d.fill(r, Color(hex: 0x1A0E06, alpha: 0.55), radius: 10)
             if let stack = s.inventory.slots[i], let info = e.items[stack.item] {
                 d.itemIcon(info, r.inset(8))
+                if stack.enchant != 0 { HUD.enchantGlint(d, r.inset(8), time: ui.time) }
                 if stack.count > 1 {
                     d.text("\(stack.count)", x: r.maxX - 6, y: r.maxY - 22, size: 14, color: .white, face: .display, align: .right,
                            shadow: Color(linear: 0, 0, 0, 0.9))
@@ -455,27 +555,37 @@ enum HUD {
         d.fill(sel.inset(-2), Theme.amber.alpha(0.25), radius: 13, blur: 8)
         d.stroke(sel, Theme.amber, radius: 12, width: 2.5)
 
+        // Zoom level while holding the zoom key
+        if s.zooming {
+            d.text(String(format: "Zoom %.1f×  ·  scroll to adjust", s.zoomFactor), x: W / 2, y: hy - 104, size: 15, color: Theme.text.alpha(0.9),
+                   face: .display, align: .center, shadow: Color(linear: 0, 0, 0, 0.8))
+        }
+
         // Selected item name
         if s.hotbarNameTimer > 0, let stack = s.inventory.selectedStack, let info = e.items[stack.item] {
             let a = Float(min(1, s.hotbarNameTimer / 0.4))
             let lift: Float = s.player.gameMode == .survival && s.armorPoints > 0 ? 24 : 0
-            d.text(info.displayName, x: W / 2, y: hy - 58 - lift, size: 17, color: Theme.text.alpha(a), face: .display, align: .center,
+            d.text(info.displayName, x: W / 2, y: hy - 66 - lift, size: 17, color: Theme.text.alpha(a), face: .display, align: .center,
                    shadow: Color(linear: 0, 0, 0, 0.8 * a))
         }
 
         // Survival stats
         if s.player.gameMode == .survival && !s.spectator {
-            let rowY = hy - 34
+            // Experience: a green bar just above the hotbar with your level in the middle.
+            let xpBar = Rect(hx, hy - 17, total, 5)
+            d.fill(xpBar, Color(hex: 0x0E0A04, alpha: 0.75), radius: 2.5)
+            d.fill(Rect(xpBar.x, xpBar.y, xpBar.w * Float(s.xpProgress), xpBar.h), Color(hex: 0x7CF03A), radius: 2.5)
+            if s.xpLevel > 0 {
+                d.text("\(s.xpLevel)", x: W / 2, y: hy - 38, size: 15, color: Color(hex: 0x8CFF4A), face: .display, align: .center,
+                       shadow: Color(linear: 0, 0, 0, 0.9))
+            }
+            let rowY = hy - 42
             for i in 0..<10 {
                 let x = hx + Float(i) * 22
                 let value = s.health / 2 - Double(i)
-                d.text("♥", x: x, y: rowY, size: 20, color: Color(hex: 0x2A0A10, alpha: 0.7), face: .display)
-                if value > 0 {
-                    let full = value >= 1
-                    if !full { d.pushClip(Rect(x, rowY, 9, 26)) }
-                    let lowPulse: Float = s.health <= 4 ? Float(0.7 + 0.3 * sin(ui.time * 10)) : 1
-                    d.text("♥", x: x, y: rowY, size: 20, color: (s.meta.isHardcore ? Color(hex: 0xC01830) : Color(hex: 0xFF4D5E)).scaled(lowPulse), face: .display)
-                    if !full { d.popClip() }
+                let lowPulse: Float = s.health <= 4 ? Float(0.75 + 0.25 * sin(ui.time * 10)) : 1
+                for (col, row, hex) in HeartIcon.pixels(fill: value >= 1 ? 1 : (value > 0 ? 0.5 : 0), hardcore: s.meta.isHardcore) {
+                    d.fill(Rect(x + Float(col) * 2.2, rowY + 4 + Float(row) * 2.2, 2.2, 2.2), Color(hex: hex).scaled(lowPulse))
                 }
             }
             // Armor bar: one shield per 2 points
@@ -497,14 +607,14 @@ enum HUD {
                     }
                 }
             }
+            // Hunger: pixel drumsticks with a gold rim while saturated, shaking when starving, rippling after eating.
             for i in 0..<10 {
                 let x = hx + total - 20 - Float(i) * 22
-                let value = s.hunger / 2 - Double(i)
-                d.circle(center: SIMD2(x + 9, rowY + 12), radius: 7.5, Color(hex: 0x2A160A, alpha: 0.7))
-                if value > 0 {
-                    let rad: Float = value >= 1 ? 6.5 : 3.5
-                    d.circle(center: SIMD2(x + 9, rowY + 12), radius: rad, Color(hex: 0xE89A3C))
-                    d.circle(center: SIMD2(x + 7, rowY + 10), radius: rad * 0.35, Color(hex: 0xFFD08A))
+                let dy = Float(HungerIcon.offset(index: i, hunger: s.hunger, eatFlash: s.eatFlash, time: ui.time)) * 2.2
+                let glow = Float(max(0, s.eatFlash - Double(i) * 0.05)) * 0.35
+                for (col, row, hex) in HungerIcon.pixels(fill: HungerIcon.fill(index: i, hunger: s.hunger),
+                                                        saturated: HungerIcon.saturated(index: i, saturation: s.saturation)) {
+                    d.fill(Rect(x + Float(col) * 2.2, rowY + 3 + Float(row) * 2.2 + dy, 2.2, 2.2), Color(hex: hex).scaled(1 + glow))
                 }
             }
             if s.air < 10 {
@@ -522,12 +632,22 @@ enum HUD {
             let w = d.font.measure(text, size: 15, face: .display) + 40
             let r = Rect(W / 2 - w / 2, 28 - (1 - a) * 12, w, 40)
             d.opacity = a
-            d.fill(r, Color(hex: 0x1A1230, alpha: 0.85), radius: 20)
+            d.fill(r, Color(hex: 0x2A1A0C, alpha: 0.85), radius: 20)
             d.stroke(r, Theme.amber.alpha(0.4), radius: 20, width: 1)
             d.text(text, in: r, size: 15, color: Theme.text, face: .display)
             d.opacity = 1
         }
         AdvancementToast.draw(ui, engine: e)
+    }
+}
+
+extension HUD {
+    /// Enchanted items shimmer: a soft purple wash and a band of light sweeping across the icon.
+    static func enchantGlint(_ d: UIRenderer, _ r: Rect, time: Double) {
+        let t = Float((time.truncatingRemainder(dividingBy: 2.4)) / 2.4)
+        let band = r.w * 0.3
+        d.fill(r, Color(hex: 0x9A5CFF, alpha: 0.12), radius: 6)
+        d.fill(Rect(r.x + (r.w - band) * t, r.y, band, r.h), Color(hex: 0xD8B8FF, alpha: 0.22), radius: 4)
     }
 }
 
@@ -555,21 +675,21 @@ enum DebugOverlay {
         if let s = e.session {
             let pos = s.player.position
             lines += [
-                String(format: "XYZ %.2f / %.2f / %.2f", pos.x, pos.y, pos.z),
+                String(format: "XYZ %.2f / %.2f / %.2f", pos.x, pos.y - Double(s.world.generator.depthOffset), pos.z),
                 "Biome \(s.biome.displayName) · \(SkyModel.periodName(worldTime: s.worldTime))",
                 s.target.map { "Target \(e.blocks[$0.id]?.displayName ?? "?") at \($0.block)" } ?? "Target none",
             ]
         }
         let h = Float(lines.count) * 20 + 20
         let panel = Rect(12, 12, 430, h)
-        d.fill(panel, Color(hex: 0x05030A, alpha: 0.65), radius: 10)
+        d.fill(panel, Color(hex: 0x080402, alpha: 0.65), radius: 10)
         for (i, line) in lines.enumerated() {
             d.text(line, x: 24, y: 22 + Float(i) * 20, size: 13.5, color: i == 0 ? Theme.jungle : Theme.text)
         }
         // Frame-time graph
         let history = p.history
         let g = Rect(12, panel.maxY + 8, 430, 60)
-        d.fill(g, Color(hex: 0x05030A, alpha: 0.55), radius: 8)
+        d.fill(g, Color(hex: 0x080402, alpha: 0.55), radius: 8)
         let bw = g.w / Float(history.count)
         for (i, t) in history.enumerated() {
             let ms = Float(t * 1000)

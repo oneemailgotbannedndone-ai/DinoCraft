@@ -20,7 +20,10 @@ enum MoreTextures {
         t["chest_top"] = chest(face: 0)
         t["chest_side"] = chest(face: 1)
         t["chest_front"] = chest(face: 2)
-        t["emerald_ore"] = T.paintOre(80, base: T.paintStone(81), colors: [0x2EDB6A, 0x138A3E, 0xA8FFC8], blobs: 3, size: 1.4)
+        t["chest_front_half"] = BetterTextures.chestHalf(t["chest_front"]!, front: true)
+        t["chest_side_half"] = BetterTextures.chestHalf(t["chest_side"]!, front: false)
+        t["chest_top_half"] = BetterTextures.chestHalf(t["chest_top"]!, front: false)
+        t["emerald_ore"] = BetterTextures.ore("emerald", base: T.paintStone(), seed: 80)!
         t["emerald_block"] = gemBlock(Palette([0x0E6A30, 0x14873E, 0x22A850, 0x3CCB6A, 0x8AF2B0]), seed: 82)
         t["diamond_block"] = gemBlock(Palette([0x137A74, 0x1FA8A0, 0x3CCBC2, 0x5DF2E6, 0xC8FFFA]), seed: 83)
         t["iron_block"] = metalBlock(Palette([0x8A919C, 0xA8AFB8, 0xC4CAD2, 0xD8DCE2, 0xF0F2F5]), seed: 84)

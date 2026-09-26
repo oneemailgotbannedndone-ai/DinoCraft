@@ -11,7 +11,7 @@ struct Camera {
     var roll: Double = 0
     var fovY: Double = 75 * .pi / 180
     var near: Float = 0.05
-    var far: Float = 1200
+    var far: Float = 2400
 
     /// Rotation-only view matrix: world geometry is submitted camera-relative so
     /// precision never degrades far from the origin.
@@ -59,6 +59,13 @@ enum SkyModel {
             var s = state(worldTime: worldTime)
             s.horizon = simd_mix(s.horizon, lin(1.0, 0.83, 0.58), SIMD3(repeating: 0.35 * s.daylight))
             s.zenith = simd_mix(s.zenith, lin(0.32, 0.64, 0.92), SIMD3(repeating: 0.3 * s.daylight))
+            return s
+        case .toonland:
+            // Always a warm, golden late afternoon over the meadows.
+            var s = state(worldTime: 300)
+            s.zenith = lin(0.42, 0.62, 0.9)
+            s.horizon = lin(1.0, 0.86, 0.62)
+            s.skyLight = SIMD3(1, 0.93, 0.8)
             return s
         }
     }

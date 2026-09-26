@@ -25,8 +25,11 @@ final class GameSession {
     private(set) var health: Double = 20
     private(set) var hunger: Double = 20
     private(set) var saturation: Double = 5
+    /// 1 right after eating, fading to 0: the hunger bar ripples.
+    private(set) var eatFlash = 0.0
     private(set) var air: Double = 10
-    private var exhaustion = 0.0, regenTimer = 0.0, starveTimer = 0.0, drownTimer = 0.0, lavaTimer = 0.0, cactusTimer = 0.0
+    var exhaustion = 0.0
+    private var regenTimer = 0.0, starveTimer = 0.0, drownTimer = 0.0, lavaTimer = 0.0, cactusTimer = 0.0
     private var hurtCooldown = 0.0
     private(set) var isDead = false
     private(set) var deathMessage = ""
@@ -50,6 +53,13 @@ final class GameSession {
     // Interaction
     private(set) var target: RaycastHit?
     private(set) var targetMob: Mob?
+    /// The creature (or boat) you're riding (see `Taming`, `Boats`).
+    var riding: Mob?
+    /// Your fishing float, while the line is out (see `Fishing`).
+    var bobber: Bobber?
+    /// Where you last died (see `Navigation`), and the minimap.
+    var deathSpot: DeathSpot?
+    let minimap = Minimap()
     private(set) var breakingPos: BlockPos?
     private(set) var breakProgress: Double = 0
     private var hitSoundTimer = 0.0, attackCooldown = 0.0, useCooldown = 0.0, combatCooldown = 0.0
@@ -62,6 +72,12 @@ final class GameSession {
     private var autosaveTimer = 0.0
     private var environmentTimer = 0.0
     private var scrollAccumulator = 0.0
+    /// Hold-to-zoom: how far in the zoom goes (the scroll wheel changes it while zooming, and it's
+    /// remembered), whether the zoom key is held, and the smoothed amount the camera uses.
+    var zoomFactor = 4.0
+    private(set) var zooming = false
+    private(set) var zoomAmount = 1.0
+    static let zoomRange = 1.5...16.0
     private(set) var bobPhase = 0.0
     private(set) var bobAmount = 0.0
     private(set) var damageFlash = 0.0
@@ -72,10 +88,18 @@ final class GameSession {
     private(set) var swingProgress: Double = 0
     private var swingTimer: Double = -1
     private(set) var equipOffset: Double = 0
+    /// Sway, landing dips, sprint lean, eating and tool swings for the first-person hand.
+    private(set) var hand = HandAnimator()
+    /// Seconds until each puff of crumbs while eating.
+    private var crumbTimes: [Double] = []
     private var lastHeldItem: ItemID?
 
     let entities = EntityManager()
     let mobs = MobManager()
+    /// How your own explorer turns, leans and jumps when you see yourself in F5.
+    let selfMotion = AvatarMotion()
+    /// A lower render distance the app asked for (when the graphics card is running out of memory).
+    var renderDistanceCap: Int?
 
     /// (sound name, volume, pitch)
     var onSound: ((String, Float, Float) -> Void)?
@@ -104,8 +128,34 @@ final class GameSession {
     let crops = CropManager()
     let arrows = ArrowSystem()
     /// 0…1 while drawing a bow.
-    private(set) var bowCharge = 0.0
-    private var drawingBow = false
+    /// 0…1 while drawing a bow, winding up a spear or loading a crossbow (1 while a crossbow is loaded).
+    var bowCharge = 0.0
+    var drawingBow = false
+    /// Holding up a shield (see `Weapons`).
+    var blocking = false
+    /// Experience points collected (see `Experience`), and the orbs lying about.
+    var xpPoints = 0
+    var orbs: [XPOrb] = []
+    /// Villager quests you've taken on (see `Quests`).
+    var quests: [Quest] = []
+    /// Changes after each enchantment so the table offers something new.
+    var enchantSeed = UInt64.random(in: 1...UInt64.max)
+    var onOpenEnchanting: ((BlockPos) -> Void)?
+    /// Levers, dust, lamps and pistons (see `Circuits`).
+    let circuits: CircuitManager
+    /// Burning blocks (see `Fire`).
+    let fires: FireManager
+    var burnTimer = 0.0
+    /// What's hanging in item frames (see `Decorations`).
+    let frames = FrameManager()
+    /// Volcano eruptions, meteor showers and flying fireballs (see `Hazards`).
+    var hazards = HazardState()
+    var onOpenMap: (() -> Void)?
+    /// The paper map's view (built only while it's open).
+    let paperMap = Minimap(reach: Minimap.paperRadius)
+    /// The season last time we looked (to announce a new one).
+    var lastSeason: Season?
+    var onOpenQuestBook: (() -> Void)?
     var smelting: SmeltingRegistry?
     var onOpenContainer: ((BlockPos, ContainerKind) -> Void)?
     var onOpenTrade: ((Mob) -> Void)?
@@ -120,6 +170,8 @@ final class GameSession {
         self.meta = meta
         self.isRemote = remote
         variants = BlockVariants(blocks: blocks)
+        circuits = CircuitManager(blocks: blocks)
+        fires = FireManager(blocks: blocks)
         self.isNewWorld = isNew
         self.storage = storage
         self.blocks = blocks
@@ -131,8 +183,8 @@ final class GameSession {
         let saved = remote ? nil : storage.loadPlayer(id: meta.id)
         let dim = saved?.dimension.flatMap(WorldDimension.init(rawValue:)) ?? .overworld
         dimension = dim
-        let overworld = TerrainGenerator(seed: meta.numericSeed)
-        let generator: WorldGenerator = dim == .overworld ? overworld : dim.makeGenerator(seed: meta.numericSeed)
+        let generator: WorldGenerator = dim.makeGenerator(seed: meta.numericSeed, deep: meta.isDeep)
+        let overworld = TerrainGenerator(seed: meta.numericSeed, deep: meta.isDeep)
         world = World(registry: blocks, generator: generator, storage: remote ? nil : storage, worldID: remote ? nil : meta.id,
                       meshFactory: meshFactory, jobs: jobs, renderDistance: renderDistance)
         inventory = Inventory(registry: items)
@@ -156,15 +208,17 @@ final class GameSession {
             air = saved.air ?? 10
             for s in saved.inventory where (0..<Inventory.size).contains(s.slot) {
                 if let id = items.id(named: s.item) {
-                    inventory.slots[s.slot] = ItemStack(item: id, count: max(1, s.count), damage: s.damage ?? 0)
+                    inventory.slots[s.slot] = ItemStack(item: id, count: max(1, s.count), damage: s.damage ?? 0, enchant: UInt16(clamping: s.enchant ?? 0))
                 } else {
                     Log.warning("Dropping unknown saved item '\(s.item)'", category: "Save")
                 }
             }
             for s in saved.armor ?? [] where (0..<4).contains(s.slot) {
-                if let id = items.id(named: s.item) { armor[s.slot] = ItemStack(item: id, count: 1, damage: s.damage ?? 0) }
+                if let id = items.id(named: s.item) { armor[s.slot] = ItemStack(item: id, count: 1, damage: s.damage ?? 0, enchant: UInt16(clamping: s.enchant ?? 0)) }
             }
             inventory.selected = saved.selectedSlot
+            xpPoints = max(0, saved.xp ?? 0)
+            quests = saved.quests.flatMap { try? JSONDecoder().decode([Quest].self, from: $0) } ?? []
             needsSpawnResolve = false
             spawnHint = Int(saved.y)
         } else {
@@ -186,8 +240,22 @@ final class GameSession {
             mobs.load(from: mobsURL)
             containers.load(from: containersURL, items: items)
             crops.load(from: cropsURL)
+            circuits.load(from: circuitsURL)
+            frames.load(from: framesURL, registry: items)
+            fires.load(from: firesURL)
         }
+        world.onBlockSet = { [circuits, fires] pos, id in
+            circuits.noteChange(pos, id)
+            fires.noteChange(pos, id)
+        }
+        weather.onStrike = { [weak self] closeness in self?.lightningStrike(closeness: closeness) }
         advancements.load(from: advancementsURL)
+        advancements.onRecord = { [weak self] type, target, amount in
+            guard let self else { return }
+            self.noteQuestEvent(type, target, amount: amount)
+            // Smelting gives a little experience as you take the results out.
+            if type == "smelt" { self.addXP(max(1, amount * 7 / 10)) }
+        }
         if let saved = meta.weather.flatMap({ WeatherKind(rawValue: $0) }) { weather.set(saved, duration: meta.weatherTimer) }
         Log.info("Session '\(meta.name)' opened (\(isNew ? "new" : "existing"), \(meta.gameMode.rawValue)\(meta.isHardcore ? ", hardcore" : ""), \(dim.rawValue), seed \(meta.seedText))", category: "Game")
     }
@@ -204,6 +272,15 @@ final class GameSession {
     }
     private var containersURL: URL {
         storage.directory(for: meta.id).appendingPathComponent(dimension == .overworld ? "containers.json" : "containers_\(dimension.rawValue).json")
+    }
+    private var firesURL: URL {
+        storage.directory(for: meta.id).appendingPathComponent(dimension == .overworld ? "fires.json" : "fires_\(dimension.rawValue).json")
+    }
+    private var framesURL: URL {
+        storage.directory(for: meta.id).appendingPathComponent(dimension == .overworld ? "frames.json" : "frames_\(dimension.rawValue).json")
+    }
+    private var circuitsURL: URL {
+        storage.directory(for: meta.id).appendingPathComponent(dimension == .overworld ? "circuits.json" : "circuits_\(dimension.rawValue).json")
     }
     private var cropsURL: URL {
         storage.directory(for: meta.id).appendingPathComponent(dimension == .overworld ? "crops.json" : "crops_\(dimension.rawValue).json")
@@ -273,7 +350,7 @@ final class GameSession {
     }
 
     private func carveSafeSpot(_ x: Int, _ y: Int, _ z: Int) {
-        let floorBlock: BlockID = dimension == .underworld ? Blocks.basalt : (dimension == .skylands ? Blocks.cloud : Blocks.stone)
+        let floorBlock: BlockID = dimension == .underworld ? Blocks.basalt : (dimension == .skylands ? Blocks.cloud : (dimension == .toonland ? Blocks.toonStone : Blocks.stone))
         for dz in -1...1 {
             for dx in -1...1 {
                 for dy in 0...2 where world.block(x + dx, y + dy, z + dz) != Blocks.bedrock {
@@ -302,11 +379,15 @@ final class GameSession {
             }
             if network == nil { containers.dirty.removeAll() }
         }
-        renderDistance = settings.renderDistance
-        world.renderDistance = settings.renderDistance
+        renderDistance = min(settings.renderDistance, renderDistanceCap ?? .max)
+        world.renderDistance = renderDistance
         world.update(focus: player.position)
         damageFlash = max(0, damageFlash - dt * 1.6)
+        eatFlash = max(0, eatFlash - dt * 1.2)
         hotbarNameTimer = max(0, hotbarNameTimer - dt)
+        if paused || input == nil || isDead { zooming = false }
+        zoomAmount += ((zooming ? zoomFactor : 1) - zoomAmount) * (1 - exp(-14 * dt))
+        if abs(zoomAmount - 1) < 0.001 { zoomAmount = 1 }
         if paused { return }
 
         clock += dt
@@ -315,7 +396,8 @@ final class GameSession {
         meta.playTimeSeconds += dt
         hurtCooldown = max(0, hurtCooldown - dt)
         spawnProtection = max(0, spawnProtection - dt)
-        if !isRemote { crops.update(dt: dt, world: world, wet: weather.kind != .clear) }
+        if !isRemote { crops.update(dt: dt * season.cropSpeed, world: world, wet: weather.kind != .clear) }
+        updateSeason()
 
         if isDead {
             if !isRemote {
@@ -327,9 +409,18 @@ final class GameSession {
 
         var move = MovementInput()
         if let input {
+            zooming = input.isDown(settings.binding(for: .zoom))
             applyLook(input, settings)
             move = movement(input, settings)
-            hotbar(input)
+            if zooming {
+                // While zooming the scroll wheel sets how far in to zoom instead of changing the hotbar slot.
+                if input.scroll != 0 {
+                    zoomFactor = min(GameSession.zoomRange.upperBound, max(GameSession.zoomRange.lowerBound, zoomFactor * pow(1.2, input.scroll)))
+                }
+                if let slot = input.hotbarKeyPressed { inventory.selected = slot }
+            } else {
+                hotbar(input)
+            }
             interact(dt, input, settings)
         } else {
             breakingPos = nil
@@ -337,8 +428,17 @@ final class GameSession {
         }
 
         let px = Int(floor(player.position.x)), pz = Int(floor(player.position.z))
-        if world.isLoaded(px, pz) {
+        let before = player.position
+        if riding != nil {
+            // Riding: the keys steer the creature, and you move with it.
+            steerMount(move)
+        } else if world.isLoaded(px, pz) {
             player.update(dt: dt, input: move, world: world)
+        }
+        // Lifetime stats: play time and distance walked (not flown). Menu backdrops have no input and don't count.
+        if input != nil {
+            let moved = player.position - before
+            PlayerStats.shared.tick(dt: dt, walked: player.flying || spectator ? 0 : (moved.x * moved.x + moved.z * moved.z).squareRoot())
         }
         processPlayerEvents()
         if !isRemote {
@@ -347,9 +447,19 @@ final class GameSession {
                 self?.onSound?("pickup", 0.35, Float.random(in: 0.9...1.35))
             }
             mobs.update(dt: dt, session: self)
+            followMount()
         }
         arrows.update(dt: dt, session: self)
         collectArrows()
+        updateFishing(dt)
+        updateOrbs(dt)
+        mobs.animateAll(dt: dt, session: self)
+        selfMotion.update(dt: dt, yaw: player.yaw, moving: player.onGround ? min(1, player.horizontalSpeed / 4.3) : 0,
+                          airborne: !player.onGround && !player.flying && !player.inWater, sprinting: player.isSprinting)
+        updateHazards(dt)
+        updateFire(dt)
+        if !isRemote { circuits.update(dt: dt, session: self) }
+        updateNavigation(dt)
         updateHandAnimation(dt)
         survival(dt)
         environment(dt)
@@ -374,7 +484,8 @@ final class GameSession {
     }
 
     private func applyLook(_ input: GameInput, _ s: GameSettings) {
-        let sens = 0.0022 * (0.25 + s.mouseSensitivity * 1.5)
+        // Zoomed in, the view turns slower so aiming stays steady.
+        let sens = 0.0022 * (0.25 + s.mouseSensitivity * 1.5) / zoomAmount
         player.yaw -= input.mouseDelta.x * sens
         player.pitch -= input.mouseDelta.y * sens * (s.invertY ? -1 : 1)
         player.pitch = max(-1.5533, min(1.5533, player.pitch))
@@ -389,6 +500,12 @@ final class GameSession {
         m.jumpPressed = input.wasPressed(s.binding(for: .jump))
         m.sprint = input.isDown(s.binding(for: .sprint))
         m.sneak = input.isDown(s.binding(for: .crouch))
+        if blocking {
+            // Behind a raised shield you only shuffle.
+            m.forward *= 0.3
+            m.strafe *= 0.3
+            m.sprint = false
+        }
         return m
     }
 
@@ -414,7 +531,8 @@ final class GameSession {
         guard info.hardness > 0 else { return 0 }
         let tool = heldTool
         let correct = info.tool != .none && tool?.kind == info.tool
-        let speed = correct ? Double(tool?.speed ?? 1) : 1
+        var speed = correct ? Double(tool?.speed ?? 1) : 1
+        if correct { speed *= 1 + 0.35 * heldEnchantLevel(.efficiency) }
         var t = Double(info.hardness) * (canHarvest(info) ? 1.5 : 5.0) / speed
         if player.headInWater { t *= 3 }
         if !player.onGround && !player.flying && !player.inWater { t *= 2 }
@@ -436,7 +554,7 @@ final class GameSession {
         combatCooldown = max(0, combatCooldown - dt)
 
         let mobHit = mobs.raycast(origin: player.eyePosition, direction: player.lookDirection, maxDistance: 4.2)
-        if let (mob, distance) = mobHit, target == nil || distance < target!.distance {
+        if let (mob, distance) = mobHit, mob !== riding, target == nil || distance < target!.distance {
             targetMob = mob
         } else {
             targetMob = nil
@@ -510,18 +628,19 @@ final class GameSession {
         }
 
         let use = s.binding(for: .use)
-        if let stack = inventory.selectedStack, items[stack.item]?.name == "bow" {
-            // Hold to draw (full power after a second), release to shoot.
-            if input.isDown(use) {
-                if !drawingBow && input.wasPressed(use) {
-                    if hasArrows { drawingBow = true; bowCharge = 0 } else { onToast?("You need arrows to shoot the bow") }
-                }
-                if drawingBow { bowCharge = min(1, bowCharge + dt) }
-            } else if drawingBow {
-                if bowCharge > 0.15 { fireBow(power: bowCharge) }
-                drawingBow = false
-                bowCharge = 0
-            }
+        // Right-clicking a creature (taming, trading, boarding) comes before winding up a weapon.
+        let usedOnCreature = input.wasPressed(use) && targetMob.map { interactWithCreature($0) } == true
+        // So does opening an enchanting table (you hold the weapon you want to enchant).
+        let openedTable = !usedOnCreature && input.wasPressed(use) && !player.isSneaking && targetMob == nil
+            && target.map { blocks[$0.id]?.name == Enchanting.table } == true
+        if usedOnCreature {
+            useCooldown = 0.22
+        } else if openedTable, let hit = target {
+            swing()
+            onOpenEnchanting?(hit.block)
+            useCooldown = 0.22
+        } else if handleHeldWeapon(input, use: use, dt: dt) {
+            // Bow, spear, crossbow or shield
         } else {
             drawingBow = false
             bowCharge = 0
@@ -545,8 +664,14 @@ final class GameSession {
     }
 
     private func attackMob(_ mob: Mob) {
+        if mob.species.isVehicle {
+            // One hit breaks a boat back into the item.
+            if !(network?.attackMob(mob, damage: 1, knockback: .zero) ?? false) { mobs.breakBoat(mob, session: self) }
+            combatCooldown = 0.35
+            return
+        }
         let tool = heldTool
-        var damage = Double(tool?.damage ?? 1)
+        var damage = Double(tool?.damage ?? 1) + heldEnchantLevel(.sharpness) * 1.25
         if player.gameMode == .creative { damage *= 6 }
         let critical = !player.onGround && !player.inWater && player.velocity.y < -1
         if critical { damage *= 1.5 }
@@ -554,9 +679,11 @@ final class GameSession {
         let flat = simd_length(DVec3(look.x, 0, look.z)) > 0.01 ? simd_normalize(DVec3(look.x, 0, look.z)) : DVec3(0, 0, -1)
         if !(network?.attackMob(mob, damage: damage, knockback: flat) ?? false) {
             mobs.hurt(mob, amount: damage, knockback: flat, session: self)
-            if mob.health <= 0 {
+            mobs.alertGuardians(against: mob, near: player.position)
+            if mob.health <= 0 && !mob.rewarded {
                 advancements.record("kill", mob.species.kind.rawValue)
                 if mob.species.hostile { advancements.record("kill", "hostile") }
+                rewardKill(mob)
             }
         }
         combatCooldown = 0.35
@@ -571,11 +698,11 @@ final class GameSession {
 
     // MARK: Bows
 
-    private var hasArrows: Bool {
+    var hasArrows: Bool {
         player.gameMode == .creative || inventory.slots.contains { $0.flatMap { items[$0.item]?.name } == "arrow" }
     }
 
-    private func fireBow(power: Double) {
+    func fireBow(power: Double) {
         let survival = player.gameMode == .survival
         if survival {
             guard let i = inventory.slots.firstIndex(where: { $0.flatMap { items[$0.item]?.name } == "arrow" }), var st = inventory.slots[i] else { return }
@@ -585,7 +712,7 @@ final class GameSession {
         }
         let dir = player.lookDirection
         arrows.fire(from: player.eyePosition + dir * 0.5 - DVec3(0, 0.08, 0), velocity: dir * (12 + 38 * power),
-                    damage: (1.5 + 7.5 * power).rounded(), pickup: survival)
+                    damage: ((1.5 + 7.5 * power) * (1 + 0.25 * heldEnchantLevel(.power))).rounded(), pickup: survival)
         swing()
         onSound?("bow_shoot", 0.7, Float(0.85 + power * 0.3))
         advancements.record("shoot")
@@ -598,24 +725,26 @@ final class GameSession {
         let knockback = simd_length(flat) > 0.01 ? simd_normalize(flat) * 0.6 : .zero
         if !(network?.attackMob(mob, damage: arrow.damage, knockback: knockback) ?? false) {
             mobs.hurt(mob, amount: arrow.damage, knockback: knockback, session: self)
-            if mob.health <= 0 {
+            if mob.health <= 0 && !mob.rewarded {
                 advancements.record("kill", mob.species.kind.rawValue)
                 if mob.species.hostile { advancements.record("kill", "hostile") }
+                rewardKill(mob)
             }
         }
         let distance = simd_distance(arrow.origin, mob.position)
         if distance >= 15 { advancements.record("snipe") }
         noteCombat(with: mob.species.displayName)
         onSound?("arrow_hit", 0.7, 1.4)
+        dropThrownSpear(arrow, at: mob.position)
         Log.info(String(format: "Arrow hit %@ for %.0f from %.1f blocks", mob.species.displayName, arrow.damage, distance), category: "Game")
     }
 
     /// Walk over arrows stuck in blocks to get them back.
     private func collectArrows() {
-        guard !spectator, !isDead, let arrowID = items.id(named: "arrow") else { return }
+        guard !spectator, !isDead else { return }
         let center = player.position + DVec3(0, 0.9, 0)
         for a in arrows.arrows where a.stuck && a.pickup && !a.done && a.age > 0.5 && simd_distance(a.position, center) < 1.8 {
-            if inventory.add(ItemStack(item: arrowID, count: 1)) == 0 {
+            if pickUpProjectile(a) {
                 a.done = true
                 onSound?("pickup", 0.35, 1.25)
             }
@@ -630,7 +759,9 @@ final class GameSession {
     private func breakBlock(at pos: BlockPos, harvest: Bool) {
         let id = world.block(pos)
         guard let info = blocks[id], info.isBreakable else { return }
-        let waterNearby = [BlockFace.up, .north, .south, .east, .west].contains { world.block(pos.offset($0)) == Blocks.water }
+        // Plants that grow under water leave their water behind, and so does anything next to water.
+        let waterNearby = info.submerged
+            || [BlockFace.up, .north, .south, .east, .west].contains { Blocks.holdsWater(world.block(pos.offset($0)), blocks) }
         guard place(pos, waterNearby ? Blocks.water : Blocks.air, harvest: harvest && player.gameMode == .survival && canHarvest(info)) else { return }
         Log.info("Broke \(info.name) at \(pos)\(harvest && canHarvest(info) ? " (harvested)" : "")", category: "Game")
         onBlockBroken?(pos, id)
@@ -660,24 +791,75 @@ final class GameSession {
 
         if harvest && player.gameMode == .survival {
             if canHarvest(info) && !isRemote { giveDrops(info, at: pos) }
+            if canHarvest(info) { spawnXP(Experience.points(forMining: info.name), at: DVec3(Double(pos.x) + 0.5, Double(pos.y) + 0.5, Double(pos.z) + 0.5)) }
             if info.hardness > 0, heldTool != nil, inventory.damageSelectedTool() {
                 onSound?("tool_break", 0.8, 1)
                 onToast?("Your tool broke!")
             }
             exhaustion += 0.005
         }
-        if id == Blocks.boneBlock || id == Blocks.amberBlock { collapsePortals(near: pos) }
+        if WorldDimension.gateways.contains(where: { $0.frame == id }) { collapsePortals(near: pos) }
         let above = pos.offset(.up)
         if blocks[world.block(above)]?.needsSupport == true { breakBlock(at: above, harvest: harvest) }
+    }
+
+    /// Changes a block for a natural event (a lava bomb, a meteorite), shared with anyone who joined.
+    func naturalPlace(_ pos: BlockPos, _ id: BlockID) {
+        _ = place(pos, id)
+    }
+
+    /// Like `naturalPlace`, saying whether it worked.
+    func naturalPlaceChecked(_ pos: BlockPos, _ id: BlockID) -> Bool { place(pos, id) }
+
+    /// Right-clicking a display case: put the fossil in your hand on show, or take one back out.
+    private func useDisplayCase(_ pos: BlockPos, id: BlockID) -> Bool {
+        if id == Blocks.displayCase {
+            guard let held = inventory.selectedStack, let name = items[held.item]?.name,
+                  let index = Fossils.all.firstIndex(of: name) else {
+                onToast?("Hold a fossil and right-click to put it on display.")
+                return true
+            }
+            guard place(pos, Blocks.displayCases[index]) else { return false }
+            if player.gameMode == .survival { inventory.consumeSelected() }
+            swing()
+            onSound?("place_glass", 0.7, 1.1)
+            onToast?("Your \(items[held.item]?.displayName ?? "fossil") is on display.")
+            advancements.record("display", name)
+            return true
+        }
+        guard let index = Blocks.displayCases.firstIndex(of: id), let fossil = items.id(named: Fossils.all[index]) else { return false }
+        guard place(pos, Blocks.displayCase) else { return false }
+        swing()
+        let left = inventory.add(ItemStack(item: fossil, count: 1))
+        if left > 0 { dropStack(ItemStack(item: fossil, count: left), thrown: false) }
+        onSound?("pickup", 0.5, 1)
+        return true
     }
 
     /// Spawns a block's drops as item entities that pop out of the broken block.
     private func giveDrops(_ info: BlockInfo, at pos: BlockPos) {
         let center = DVec3(Double(pos.x) + 0.5, Double(pos.y) + 0.25, Double(pos.z) + 0.5)
+        if info.name == Fossils.deposit {
+            // A fossil deposit always gives up one fossil (the rarer the better), sometimes with a bone.
+            let fossil = Fossils.roll()
+            if let item = items.id(named: fossil) {
+                entities.spawnItem(ItemStack(item: item, count: 1), at: center, velocity: DVec3(0, 3.5, 0), pickupDelay: 0.3)
+                advancements.record("dig", fossil)
+            }
+            if Double.random(in: 0..<1) < 0.3, let bone = items.id(named: "dino_bone") {
+                entities.spawnItem(ItemStack(item: bone, count: 1), at: center, velocity: DVec3(0.8, 3, 0), pickupDelay: 0.3)
+            }
+            return
+        }
         for drop in info.drops {
             if let chance = drop.chance, Float.random(in: 0..<1) >= chance { continue }
             let lo = drop.min ?? 1, hi = max(lo, drop.max ?? lo)
-            let count = Int.random(in: lo...hi)
+            var count = Int.random(in: lo...hi)
+            // Fortune: ores sometimes give extra.
+            if info.name.hasSuffix("_ore"), drop.item != info.name, let held = inventory.selectedStack {
+                let fortune = Enchantments.level(.fortune, in: held.enchant)
+                if fortune > 0 { count += Int.random(in: 0...fortune) }
+            }
             guard count > 0, let item = items.id(named: drop.item) else { continue }
             let velocity = DVec3(Double.random(in: -1.4...1.4), Double.random(in: 3...4.5), Double.random(in: -1.4...1.4))
             entities.spawnItem(ItemStack(item: item, count: count), at: center, velocity: velocity, pickupDelay: 0.3)
@@ -719,10 +901,20 @@ final class GameSession {
             equipOffset = 1
         }
         equipOffset = max(0, equipOffset - dt * 5)
+        let tool = held.flatMap { items[$0]?.tool?.kind }
+        hand.update(dt: dt, player: player, swing: swingProgress, tool: tool, raised: blocking)
+        if !crumbTimes.isEmpty {
+            crumbTimes = crumbTimes.map { $0 - dt }
+            for _ in crumbTimes.filter({ $0 <= 0 }) {
+                effectBursts.append((player.eyePosition + player.lookDirection * 0.45 - DVec3(0, 0.2, 0), .crumbs))
+            }
+            crumbTimes.removeAll { $0 <= 0 }
+        }
     }
 
     /// Returns true if something happened.
     private func useItem(pressed: Bool) -> Bool {
+        if pressed, let mob = targetMob, interactWithCreature(mob) { return true }
         if pressed, let mob = targetMob, mob.species.kind == .villager, !mob.isDying {
             swing()
             onOpenTrade?(mob)
@@ -732,6 +924,14 @@ final class GameSession {
             swing()
             onOpenCrafting?()
             return true
+        }
+        if pressed, let hit = target, !player.isSneaking, useCircuitBlock(hit.block, id: hit.id) { return true }
+        if pressed, let hit = target, !player.isSneaking, frameFacing(hit.id) != nil {
+            if isRemote { onToast?("Item frames work in your own worlds (or ones you host) for now."); return true }
+            return useItemFrame(hit.block)
+        }
+        if pressed, let hit = target, !player.isSneaking, hit.id == Blocks.displayCase || Blocks.displayCases.contains(hit.id) {
+            return useDisplayCase(hit.block, id: hit.id)
         }
         if pressed, let hit = target, !player.isSneaking {
             if hit.id == Blocks.bed {
@@ -751,6 +951,15 @@ final class GameSession {
             }
         }
         guard let stack = inventory.selectedStack, let info = items[stack.item] else { return false }
+
+        if info.name == Boats.item {
+            guard pressed else { return false }
+            return placeBoat()
+        }
+        if info.name == Fishing.rod {
+            guard pressed else { return false }
+            return useFishingRod()
+        }
 
         if let kind = MobKind.forEgg(named: info.name) {
             guard pressed, let hit = target else { return false }
@@ -776,7 +985,11 @@ final class GameSession {
             guard pressed, let hit = target else { return false }
             swing()
             if tryActivatePortal(at: hit.adjacent) { return true }
-            onToast?("Strike the Ember Lighter inside a Bone Block or Amber Block frame")
+            if lightFire(at: hit.adjacent) {
+                onSound?("place_sand", 0.6, 1.6)
+                return true
+            }
+            onToast?("Strike the Ember Lighter inside a Bone Block, Amber Block or Checker Block frame, or on the ground to light a fire")
             return true
         }
 
@@ -838,13 +1051,17 @@ final class GameSession {
             guard pressed, hunger < 20 else { return false }
             hunger = min(20, hunger + Double(food.hunger))
             saturation = min(hunger, saturation + Double(food.saturation))
+            eatFlash = 1
             inventory.consumeSelected()
             onSound?("eat", 0.7, 1)
             advancements.record("eat", info.name)
-            swing()
+            hand.startEating()
+            crumbTimes = [0, 0.2, 0.4]
             return true
         }
 
+        if info.name == Decorations.painting { return pressed && placePainting() }
+        if info.name == Decorations.armorStand { return pressed && placeArmorStand() }
         guard var blockID = info.block, let hit = target else { return false }
         var pos = hit.adjacent
         if blocks[hit.id]?.replaceable == true { pos = hit.block }
@@ -866,10 +1083,18 @@ final class GameSession {
             upperDoor = upper
         } else if let family = variants.family(of: blockID) {
             let face = blocks[blockID]?.placement == "look" ? BlockVariants.horizontalFacing(player.lookDirection) : towardPlayer
-            if let variant = family[face] { blockID = variant }
+            if circuits.ids?.pistons.contains(blockID) == true {
+                if let variant = pistonVariant(family, towardPlayer: towardPlayer) { blockID = variant }
+            } else if blocks[blockID]?.shape == .box && blocks.isSolid[Int(blockID)] == false && family.count == 4 && hit.face != .up && hit.face != .down {
+                // Wall hangings (item frames) go on the side you clicked, facing out.
+                if let variant = family[hit.face] { blockID = variant }
+            } else if let variant = family[face] { blockID = variant }
         }
         guard let placed = blocks[blockID] else { return false }
-        if placed.needsSupport && !blocks.isSolid[Int(world.block(pos.offset(.down)))] { return false }
+        let below = world.block(pos.offset(.down))
+        // Kelp grows on kelp; sea plants only go in water.
+        if placed.needsSupport && !blocks.isSolid[Int(below)] && !(placed.submerged && below == blockID) { return false }
+        if placed.submerged && world.block(pos) != Blocks.water { return false }
         if placed.solid {
             let origin = DVec3(Double(pos.x), Double(pos.y), Double(pos.z))
             let shape = blocks.boxes[Int(blockID)]
@@ -891,17 +1116,17 @@ final class GameSession {
 
     // MARK: Gateways
 
-    private func isPortal(_ id: BlockID) -> Bool { id == Blocks.underworldPortal || id == Blocks.skylandsPortal }
+    private func isPortal(_ id: BlockID) -> Bool { WorldDimension.forPortal(id) != nil }
 
     private func airish(_ p: BlockPos) -> Bool {
         let id = world.block(p)
         return id == Blocks.air || blocks[id]?.replaceable == true
     }
 
-    /// Lights a rectangular gateway frame (interior 2–6 wide, 3–7 tall) of bone or amber blocks.
+    /// Lights a rectangular gateway frame (interior 2–6 wide, 3–7 tall) of bone, amber or checker blocks.
     private func tryActivatePortal(at cell: BlockPos) -> Bool {
         guard airish(cell) else { return false }
-        for (portal, frame) in [(Blocks.underworldPortal, Blocks.boneBlock), (Blocks.skylandsPortal, Blocks.amberBlock)] {
+        for (portal, frame) in WorldDimension.gateways {
             for alongX in [true, false] {
                 let neg: BlockFace = alongX ? .west : .north
                 let posDir: BlockFace = alongX ? .east : .south
@@ -945,9 +1170,14 @@ final class GameSession {
                 }
                 guard valid else { continue }
                 for w in 0..<width { for h in 0..<height { place(cellAt(w, h), portal) } }
-                onSound?("discover", 0.9, portal == Blocks.underworldPortal ? 0.7 : 1.2)
-                onToast?(portal == Blocks.underworldPortal ? "The Underworld Gateway awakens!" : "The Skylands Gateway shimmers open!")
-                Log.info("Activated \(portal == Blocks.underworldPortal ? "underworld" : "skylands") gateway \(width)x\(height) at \(start)", category: "Game")
+                let target = WorldDimension.forPortal(portal) ?? .skylands
+                onSound?("discover", 0.9, target == .underworld ? 0.7 : (target == .toonland ? 1.5 : 1.2))
+                switch target {
+                case .underworld: onToast?("The Underworld Gateway awakens!")
+                case .toonland: onToast?("The Toonland Gateway swirls with golden light!")
+                default: onToast?("The Skylands Gateway shimmers open!")
+                }
+                Log.info("Activated \(target.rawValue) gateway \(width)x\(height) at \(start)", category: "Game")
                 return true
             }
         }
@@ -994,6 +1224,9 @@ final class GameSession {
     /// Travels to another dimension: saves this one, streams in the target and
     /// places the player at the scaled coordinates (building a return gateway if needed).
     func changeDimension(to target: WorldDimension, portal: BlockID?, arrival: DVec3?) {
+        riding?.rideInput = nil
+        riding = nil
+        bobber = nil
         guard target != dimension || arrival != nil else { return }
         save()
         world.shutdown()
@@ -1001,25 +1234,35 @@ final class GameSession {
         let destination = arrival ?? DVec3(player.position.x * scale, player.position.y, player.position.z * scale)
         Log.info("Travelling \(dimension.rawValue) → \(target.rawValue)", category: "Game")
         dimension = target
-        let generator: WorldGenerator = target.makeGenerator(seed: meta.numericSeed)
+        let generator: WorldGenerator = target.makeGenerator(seed: meta.numericSeed, deep: meta.isDeep)
         world = World(registry: blocks, generator: generator, storage: isRemote ? nil : storage, worldID: isRemote ? nil : meta.id,
                       meshFactory: meshFactory, jobs: jobs, renderDistance: renderDistance)
         world.onBlockChanged = blockObserver
+        world.onBlockSet = { [circuits, fires] pos, id in
+            circuits.noteChange(pos, id)
+            fires.noteChange(pos, id)
+        }
         world.remoteRequest = remoteChunkRequester
         entities.clear()
         mobs.clear()
         containers.clear()
         crops.clear()
+        circuits.clear()
+        frames.clear()
+        fires.clear()
         arrows.clear()
         if !isRemote {
             entities.load(from: entitiesURL, items: items)
             mobs.load(from: mobsURL)
             containers.load(from: containersURL, items: items)
             crops.load(from: cropsURL)
+            circuits.load(from: circuitsURL)
+            frames.load(from: framesURL, registry: items)
+            fires.load(from: firesURL)
         }
         let x = Int(floor(destination.x)), z = Int(floor(destination.z))
         let estimate = arrival.map { Int($0.y) } ?? generator.estimatedSurface(x: x, z: z)
-        spawnHint = estimate > 0 ? estimate : (target == .underworld ? 64 : 100)
+        spawnHint = estimate > 0 ? estimate : (target == .underworld ? 64 : (target == .toonland ? 70 : 100))
         player.teleport(to: DVec3(Double(x) + 0.5, Double(spawnHint), Double(z) + 0.5))
         needsSpawnResolve = true
         pendingReturnPortal = arrival == nil ? portal : nil
@@ -1032,13 +1275,14 @@ final class GameSession {
         advancements.record("dimension", target.rawValue)
         network?.dimensionChanged(target, position: destination)
         onSound?("discover", 0.8, target == .underworld ? 0.6 : 1.3)
+        if target == .toonland { onToast?("Welcome to Toonland! Follow a checkered road to King Grumblesaurus's stage.") }
     }
 
     private func ensureReturnPortal(_ portal: BlockID) {
         let px = Int(floor(player.position.x)), py = Int(floor(player.position.y)), pz = Int(floor(player.position.z))
         for dy in -8...8 { for dz in -12...12 { for dx in -12...12 where world.block(px + dx, py + dy, pz + dz) == portal { return } } }
         guard let frame = WorldDimension.forPortal(portal)?.frameBlock else { return }
-        let floorBlock: BlockID = dimension == .underworld ? Blocks.obsidian : (dimension == .skylands ? Blocks.cloud : Blocks.stone)
+        let floorBlock: BlockID = dimension == .underworld ? Blocks.obsidian : (dimension == .skylands ? Blocks.cloud : (dimension == .toonland ? Blocks.toonStone : Blocks.stone))
         let ox = px + 2, z = pz - 1, y = py
         for x in (ox - 2)...(ox + 3) {
             for zz in (z - 1)...(z + 1) {
@@ -1066,8 +1310,10 @@ final class GameSession {
     /// Periodic checks for exploration advancements: depth, height, creatures nearby, villages and structures.
     private func checkExploration() {
         let p = player.position
-        if p.y < 12 { advancements.record("depth") }
-        if p.y > 180 { advancements.record("height") }
+        let shownY = p.y - Double(world.generator.depthOffset)
+        if shownY < 12 { advancements.record("depth") }
+        if shownY < -60 { advancements.record("depth", "bottom") }
+        if shownY > 180 { advancements.record("height") }
         for m in mobs.mobs where !m.isDying && simd_distance(m.position, p) < 8 {
             advancements.record("near", m.species.kind.rawValue)
         }
@@ -1094,11 +1340,19 @@ final class GameSession {
         Log.info("Door at \(lower) \(open ? "opened" : "closed")", category: "Game")
     }
 
+    /// Both halves of a double chest (or just this chest), in screen order.
+    func chestHalves(_ pos: BlockPos) -> [BlockPos] {
+        ChestHalves.positions(pos, registry: blocks) { [world] x, y, z in world.block(x, y, z) }
+    }
+
     private func openContainer(at pos: BlockPos, kind: ContainerKind) {
-        if isRemote {
-            network?.containerOpened(pos)
-        } else {
-            prepareContainer(at: pos, kind: kind)
+        let halves = kind == .chest ? chestHalves(pos) : [pos]
+        for half in halves {
+            if isRemote {
+                network?.containerOpened(half)
+            } else {
+                prepareContainer(at: half, kind: kind)
+            }
         }
         onSound?("ui_open", 0.5, kind == .chest ? 0.9 : 0.7)
         onOpenContainer?(pos, kind)
@@ -1230,17 +1484,30 @@ final class GameSession {
             prepareContainer(at: pos, kind: kind)
             spillContainer(at: pos)
         }
+        if !isRemote, frameFacing(old) != nil, frameFacing(id) == nil { spillFrame(at: pos) }
         if harvest, id == Blocks.air || id == Blocks.water, old != id, let info = blocks[old], info.isBreakable {
             giveDrops(info, at: pos)
         }
     }
 
-    func receiveItem(name: String, count: Int, damage: Int) {
+    func receiveItem(name: String, count: Int, damage: Int, enchant: Int = 0) {
         guard let id = items.id(named: name) else { return }
         advancements.record("pickup", name, amount: count)
-        let left = inventory.add(ItemStack(item: id, count: count, damage: damage))
-        if left > 0 { dropStack(ItemStack(item: id, count: left, damage: damage), thrown: false) }
+        let stack = ItemStack(item: id, count: count, damage: damage, enchant: UInt16(clamping: enchant))
+        let left = inventory.add(stack)
+        if left > 0 { dropStack(stack.with(count: left), thrown: false) }
         onSound?("pickup", 0.35, Float.random(in: 0.9...1.35))
+    }
+
+    /// Particle bursts requested by the game (boss stomps, confetti), drained by the particle system.
+    var effectBursts: [(position: DVec3, kind: EffectBurst)] = []
+
+    func isBossDefeated(_ name: String) -> Bool { meta.defeatedBosses?.contains(name) == true }
+
+    func markBossDefeated(_ name: String) {
+        guard !isBossDefeated(name) else { return }
+        meta.defeatedBosses = (meta.defeatedBosses ?? []) + [name]
+        save()
     }
 
     func followDimension(_ target: WorldDimension, position: DVec3) {
@@ -1279,7 +1546,7 @@ final class GameSession {
 
     private func attackRemotePlayer(_ target: RemotePlayer) {
         let tool = heldTool
-        var damage = Double(tool?.damage ?? 1)
+        var damage = Double(tool?.damage ?? 1) + heldEnchantLevel(.sharpness) * 1.25
         if !player.onGround && !player.inWater && player.velocity.y < -1 { damage *= 1.5 }
         let look = player.lookDirection
         let flat = simd_length(DVec3(look.x, 0, look.z)) > 0.01 ? simd_normalize(DVec3(look.x, 0, look.z)) : DVec3(0, 0, -1)
@@ -1302,6 +1569,7 @@ final class GameSession {
             case .footstep(let id):
                 if let g = soundGroup(id) { onSound?("step_\(g)", player.isSneaking ? 0.12 : 0.28, 1) }
             case .landed(let distance, let id):
+                hand.landed(fallDistance: distance)
                 if distance > 3.5 && player.gameMode == .survival && !player.inWater {
                     damage((distance - 3).rounded(.down), cause: "Fell from a high place")
                     onSound?("land", 0.8, 1)
@@ -1352,7 +1620,7 @@ final class GameSession {
                 if health > floorHealth { damage(1, cause: "Starved in the wilderness") }
             }
         }
-        if player.headInWater && world.block(Int(floor(player.eyePosition.x)), Int(floor(player.eyePosition.y)), Int(floor(player.eyePosition.z))) == Blocks.water {
+        if player.headInWater && Blocks.holdsWater(world.block(Int(floor(player.eyePosition.x)), Int(floor(player.eyePosition.y)), Int(floor(player.eyePosition.z))), world.registry) {
             air -= dt
             if air < 0 {
                 drownTimer += dt
@@ -1392,6 +1660,10 @@ final class GameSession {
         case .hard: scale = 1.0
         }
         guard scale > 0 else { return }
+        if blockWithShield(amount * scale, from: knockback) {
+            hurtCooldown = 0.3
+            return
+        }
         hurtCooldown = 0.55
         if let k = knockback {
             player.velocity += DVec3(k.x * 7, 4.5, k.z * 7)
@@ -1403,8 +1675,12 @@ final class GameSession {
     private func absorbArmor(_ amount: Double) -> Double {
         let points = armorPoints
         guard points > 0, amount < 1000, !godMode else { return amount }
+        var protection = 0
         for i in armor.indices {
             guard var piece = armor[i], let info = items[piece.item], let spec = info.armor else { continue }
+            protection += Enchantments.level(.protection, in: piece.enchant)
+            let unbreaking = Enchantments.level(.unbreaking, in: piece.enchant)
+            if unbreaking > 0 && Int.random(in: 0...unbreaking) != 0 { continue }
             piece.damage += 1
             if piece.damage >= spec.durability {
                 armor[i] = nil
@@ -1414,7 +1690,7 @@ final class GameSession {
                 armor[i] = piece
             }
         }
-        return amount * (1 - min(0.8, Double(points) * 0.04))
+        return amount * (1 - min(0.85, Double(points) * 0.04 + Double(protection) * 0.04))
     }
 
     // MARK: Beds
@@ -1422,7 +1698,7 @@ final class GameSession {
     private func useBed(at pos: BlockPos) {
         guard dimension == .overworld else { onToast?("Beds only work in the Overworld"); return }
         setSpawnPoint(DVec3(Double(pos.x) + 0.5, Double(pos.y) + 1, Double(pos.z) + 0.5))
-        guard isNight || weather.kind == .thunder else {
+        guard isNight || weather.kind.stormy else {
             onToast?("Respawn point set. You can sleep at night or during thunderstorms")
             return
         }
@@ -1452,8 +1728,19 @@ final class GameSession {
         onSound?("hurt", 0.8, 1)
         guard health <= 0 else { return }
         isDead = true
+        riding?.rideInput = nil
+        riding = nil
+        bobber = nil
+        deathSpot = DeathSpot(position: player.position, dimension: dimension)
         deathMessage = cause
         advancements.record("die")
+        // Some of your experience spills out as orbs; the rest is lost.
+        if !meta.rule("keepInventory") {
+            let dropped = min(xpLevel * 7, 100)
+            xpPoints = 0
+            orbs.removeAll()
+            if !isRemote { spawnXP(dropped, at: player.position + DVec3(0, 0.5, 0)) }
+        }
         breakingPos = nil
         breakProgress = 0
         onSound?("death", 0.8, 1)
@@ -1488,6 +1775,18 @@ final class GameSession {
         }
     }
 
+    /// Hardcore multiplayer: remembers that a joining player died (by `WireHost.deathKey`), so they can
+    /// only spectate from now on. Returns true the first time.
+    @discardableResult
+    func recordHardcoreDeath(_ key: String) -> Bool {
+        var dead = meta.hardcoreDeadPlayers ?? []
+        guard meta.isHardcore, !dead.contains(key) else { return false }
+        dead.append(key)
+        meta.hardcoreDeadPlayers = dead
+        save()
+        return true
+    }
+
     /// Hardcore: after death the world can only be watched.
     func enterSpectator() {
         isDead = false
@@ -1501,6 +1800,12 @@ final class GameSession {
     }
 
     func debugSetTime(_ t: Double) { worldTime = t }
+    /// Automated checks: aim at whatever is under the crosshair, part-way through breaking it.
+    func debugAim(breaking progress: Double) {
+        target = VoxelPhysics.raycast(world, origin: player.eyePosition, direction: player.lookDirection, maxDistance: 6)
+        breakingPos = target?.block
+        breakProgress = progress
+    }
 
     // MARK: Commands
 
@@ -1550,7 +1855,7 @@ final class GameSession {
         biome = world.generator.biome(x: x, z: z)
         let eyeY = Int(floor(player.eyePosition.y))
         if dimension == .overworld, let top = world.topSolidY(x, z) {
-            isUnderground = eyeY < top - 3 && eyeY < WorldConst.seaLevel + 8
+            isUnderground = eyeY < top - 3 && eyeY < world.generator.seaLevel + 8
         } else {
             isUnderground = false
         }
@@ -1562,7 +1867,7 @@ final class GameSession {
         var stacks: [SavedStack] = []
         for (i, slot) in inventory.slots.enumerated() {
             guard let s = slot, let info = items[s.item] else { continue }
-            stacks.append(SavedStack(slot: i, item: info.name, count: s.count, damage: s.damage > 0 ? s.damage : nil))
+            stacks.append(SavedStack(slot: i, item: info.name, count: s.count, damage: s.damage > 0 ? s.damage : nil, enchant: s.enchant))
         }
         var save = PlayerSave(x: player.position.x, y: player.position.y, z: player.position.z, yaw: player.yaw, pitch: player.pitch,
                               health: isDead ? 20 : health, hunger: isDead ? 20 : hunger, saturation: saturation, air: air,
@@ -1570,9 +1875,11 @@ final class GameSession {
                               dimension: dimension == .overworld ? nil : dimension.rawValue)
         let worn = armor.enumerated().compactMap { i, slot -> SavedStack? in
             guard let s = slot, let info = items[s.item] else { return nil }
-            return SavedStack(slot: i, item: info.name, count: 1, damage: s.damage > 0 ? s.damage : nil)
+            return SavedStack(slot: i, item: info.name, count: 1, damage: s.damage > 0 ? s.damage : nil, enchant: s.enchant)
         }
         save.armor = worn.isEmpty ? nil : worn
+        save.xp = xpPoints > 0 ? xpPoints : nil
+        save.quests = quests.isEmpty ? nil : try? JSONEncoder().encode(quests)
         return save
     }
 
@@ -1601,6 +1908,9 @@ final class GameSession {
         mobs.save(to: mobsURL)
         containers.save(to: containersURL, items: items)
         crops.save(to: cropsURL)
+        circuits.save(to: circuitsURL)
+        frames.save(to: framesURL, registry: items)
+        fires.save(to: firesURL)
         let queued = world.saveModifiedChunks()
         Log.info("Saved '\(meta.name)' [\(dimension.rawValue)] (\(queued) chunks queued)", category: "Save")
     }

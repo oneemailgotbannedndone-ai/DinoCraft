@@ -66,6 +66,9 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>NSHighResolutionCapable</key><true/>
   <key>NSLocalNetworkUsageDescription</key><string>DinoCraft finds and hosts games on your local network so you can play with friends.</string>
   <key>NSBonjourServices</key><array><string>_dinocraft._tcp</string></array>
+  <key>NSAppTransportSecurity</key><dict><key>NSExceptionDomains</key><dict>
+    <key>dreamlo.com</key><dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/><key>NSIncludesSubdomains</key><true/></dict>
+  </dict></dict>
   <key>NSSupportsAutomaticGraphicsSwitching</key><true/>
   <key>NSPrincipalClass</key><string>NSApplication</string>
   <key>NSHumanReadableCopyright</key><string>DinoCraft — an original voxel adventure.</string>
@@ -75,6 +78,21 @@ PLIST
 
 echo "▸ Signing (ad-hoc)"
 codesign --force --sign - --timestamp=none "$APP"
+
+# DinoCraft Launcher: the same program in launcher mode (news, updates, skins, the guide), with its
+# own copy of the resources so it works wherever macOS runs it from. Play opens DinoCraft.app.
+LAUNCHER="dist/DinoCraft Launcher.app"
+echo "▸ Assembling $LAUNCHER"
+rm -rf "$LAUNCHER"
+mkdir -p "$LAUNCHER/Contents/MacOS" "$LAUNCHER/Contents/Resources"
+cp "$BIN" "$LAUNCHER/Contents/MacOS/DinoCraft Launcher"
+for dir in Data Textures TexturePacks Sounds Music Shaders Art; do
+  [ -d "Resources/$dir" ] && cp -R "Resources/$dir" "$LAUNCHER/Contents/Resources/"
+done
+[ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$LAUNCHER/Contents/Resources/"
+sed -e 's|<string>DinoCraft</string>|<string>DinoCraft Launcher</string>|g' \
+    -e 's|com.dinocraft.game|com.dinocraft.launcher|' "$APP/Contents/Info.plist" > "$LAUNCHER/Contents/Info.plist"
+codesign --force --sign - --timestamp=none "$LAUNCHER"
 
 echo "▸ Verifying"
 codesign --verify --strict "$APP"
@@ -95,6 +113,8 @@ if [[ "$INSTALL" == 1 ]]; then
   pkill -x DinoCraft 2>/dev/null && sleep 1 || true
   rm -rf "$DEST"
   ditto "$APP" "$DEST"
+  rm -rf "/Applications/DinoCraft Launcher.app"
+  ditto "$LAUNCHER" "/Applications/DinoCraft Launcher.app"
   /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$DEST" >/dev/null 2>&1 || true
   touch "$DEST"
   echo "✓ Installed $VERSION ($BUILD_NUMBER) to $DEST"

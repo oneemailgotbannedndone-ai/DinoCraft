@@ -9,12 +9,8 @@ import DinoCraftCore
 /// the handshake, answers pings, and pushes the most recent activity. If Discord
 /// is not installed, not running, or disconnects, it quietly retries with
 /// backoff — the game never waits on it.
-final class DiscordIPCClient: @unchecked Sendable {
-    enum Status: Equatable {
-        case connecting
-        case connected(user: String?)
-        case unavailable(String)
-    }
+final class DiscordIPCClient: PresenceTransport, @unchecked Sendable {
+    typealias Status = PresenceStatus
 
     private enum Opcode: UInt32 { case handshake = 0, frame = 1, close = 2, ping = 3, pong = 4 }
 

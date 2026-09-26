@@ -1,5 +1,6 @@
 import Foundation
 import CSDL3
+import CGPUPreference
 import DinoCraftCore
 @testable import DinoCraftGame
 #if os(Windows)
@@ -20,7 +21,7 @@ import WinSDK
 //   --frames <n>              frames to draw after loading before the screenshot (default 30)
 //   --demo-entities           automated check: place sample creatures in view
 //   --demo-screen <name>      automated check: inventory, crafting, furnace, creative, pause, advancements,
-//                             menu, worlds or create
+//                             menu, worlds, create, toonland, toonland-boss or hardcore
 
 struct Options {
     var seed = ""
@@ -35,15 +36,22 @@ struct Options {
     var console = false
     /// Automated check: hide the console like a double-click launch does.
     var hideConsole = false
+    /// This is DinoCraft Launcher (DinoCraft Launcher.exe, or --launcher): Play starts DinoCraft.exe.
+    var launcherOnly = false
+    /// Started by DinoCraft Launcher: go straight to the title screen.
+    var skipLauncher = false
+    /// Automated check: still do the launcher's online work (updates, reviews, friends, stats) while taking a screenshot.
+    var online = false
 
     static func parse(_ args: [String]) -> Options {
         var o = Options()
+        o.launcherOnly = URL(fileURLWithPath: args.first ?? "").lastPathComponent.lowercased().contains("launcher")
         var i = 1
         func next() -> String? { i += 1; return i < args.count ? args[i] : nil }
         while i < args.count {
             switch args[i] {
             case "--seed": o.seed = next() ?? ""
-            case "--render-distance": o.renderDistance = max(2, min(16, Int(next() ?? "") ?? 8))
+            case "--render-distance": o.renderDistance = max(2, min(GameSettings.maxRenderDistance, Int(next() ?? "") ?? 8))
             case "--screenshot": o.screenshotPath = next()
             case "--frames": o.frames = max(1, Int(next() ?? "") ?? 30)
             case "--join": o.join = next()
@@ -53,6 +61,9 @@ struct Options {
             case "--host": o.hostName = next()
             case "--console": o.console = true
             case "--hide-console": o.hideConsole = true
+            case "--launcher": o.launcherOnly = true
+            case "--skip-launcher": o.skipLauncher = true
+            case "--online": o.online = true
             default: break
             }
             i += 1
@@ -83,6 +94,22 @@ func fail(_ message: String, window: OpaquePointer? = nil) -> Never {
 }
 
 /// Player names follow the host's rules: letters, numbers and underscores, up to 16 characters.
+/// DinoCraft Launcher's Play: starts DinoCraft.exe from the same folder, straight to the title screen.
+func launchGame(join address: String? = nil) {
+    let here = URL(fileURLWithPath: CommandLine.arguments.first ?? "").deletingLastPathComponent()
+    let game = here.appendingPathComponent("DinoCraft.exe")
+    let process = Process()
+    process.executableURL = game
+    process.arguments = ["--skip-launcher"] + (address.map { ["--join", $0] } ?? [])
+    process.currentDirectoryURL = here
+    do {
+        try process.run()
+        Log.info("Launcher started \(game.path)", category: "App")
+    } catch {
+        Log.error("Couldn't start DinoCraft: \(error)", category: "App")
+    }
+}
+
 func cleanName(_ raw: String) -> String {
     let name = String(raw.filter { $0.isLetter || $0.isNumber || $0 == "_" }.prefix(16))
     return name.isEmpty ? "Explorer" : name
@@ -104,6 +131,8 @@ if options.hideConsole || (options.screenshotPath == nil && !options.console) {
     }
 }
 #endif
+// Keep crash details (in a file next to the log when there's no console to show them).
+WinCrash.install(redirectErrors: !Log.shared.echoToConsole)
 
 guard SDL_Init(SDL_INIT_VIDEO) else { fail("Could not start SDL: \(String(cString: SDL_GetError()))") }
 _ = SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3)
@@ -113,7 +142,7 @@ _ = SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24)
 _ = SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1)
 _ = SDL_GL_SetAttribute(SDL_GL_FRAMEBUFFER_SRGB_CAPABLE, 1)
 
-guard let window = SDL_CreateWindow("DinoCraft", 1280, 720,
+guard let window = SDL_CreateWindow(options.launcherOnly ? "DinoCraft Launcher" : "DinoCraft", options.launcherOnly ? 1180 : 1280, options.launcherOnly ? 700 : 720,
                                     SDL_WINDOW_OPENGL_FLAG | SDL_WINDOW_RESIZABLE_FLAG | SDL_WINDOW_HIGH_PIXEL_DENSITY_FLAG) else {
     fail("Could not create the game window: \(String(cString: SDL_GetError()))")
 }
@@ -121,13 +150,17 @@ guard let context = SDL_GL_CreateContext(window) else {
     fail("DinoCraft needs OpenGL 3.3, which your graphics driver doesn't provide. Updating your graphics driver usually fixes this.\n\n\(String(cString: SDL_GetError()))", window: window)
 }
 _ = SDL_GL_MakeCurrent(window, context)
-_ = SDL_GL_SetSwapInterval(options.screenshotPath == nil ? 1 : 0)
-
 let settingsStore = SettingsStore()
+PlayerLook.settle(settingsStore)
+GameLinks.setUpStats(settingsStore)
+let wantsVSync = options.screenshotPath == nil && settingsStore.settings.vsync
+if !SDL_GL_SetSwapInterval(wantsVSync ? 1 : 0) { Log.warning("The driver refused to set VSync \(wantsVSync ? "on" : "off")", category: "Renderer") }
 
 do {
     let gl = try GL()
     Log.info("OpenGL \(gl.string(GLC.VERSION)) · \(gl.string(GLC.RENDERER)) · \(gl.string(GLC.VENDOR))", category: "Renderer")
+    Log.info("Asks for the discrete GPU on dual-GPU laptops: \(dinocraft_prefers_discrete_gpu() == 1 ? "yes" : "no")", category: "Renderer")
+    if let vram = gl.videoMemoryMB() { Log.info("Video memory: \(vram.total) MB, \(vram.free) MB free", category: "Renderer") }
     let blocks = try BlockRegistry.loadDefault()
     let items = try ItemRegistry.loadDefault(blocks: blocks)
     let recipes = try RecipeRegistry.loadDefault(items: items)
@@ -143,13 +176,18 @@ do {
     /// Plays on a friend's game. Returns whether the player closed the window, and why the game ended if it wasn't their choice.
     func join(_ network: WinNetwork) -> (quit: Bool, message: String?) {
         var sessionOptions = options
-        if sessionOptions.renderDistance == nil { sessionOptions.renderDistance = max(2, min(16, settingsStore.settings.renderDistance)) }
+        if sessionOptions.renderDistance == nil { sessionOptions.renderDistance = max(2, min(GameSettings.maxRenderDistance, settingsStore.settings.renderDistance)) }
         SDL_SetWindowTitle(window, "DinoCraft · \(network.welcome.worldName)")
-        let game = WinGame(gl: gl, window: window, content: content, audio: audio, settings: settingsStore, options: sessionOptions,
-                           network: network)
-        let reason = game.run()
+        // The full game, playing the friend's world (the same as on the Mac).
+        guard let client = WinSessionClient(joined: network) else {
+            network.connection.close()
+            return (false, "The host's world couldn't be read. Make sure you both have the latest DinoCraft.")
+        }
+        let game = WinSolo(gl: gl, window: window, content: content, audio: audio, settings: settingsStore, options: sessionOptions,
+                           world: client.meta, isNew: false, hostName: nil, join: client)
+        game.run()
         SDL_SetWindowTitle(window, "DinoCraft")
-        return (game.quitRequested, reason.map { "You left the game: \($0)" })
+        return (game.quitRequested, game.disconnectReason.map { "You left the game: \($0)" })
     }
 
     /// Plays one of your own worlds (optionally opened to friends). Returns whether the player closed the window.
@@ -166,19 +204,21 @@ do {
         let username = cleanName(options.name ?? settingsStore.settings.username)
         let joined: WinNetwork
         do {
-            joined = try WinNetwork.join(address: address, username: username)
+            joined = try WinNetwork.join(address: address, username: username, playerID: settingsStore.settings.playerID,
+                                         look: settingsStore.settings.cosmetics)
         } catch {
             fail("Couldn't join the game:\n\n\(error)", window: window)
         }
         if let message = join(joined).message {
             Log.info(message, category: "Net")
         }
-    } else if options.hostName != nil || (options.screenshotPath != nil && !["menu", "worlds", "create", "cosmetics", "skin"].contains(options.demoScreen ?? "")) {
+    } else if options.hostName != nil || (options.screenshotPath != nil && !["menu", "worlds", "create", "cosmetics", "skin", "skin-arm", "reviews", "friends", "leaderboard", "crash"].contains(options.demoScreen ?? "")) {
         let storage = WorldStorage()
         if let existing = storage.listWorlds().first(where: { $0.name == "Windows World" }) {
             _ = play(existing, isNew: false, hostName: options.hostName.map(cleanName))
         } else {
-            let meta = try storage.createWorld(name: "Windows World", seedText: options.seed, gameMode: .survival, difficulty: .normal)
+            let meta = try storage.createWorld(name: "Windows World", seedText: options.seed, gameMode: .survival, difficulty: .normal,
+                                               hardcore: options.demoScreen == "hardcore")
             _ = play(meta, isNew: true, hostName: options.hostName.map(cleanName))
         }
     } else {
@@ -193,12 +233,16 @@ do {
                 result = (play(meta, isNew: isNew, hostName: hostName), nil)
             case .join(let network):
                 result = join(network)
+            case .launchGame(let address):
+                launchGame(join: address)
+                break menuLoop
             }
             if result.quit || options.screenshotPath != nil { break }
             message = result.message
         }
     }
     audio.shutdown()
+    WinPresence.shared.shutdown()
 } catch {
     fail(String(describing: error), window: window)
 }
@@ -206,5 +250,6 @@ do {
 SDL_GL_DestroyContext(context)
 SDL_DestroyWindow(window)
 SDL_Quit()
+PlayerStats.shared.save()
 Log.info("DinoCraft closed", category: "App")
 Log.shared.flush()

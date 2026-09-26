@@ -76,6 +76,8 @@ final class World: BlockSource {
 
     /// Called after every gameplay block change (used by the multiplayer host).
     var onBlockChanged: ((BlockPos, BlockID) -> Void)?
+    /// A second listener for every block change (the amber circuits).
+    var onBlockSet: ((BlockPos, BlockID) -> Void)?
     /// When set (multiplayer client), chunks are requested from the host instead of generated.
     var remoteRequest: (([ChunkPos]) -> Void)?
     private var remoteRequestedAt: [ChunkPos: Double] = [:]
@@ -128,6 +130,7 @@ final class World: BlockSource {
         guard s.chunk.block(lx, Int(p.y), lz) != id else { return false }
         s.chunk.set(lx, Int(p.y), lz, id)
         onBlockChanged?(p, id)
+        onBlockSet?(p, id)
         for dz: Int32 in -1...1 {
             for dx: Int32 in -1...1 {
                 if let n = slots[ChunkPos(p.chunk.x + dx, p.chunk.z + dz)] {
@@ -157,7 +160,7 @@ final class World: BlockSource {
             guard y > 0, y < WorldConst.height - 2 else { return false }
             let below = block(x, y - 1, z), feet = block(x, y, z), head = block(x, y + 1, z)
             return registry.isSolid[Int(below)] && !registry.isSolid[Int(feet)] && !registry.isSolid[Int(head)]
-                && registry.shape[Int(feet)] != .liquid && registry.shape[Int(head)] != .liquid
+                && !registry.isWet[Int(feet)] && !registry.isWet[Int(head)]
                 && below != Blocks.leaves && below != Blocks.redwoodNeedles && below != Blocks.bedrock
         }
         for d in 0..<WorldConst.height {

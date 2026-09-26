@@ -19,7 +19,7 @@ struct CommandSuggestion {
 enum Commands {
     enum Arg {
         case items, blocks, creatures, biomes, command, coordinate, number, text
-        case itemsOrPlayers, countOrItem, coordinateOrPlayer
+        case itemsOrPlayers, countOrItem, coordinateOrPlayer, players
         case choices([String])
     }
 
@@ -52,7 +52,9 @@ enum Commands {
              args: [.choices(["set", "add"]), .choices(["day", "noon", "sunset", "night", "midnight"])]),
         Spec("day", "/day", "Jump to morning"),
         Spec("night", "/night", "Jump to nightfall"),
-        Spec("weather", "/weather <clear|rain|thunder> [seconds]", "Change the weather", args: [.choices(["clear", "rain", "thunder"]), .number]),
+        Spec("weather", "/weather <clear|rain|thunder|storm> [seconds]", "Change the weather", args: [.choices(["clear", "rain", "thunder", "storm"]), .number]),
+        Spec("season", "/season [spring|summer|autumn|winter]", "Show the season, or skip to one", args: [.choices(["spring", "summer", "autumn", "winter"])]),
+        Spec("event", "/event <eruption|meteors>", "Start a volcano eruption or a meteor shower", args: [.choices(["eruption", "meteors"])]),
         Spec("gamemode", "/gamemode <survival|creative>", "Switch game mode", args: [.choices(["survival", "creative"])], aliases: ["gm"]),
         Spec("difficulty", "/difficulty <peaceful|easy|normal|hard>", "Change difficulty", args: [.choices(Difficulty.allCases.map { $0.rawValue })]),
         Spec("gamerule", "/gamerule <rule> [true|false]", "Show or change a world rule", args: [.choices(gameRules), .choices(["true", "false"])]),
@@ -66,14 +68,17 @@ enum Commands {
         Spec("setblock", "/setblock <x> <y> <z> <block>", "Place a block", args: coord3 + [.blocks]),
         Spec("fill", "/fill <x1> <y1> <z1> <x2> <y2> <z2> <block> [replace <block>]", "Fill a box (air clears)",
              args: coord3 + coord3 + [.blocks, .choices(["replace"]), .blocks]),
-        Spec("locate", "/locate <village|dungeon|ruin|desert_ruin|biome> [biome]", "Find the nearest structure or biome",
-             args: [.choices(["village", "dungeon", "ruin", "desert_ruin", "biome"]), .biomes], readOnly: true),
+        Spec("locate", "/locate <village|dungeon|ruin|desert_ruin|dig_site|volcano|ocean_temple|shipwreck|biome> [biome]", "Find the nearest structure or biome",
+             args: [.choices(["village", "dungeon", "ruin", "desert_ruin", "dig_site", "volcano", "ocean_temple", "shipwreck", "biome"]), .biomes], readOnly: true),
         Spec("biome", "/biome", "Show which biome you're in", readOnly: true),
         Spec("coords", "/coords", "Show your position and facing", aliases: ["pos"], readOnly: true),
         Spec("list", "/list", "Show who's playing", readOnly: true),
-        Spec("dimension", "/dimension <overworld|underworld|skylands>", "Travel to a dimension", args: [.choices(["overworld", "underworld", "skylands"])]),
+        Spec("dimension", "/dimension <overworld|underworld|skylands|toonland>", "Travel to a dimension", args: [.choices(["overworld", "underworld", "skylands", "toonland"])]),
         Spec("seed", "/seed", "Show the world seed", readOnly: true),
         Spec("say", "/say <message>", "Announce a message", args: [.text]),
+        Spec("msg", "/msg <player> <message>", "Send a private message to one player", args: [.players, .text],
+             aliases: ["tell", "w", "whisper"], readOnly: true),
+        Spec("name", "/name <name>", "Name the tamed creature you're looking at", args: [.text], aliases: ["rename"], readOnly: true),
     ]
 
     static func spec(_ name: String) -> Spec? {
@@ -166,7 +171,7 @@ enum Commands {
             var spot = s.player.position + horizontalLook(s) * 3
             var count = 1
             if rest.count >= 4 {
-                guard let p = coordinates(Array(rest[1...3]), base: s.player.position) else { return reply("Couldn't read those coordinates.") }
+                guard let p = coordinates(Array(rest[1...3]), base: s.player.position, yOffset: s.world.generator.depthOffset) else { return reply("Couldn't read those coordinates.") }
                 spot = p
             } else {
                 if rest.count == 2, let n = Int(rest[1]) { count = max(1, min(25, n)) }
@@ -189,9 +194,9 @@ enum Commands {
                 teleport(friend.position + DVec3(1, 0, 0))
                 return reply("Teleported to \(friend.name).")
             }
-            guard rest.count == 3, let p = coordinates(rest, base: s.player.position) else { return reply("Usage: \(command.usage)") }
+            guard rest.count == 3, let p = coordinates(rest, base: s.player.position, yOffset: s.world.generator.depthOffset) else { return reply("Usage: \(command.usage)") }
             teleport(p)
-            reply(String(format: "Teleported to %.0f, %.0f, %.0f.", p.x, p.y, p.z))
+            reply(String(format: "Teleported to %.0f, %.0f, %.0f.", p.x, p.y - Double(s.world.generator.depthOffset), p.z))
 
         case "back":
             guard let previous = s.lastPosition else { return reply("There's nowhere to go back to yet.") }
@@ -205,11 +210,11 @@ enum Commands {
 
         case "sethome":
             s.setHome(s.player.position)
-            reply(String(format: "Home set to %.0f, %.0f, %.0f.", s.player.position.x, s.player.position.y, s.player.position.z))
+            reply(String(format: "Home set to %.0f, %.0f, %.0f.", s.player.position.x, s.player.position.y - Double(s.world.generator.depthOffset), s.player.position.z))
 
         case "spawnpoint":
             s.setSpawnPoint(s.player.position)
-            reply(String(format: "Spawn point set to %.0f, %.0f, %.0f.", s.player.position.x, s.player.position.y, s.player.position.z))
+            reply(String(format: "Spawn point set to %.0f, %.0f, %.0f.", s.player.position.x, s.player.position.y - Double(s.world.generator.depthOffset), s.player.position.z))
 
         case "time", "day", "night":
             let presets: [String: Double] = ["day": 100, "noon": 300, "sunset": 580, "night": 700, "midnight": 900]
@@ -235,7 +240,35 @@ enum Commands {
                 return reply("Usage: \(command.usage)")
             }
             s.weather.set(kind, duration: rest.count > 1 ? Double(rest[1]) : nil)
-            reply(kind == .clear ? "The skies clear." : (kind == .rain ? "It starts to rain." : "A thunderstorm rolls in!"))
+            switch kind {
+            case .clear: reply("The skies clear.")
+            case .rain: reply("It starts to rain.")
+            case .thunder: reply("A thunderstorm rolls in!")
+            case .storm: reply("A howling storm blows in! Hold on to your hat.")
+            }
+
+        case "season":
+            guard let name = choice(0, Season.allCases.map { $0.displayName.lowercased() }),
+                  let target = Season.allCases.first(where: { $0.displayName.lowercased() == name }) else {
+                let day = Int(s.worldTime / SkyModel.dayLength)
+                return reply("It's \(s.season.displayName) (day \(day % Season.daysPerSeason + 1) of \(Season.daysPerSeason)).")
+            }
+            let length = SkyModel.dayLength
+            let year = Double(Season.daysPerSeason * 4) * length
+            let timeOfDay = s.worldTime.truncatingRemainder(dividingBy: length)
+            var start = floor(s.worldTime / year) * year + Double(target.rawValue * Season.daysPerSeason) * length + timeOfDay
+            if start < s.worldTime { start += year }
+            s.debugSetTime(start)
+            reply("Skipped ahead to \(target.displayName).")
+
+        case "event":
+            guard let what = choice(0, ["eruption", "meteors"]) else { return reply("Usage: \(command.usage)") }
+            if what == "meteors" {
+                s.startMeteorShower()
+                reply("Meteors incoming!")
+            } else {
+                reply(s.startEruption() ? "The nearest volcano rumbles to life!" : "There's no volcano within \(Int(Hazards.volcanoRange)) blocks. Try /locate volcano.")
+            }
 
         case "gamemode":
             let aliases = ["s": "survival", "0": "survival", "c": "creative", "1": "creative"]
@@ -315,7 +348,7 @@ enum Commands {
             }
 
         case "setblock":
-            guard rest.count == 4, let p = coordinates(Array(rest[0...2]), base: s.player.position),
+            guard rest.count == 4, let p = coordinates(Array(rest[0...2]), base: s.player.position, yOffset: s.world.generator.depthOffset),
                   let id = resolveBlock(rest[3], e, note: reply) else { return reply("Usage: \(command.usage)") }
             let pos = BlockPos(Int(floor(p.x)), Int(floor(p.y)), Int(floor(p.z)))
             if s.world.setBlock(pos, id) || s.world.block(pos) == id {
@@ -325,8 +358,8 @@ enum Commands {
             }
 
         case "fill":
-            guard rest.count == 7 || rest.count == 9, let a = coordinates(Array(rest[0...2]), base: s.player.position),
-                  let b = coordinates(Array(rest[3...5]), base: s.player.position), let id = resolveBlock(rest[6], e, note: reply) else {
+            guard rest.count == 7 || rest.count == 9, let a = coordinates(Array(rest[0...2]), base: s.player.position, yOffset: s.world.generator.depthOffset),
+                  let b = coordinates(Array(rest[3...5]), base: s.player.position, yOffset: s.world.generator.depthOffset), let id = resolveBlock(rest[6], e, note: reply) else {
                 return reply("Usage: \(command.usage)")
             }
             var only: BlockID?
@@ -355,7 +388,7 @@ enum Commands {
                 return reply("Only the Overworld can be searched.")
             }
             let px = Int(floor(s.player.position.x)), pz = Int(floor(s.player.position.z))
-            guard let what = choice(0, ["village", "dungeon", "ruin", "desert_ruin", "biome"]) else { return reply("Usage: \(command.usage)") }
+            guard let what = choice(0, ["village", "dungeon", "ruin", "desert_ruin", "dig_site", "volcano", "ocean_temple", "shipwreck", "biome"]) else { return reply("Usage: \(command.usage)") }
             if what == "biome" {
                 guard rest.count >= 2, let biome = resolveBiome(rest.dropFirst().joined(separator: "_"), note: reply) else {
                     return reply("Which biome? \(biomeNames.joined(separator: ", "))")
@@ -375,13 +408,23 @@ enum Commands {
             if what == "village" {
                 found = generator.villages(near: px, z: pz, radius: 4000).first.map { ($0.x, $0.y, $0.z, "village") }
             } else {
-                let kind: StructureKind = what == "dungeon" ? .dungeon : (what == "ruin" ? .ruin : .desertRuin)
+                let kind: StructureKind
+                switch what {
+                case "dungeon": kind = .dungeon
+                case "ruin": kind = .ruin
+                case "dig_site", "digsite", "fossils": kind = .digSite
+                case "volcano": kind = .volcano
+                case "ocean_temple", "temple": kind = .oceanTemple
+                case "shipwreck": kind = .shipwreck
+                default: kind = .desertRuin
+                }
                 found = generator.structures(near: px, z: pz, radius: 3000).first(where: { $0.kind == kind })
                     .map { ($0.x, $0.y, $0.z, kind.displayName.lowercased()) }
             }
             guard let f = found else { return reply("No \(what.replacingOccurrences(of: "_", with: " ")) found nearby.") }
             let distance = Int(hypot(Double(f.x - px), Double(f.z - pz)))
-            reply("Nearest \(f.label): \(f.x), \(f.y), \(f.z) (\(distance) blocks away). Try /tp \(f.x) \(f.y + 2) \(f.z)")
+            let shownY = f.y - generator.depthOffset
+            reply("Nearest \(f.label): \(f.x), \(shownY), \(f.z) (\(distance) blocks away). Try /tp \(f.x) \(shownY + 2) \(f.z)")
 
         case "biome":
             reply("You're in: \(s.biome.displayName)")
@@ -389,14 +432,14 @@ enum Commands {
         case "coords":
             let p = s.player.position
             let facing = BlockRegistry.name(of: BlockVariants.horizontalFacing(s.player.lookDirection))
-            reply(String(format: "Position %.1f, %.1f, %.1f · facing %@ · %@", p.x, p.y, p.z, facing, s.biome.displayName))
+            reply(String(format: "Position %.1f, %.1f, %.1f · facing %@ · %@", p.x, p.y - Double(s.world.generator.depthOffset), p.z, facing, s.biome.displayName))
 
         case "list":
             let names = [e.settings.username.isEmpty ? "You" : e.settings.username] + e.remotePlayers.map { $0.name }
             reply("\(names.count) playing: \(names.joined(separator: ", "))")
 
         case "dimension":
-            guard let arg = choice(0, ["overworld", "underworld", "skylands"]),
+            guard let arg = choice(0, ["overworld", "underworld", "skylands", "toonland"]),
                   let dim = WorldDimension.allCases.first(where: { $0.rawValue.lowercased() == arg || $0.displayName.lowercased().contains(arg) }) else {
                 return reply("Usage: \(command.usage)")
             }
@@ -411,6 +454,27 @@ enum Commands {
             let message = rest.joined(separator: " ")
             guard !message.isEmpty else { return reply("Usage: \(command.usage)") }
             if e.isMultiplayer { e.sendChat("[\(e.settings.username)] \(message)") } else { reply("[\(e.settings.username)] \(message)") }
+
+        case "msg":
+            guard e.isMultiplayer else { return reply("Private messages need other players in the game.") }
+            guard rest.count >= 2 else { return reply("Usage: \(command.usage)") }
+            let names = e.remotePlayers.map { $0.name }
+            guard let target = names.first(where: { $0.lowercased() == rest[0].lowercased() }) ?? closest(rest[0], in: names) else {
+                return reply("No player called \(rest[0]) is here. Type /list to see who's playing.")
+            }
+            if let problem = e.whisper(to: target, text: rest.dropFirst().joined(separator: " ")) { reply(problem) }
+
+        case "name":
+            guard !rest.isEmpty else { return reply("Usage: \(command.usage)") }
+            // The tamed creature you're looking at, or else your nearest one.
+            let pet = s.targetMob.flatMap { $0.isTamed ? $0 : nil }
+                ?? s.mobs.mobs.filter { $0.isTamed && !$0.isDying }.min { simd_distance($0.position, s.player.position) < simd_distance($1.position, s.player.position) }
+            guard let pet, simd_distance(pet.position, s.player.position) < 12 else {
+                return reply("Look at one of your tamed creatures to name it (feed a dino its favourite food to tame it).")
+            }
+            let newName = String(rest.joined(separator: " ").prefix(20))
+            pet.petName = newName
+            reply("Your \(pet.species.displayName) is now called \(newName).")
 
         default:
             reply("Unknown command /\(name). Type /help for the list.")
@@ -461,6 +525,7 @@ enum Commands {
             if let first = previous.first, players.contains(where: { $0.lowercased() == first.lowercased() }) { return e.items.all.map { $0.name } }
             return ["1", "16", "32", "64"]
         case .coordinateOrPlayer: return ["~"] + players
+        case .players: return players
         case .choices(let options): return options
         }
     }
@@ -585,7 +650,7 @@ enum Commands {
         return out
     }
 
-    static var overworldBiomes: [Biome] { Biome.allCases.filter { $0 != .underworld && $0 != .skylands } }
+    static var overworldBiomes: [Biome] { Biome.allCases.filter { ![.underworld, .skylands, .toonland].contains($0) } }
     static var biomeNames: [String] { overworldBiomes.map(commandName) }
 
     private static func resolveBiome(_ raw: String, note: (String) -> Void) -> Biome? {
@@ -624,7 +689,8 @@ enum Commands {
     }
 
     /// Parses three coordinates, where `~` or `~n` is relative to `base`.
-    static func coordinates(_ parts: [String], base: DVec3) -> DVec3? {
+    /// Absolute Y values are as shown on screen (`yOffset` below the stored height in deep worlds).
+    static func coordinates(_ parts: [String], base: DVec3, yOffset: Int = 0) -> DVec3? {
         guard parts.count == 3 else { return nil }
         var out = [Double]()
         for (i, part) in parts.enumerated() {
@@ -634,7 +700,7 @@ enum Commands {
                 guard let offset else { return nil }
                 out.append(origin + offset)
             } else if let v = Double(part) {
-                out.append(i == 1 ? v : v + (v == v.rounded() ? 0.5 : 0))
+                out.append(i == 1 ? v + Double(yOffset) : v + (v == v.rounded() ? 0.5 : 0))
             } else {
                 return nil
             }

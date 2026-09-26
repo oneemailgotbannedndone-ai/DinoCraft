@@ -8,6 +8,13 @@ enum GLC {
     static let DEPTH_BUFFER_BIT: UInt32 = 0x0100
     static let DEPTH_TEST: UInt32 = 0x0B71
     static let CULL_FACE: UInt32 = 0x0B44
+    static let BACK: UInt32 = 0x0405
+    static let CCW: UInt32 = 0x0901
+    /// GL_NVX_gpu_memory_info: dedicated video memory and what's currently free, in KB.
+    static let GPU_MEMORY_DEDICATED_NVX: UInt32 = 0x9047
+    static let GPU_MEMORY_AVAILABLE_NVX: UInt32 = 0x9049
+    static let NUM_EXTENSIONS: UInt32 = 0x821D
+    static let EXTENSIONS: UInt32 = 0x1F03
     static let BLEND: UInt32 = 0x0BE2
     static let LESS: UInt32 = 0x0201
     static let ONE: UInt32 = 1
@@ -118,6 +125,11 @@ final class GL {
     let readPixels: @convention(c) (Int32, Int32, Int32, Int32, UInt32, UInt32, UnsafeMutableRawPointer?) -> Void
     let pixelStorei: @convention(c) (UInt32, Int32) -> Void
     let getString: @convention(c) (UInt32) -> UnsafePointer<UInt8>?
+    let getStringi: @convention(c) (UInt32, UInt32) -> UnsafePointer<UInt8>?
+    let getIntegerv: @convention(c) (UInt32, UnsafeMutablePointer<Int32>?) -> Void
+    let cullFace: @convention(c) (UInt32) -> Void
+    let frontFace: @convention(c) (UInt32) -> Void
+    let getError: @convention(c) () -> UInt32
     let texImage2D: @convention(c) (UInt32, Int32, Int32, Int32, Int32, Int32, UInt32, UInt32, UnsafeRawPointer?) -> Void
     let genFramebuffers: @convention(c) (Int32, UnsafeMutablePointer<UInt32>?) -> Void
     let deleteFramebuffers: @convention(c) (Int32, UnsafeMutablePointer<UInt32>?) -> Void
@@ -185,6 +197,11 @@ final class GL {
         readPixels = try load("glReadPixels")
         pixelStorei = try load("glPixelStorei")
         getString = try load("glGetString")
+        getStringi = try load("glGetStringi")
+        getIntegerv = try load("glGetIntegerv")
+        cullFace = try load("glCullFace")
+        frontFace = try load("glFrontFace")
+        getError = try load("glGetError")
         texImage2D = try load("glTexImage2D")
         genFramebuffers = try load("glGenFramebuffers")
         deleteFramebuffers = try load("glDeleteFramebuffers")
@@ -203,6 +220,27 @@ final class GL {
     func string(_ name: UInt32) -> String {
         guard let p = getString(name) else { return "?" }
         return String(cString: p)
+    }
+
+    func hasExtension(_ name: String) -> Bool {
+        var count: Int32 = 0
+        getIntegerv(GLC.NUM_EXTENSIONS, &count)
+        for i in 0..<max(0, count) {
+            if let p = getStringi(GLC.EXTENSIONS, UInt32(i)), String(cString: p) == name { return true }
+        }
+        return false
+    }
+
+    /// Dedicated video memory and what's free, in MB, from NVIDIA drivers (nil elsewhere).
+    func videoMemoryMB() -> (total: Int, free: Int)? {
+        if hasExtension("GL_NVX_gpu_memory_info") {
+            var total: Int32 = 0, free: Int32 = 0
+            getIntegerv(GLC.GPU_MEMORY_DEDICATED_NVX, &total)
+            getIntegerv(GLC.GPU_MEMORY_AVAILABLE_NVX, &free)
+            // Only believe values a real graphics card could have (software renderers report nonsense here).
+            if total > 0 && total / 1024 <= 65536 && free >= 0 && free <= total { return (Int(total) / 1024, Int(free) / 1024) }
+        }
+        return nil
     }
 
     func makeBuffer() -> UInt32 {

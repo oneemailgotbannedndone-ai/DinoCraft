@@ -80,7 +80,7 @@ final class SDLGameInput: GameInput {
         hotbarKeyPressed = nil
     }
 
-    private static func macButton(_ sdlButton: UInt8) -> Int? {
+    static func macButton(_ sdlButton: UInt8) -> Int? {
         switch sdlButton {
         case 1: return 0
         case 2: return 2
@@ -93,6 +93,11 @@ final class SDLGameInput: GameInput {
     /// macOS virtual key code → SDL scancode.
     static func scancode(forMacKey code: Int) -> Int? {
         macKeys[code].map { Int($0.rawValue) }
+    }
+
+    /// The Mac key code bindings are saved with, for a key pressed on this keyboard (nil for keys DinoCraft can't bind).
+    static func macKey(forScancode code: Int) -> Int? {
+        macKeys.first { Int($0.value.rawValue) == code }?.key
     }
 
     private static let macKeys: [Int: SDL_Scancode] = [

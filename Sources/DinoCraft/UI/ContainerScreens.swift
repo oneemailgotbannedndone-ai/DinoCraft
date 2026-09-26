@@ -3,10 +3,24 @@ import simd
 import DinoCraftCore
 @testable import DinoCraftGame
 
-/// Chest and furnace UI: the container's slots above the player's backpack and hotbar.
+/// Chest and furnace UI: the container's slots above the player's backpack and hotbar. Two chests
+/// side by side open together as one 54-slot Large Chest.
 final class ContainerScreen: Screen {
     let pos: BlockPos
     let kind: ContainerKind
+    /// The chests shown (both halves of a double chest) and, for a double chest, the combined
+    /// 54-slot view the screen edits. Refreshed every frame.
+    private var halves: [BlockPos] = []
+    private var parts: [Container] = []
+    private var combined: Container?
+
+    /// Copies a double chest's combined slots back into its two halves.
+    private func syncHalves() {
+        guard let combined, parts.count > 1 else { return }
+        for (n, part) in parts.enumerated() {
+            part.slots = Array(combined.slots[(n * ChestHalves.size)..<((n + 1) * ChestHalves.size)])
+        }
+    }
     private var cursor: ItemStack?
     private var closed = false
     private(set) var slotRects: [String: Rect] = [:]
@@ -39,7 +53,19 @@ final class ContainerScreen: Screen {
             close(e)
             return
         }
-        let container = s.containers.ensure(pos, kind: kind)
+        // A double chest is shown (and edited) as one container, then split back into its halves.
+        halves = kind == .chest ? s.chestHalves(pos) : [pos]
+        parts = halves.map { s.containers.ensure($0, kind: kind) }
+        let container: Container
+        if parts.count > 1 {
+            container = combined ?? Container(kind: .chest)
+            container.slots = parts.flatMap { $0.slots }
+            combined = container
+        } else {
+            container = parts[0]
+            combined = nil
+        }
+        defer { syncHalves() }
         slotRects.removeAll(keepingCapacity: true)
         let d = ui.draw
         let W = ui.size.x, H = ui.size.y
@@ -48,13 +74,14 @@ final class ContainerScreen: Screen {
         let slot = SlotView.size, gap = SlotView.gap, step = slot + gap
         let rowW = 9 * slot + 8 * gap
         let pad: Float = 30
-        let topH: Float = kind == .chest ? 3 * step - gap : 3 * step - gap
+        let rows = kind == .chest ? container.slots.count / 9 : 3
+        let topH: Float = Float(rows) * step - gap
         let panelW = rowW + pad * 2
         let panelH: Float = 78 + topH + 36 + (3 * step - gap) + 18 + slot + pad
         let a = appear(0, duration: 0.22)
         let panel = Rect(W / 2 - panelW / 2, H / 2 - panelH / 2 + (1 - a) * 12, panelW, panelH)
         d.opacity = a
-        ui.panel(panel, title: kind.displayName)
+        ui.panel(panel, title: kind == .chest ? ChestHalves.title(halves) : kind.displayName)
 
         var hoveredStack: ItemStack?
         var hoveredRef: Ref?
@@ -62,7 +89,7 @@ final class ContainerScreen: Screen {
         let top = panel.y + 78
 
         if kind == .chest {
-            for row in 0..<3 {
+            for row in 0..<rows {
                 for col in 0..<9 {
                     let i = row * 9 + col
                     let rect = Rect(panel.x + pad + Float(col) * step, top + Float(row) * step, slot, slot)
@@ -152,7 +179,8 @@ final class ContainerScreen: Screen {
 
     private func changed(_ s: GameSession, _ e: GameEngine) {
         s.inventory.markChanged()
-        s.containerChanged(pos)
+        syncHalves()
+        for half in halves { s.containerChanged(half) }
     }
 
     private func click(_ ref: Ref, button: SlotButton, shift: Bool, _ c: Container, _ s: GameSession, _ e: GameEngine) {

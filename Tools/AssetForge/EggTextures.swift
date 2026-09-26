@@ -15,6 +15,10 @@ enum EggTextures {
         "cow": (0x4A3A2A, 0xE8E0D0), "sheep": (0xE8E8E0, 0xB89878), "chicken": (0xF0F0E8, 0xD83A2A),
         "pookpook": (0xE0C060, 0x6A4A2A), "carnotaurus": (0xA84A3A, 0x2E2018), "allosaurus": (0x9A7A4A, 0x5A3A22),
         "baryonyx": (0x5A7A6A, 0xC8B888), "troodon": (0x6A6A8A, 0xF0E060), "spinosaurus": (0x6A5A4A, 0xD86A3A),
+        "grumblesaurus": (0x2A2A2A, 0xF4F4F0), "cod": (0x8A9AA6, 0x4E5A64), "salmon": (0xB85A4A, 0x3E5A6E),
+        "clownfish": (0xF08A1A, 0xFFFFFF), "blue_tang": (0x2A6AE0, 0xF2D83A),
+        "pachy": (0x6E7A4A, 0xE6D8B0), "iguanodon": (0x4E7A5A, 0xEDE4CC), "therizino": (0x8A6A4A, 0x2A2622),
+        "gallimimus": (0xB08A5A, 0x6A4A2A), "oviraptor": (0x5A4A7A, 0xE06A3A), "microraptor": (0x1E2A3A, 0x3A6ABA),
     ]
 
     static func item(_ name: String) -> Canvas? {

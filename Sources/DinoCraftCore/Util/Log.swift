@@ -75,6 +75,7 @@ public final class Log: @unchecked Sendable {
             .sorted { $0.lastPathComponent > $1.lastPathComponent }
         for old in logs.dropFirst(max(0, keep - 1)) {
             try? FileManager.default.removeItem(at: old)
+            try? FileManager.default.removeItem(at: CrashReport.companion(of: old))
         }
     }
 

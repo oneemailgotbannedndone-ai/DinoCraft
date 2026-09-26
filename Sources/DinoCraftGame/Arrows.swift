@@ -4,7 +4,15 @@ import simd
 #endif
 import DinoCraftCore
 
+/// What's flying: an arrow from a bow, a thrown spear, or a crossbow bolt.
+enum ProjectileKind: String, Codable {
+    case arrow, spear, bolt
+}
+
 final class Arrow {
+    let kind: ProjectileKind
+    /// A thrown spear keeps its item (with its wear) to give back when it's picked up.
+    let carried: ItemStack?
     var position: DVec3
     /// Keeps its last flight direction once stuck, so it renders pointing into the block.
     var velocity: DVec3
@@ -16,7 +24,9 @@ final class Arrow {
     var done = false
     var age = 0.0
 
-    init(position: DVec3, velocity: DVec3, damage: Double, pickup: Bool) {
+    init(position: DVec3, velocity: DVec3, damage: Double, pickup: Bool, kind: ProjectileKind = .arrow, carried: ItemStack? = nil) {
+        self.kind = kind
+        self.carried = carried
         self.position = position
         self.velocity = velocity
         origin = position
@@ -30,9 +40,9 @@ final class Arrow {
 final class ArrowSystem {
     private(set) var arrows: [Arrow] = []
 
-    func fire(from position: DVec3, velocity: DVec3, damage: Double, pickup: Bool) {
-        arrows.append(Arrow(position: position, velocity: velocity, damage: damage, pickup: pickup))
-        if arrows.count > 64 { arrows.removeFirst() }
+    func fire(from position: DVec3, velocity: DVec3, damage: Double, pickup: Bool, kind: ProjectileKind = .arrow, carried: ItemStack? = nil) {
+        arrows.append(Arrow(position: position, velocity: velocity, damage: damage, pickup: pickup, kind: kind, carried: carried))
+        if arrows.count > 64, let oldest = arrows.firstIndex(where: { $0.kind != .spear }) { arrows.remove(at: oldest) }
     }
 
     func clear() { arrows.removeAll() }
@@ -43,8 +53,10 @@ final class ArrowSystem {
             guard !a.stuck else { continue }
             let steps = 4
             let h = dt / Double(steps)
+            // Spears are heavy and drop sooner; bolts fly flat and fast.
+            let gravity = a.kind == .spear ? 24.0 : (a.kind == .bolt ? 12.0 : 20.0)
             for _ in 0..<steps {
-                a.velocity.y -= 20 * h
+                a.velocity.y -= gravity * h
                 a.velocity *= 1 - 0.2 * h
                 let next = a.position + a.velocity * h
                 let segment = next - a.position
@@ -71,6 +83,7 @@ final class ArrowSystem {
                 a.position = next
             }
         }
-        arrows.removeAll { $0.done || $0.age > ($0.stuck ? 30 : 8) }
+        // A stuck spear stays until you fetch it (it's your weapon); arrows and bolts vanish after a while.
+        arrows.removeAll { $0.done || $0.age > ($0.stuck ? ($0.kind == .spear ? 600 : 30) : 8) }
     }
 }

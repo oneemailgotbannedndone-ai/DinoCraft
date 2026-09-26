@@ -63,7 +63,8 @@ if all || args.contains("music") {
     let dir = resources.appendingPathComponent("Music")
     ensureDir(dir)
     let count = try MusicComposer.generate(into: dir)
-    print("music: \(count) tracks")
+    let songs = try SongComposer.generate(music: dir, data: resources.appendingPathComponent("Data"))
+    print("music: \(count) tracks, \(songs) Toonland songs")
 }
 
 if all || args.contains("icon") {

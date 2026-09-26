@@ -8,7 +8,10 @@ import DinoCraftCore
 /// Creature kinds, matching `MobKind` raw values in the Mac app.
 enum CreatureKind: String, CaseIterable {
     case trikey, dodo, longneck, raptor, spitter, crawler, magmaRaptor, villager, stego, ankylo, rex, compy, ptero, parasaur,
-         sailback, boneWalker, scorpion, pig, cow, sheep, chicken, pookpook, carnotaurus, allosaurus, baryonyx, troodon, spinosaurus
+         sailback, boneWalker, scorpion, pig, cow, sheep, chicken, pookpook, carnotaurus, allosaurus, baryonyx, troodon, spinosaurus,
+         grumblesaurus, grinasaurus, cod, salmon, clownfish, blueTang,
+         pachy, iguanodon, therizino, gallimimus, oviraptor, microraptor, boat, egg, armorStand, mosasaurus, crab,
+         protoceratops, styracosaurus, dilophosaurus, corythosaurus, quetzalcoatlus
 }
 
 enum PartRole {
@@ -49,7 +52,41 @@ enum CreatureModels {
         (SIMD3(x0, y0, z0) * s, SIMD3(x1, y1, z1) * s, col, glow)
     }
 
-    static func build(_ kind: CreatureKind) -> [CreaturePart] {
+    /// A fish seen side-on along -Z: slim body, eyes, dorsal fin, wagging tail and paddling side fins.
+    private static func fish(_ m: inout Builder, body: SIMD4<Float>, belly: SIMD4<Float>, fin: SIMD4<Float>, tail: SIMD4<Float>,
+                             stripe: SIMD4<Float>?, tall: Float, s: Float) {
+        let h0: Float = 0.06, h1: Float = 0.06 + 0.22 * tall, mid = (h0 + h1) / 2
+        let eye = c(0x111111)
+        var boxes = [b(-0.07, h0, -0.22, 0.07, h1, 0.18, body, s: s), b(-0.066, h0 - 0.02, -0.18, 0.066, h0 + 0.05, 0.14, belly, s: s),
+                     b(-0.012, h1, -0.1, 0.012, h1 + 0.07 * tall, 0.1, fin, s: s),
+                     b(-0.074, mid, -0.19, -0.066, mid + 0.04, -0.15, eye, s: s), b(0.066, mid, -0.19, 0.074, mid + 0.04, -0.15, eye, s: s)]
+        if let stripe {
+            boxes += [b(-0.075, h0, -0.13, 0.075, h1, -0.09, stripe, s: s), b(-0.075, h0, 0.03, 0.075, h1, 0.07, stripe, s: s)]
+        }
+        m.add(.body, .zero, boxes)
+        m.add(.head, SIMD3(0, mid, -0.22) * s, [b(-0.055, -(mid - h0) * 0.75, -0.07, 0.055, (h1 - mid) * 0.7, 0.0, body, s: s)])
+        m.add(.tail, SIMD3(0, mid, 0.18) * s, [b(-0.02, -0.035, 0, 0.02, 0.035, 0.06, body, s: s),
+                                              b(-0.01, -0.13 * tall, 0.05, 0.01, 0.13 * tall, 0.17, tail, s: s)])
+        m.add(.wing(-1), SIMD3(-0.07, h0 + 0.05, -0.1) * s, [b(-0.09, -0.01, -0.03, 0, 0.01, 0.05, fin, s: s)])
+        m.add(.wing(1), SIMD3(0.07, h0 + 0.05, -0.1) * s, [b(0, -0.01, -0.03, 0.09, 0.01, 0.05, fin, s: s)])
+    }
+
+    private static func role(_ r: ShapeRole) -> PartRole {
+        switch r {
+        case .body: return .body
+        case .head: return .head
+        case .tail: return .tail
+        case .leg(let phase): return .leg(phase)
+        case .segment(let i): return .segment(i)
+        case .wing(let side): return .wing(side)
+        }
+    }
+
+    static func build(_ kind: CreatureKind, variant: Int = 0) -> [CreaturePart] {
+        // Villagers and the newer dinosaurs share one definition with the Mac.
+        if let mob = MobKind(rawValue: kind.rawValue), let shared = CreatureShapes.parts(mob, variant: variant) {
+            return shared.map { part in CreaturePart(role: role(part.role), pivot: part.pivot, boxes: part.boxes.map { ($0.min, $0.max, c($0.color), $0.glow) }) }
+        }
         var m = Builder()
         switch kind {
         case .trikey:
@@ -106,6 +143,33 @@ enum CreatureModels {
             raptor(&m, body: c(0xA83A2A), stripe: c(0x5A1A12), belly: c(0xD8A080), glow: false, frill: nil, s: 1.9)
             m.add(.head, SIMD3(0, 0.9, -0.3) * 1.9, [b(-0.18, 0.36, -0.36, -0.1, 0.52, -0.26, c(0xF2EBD6), s: 1.9),
                                                     b(0.1, 0.36, -0.36, 0.18, 0.52, -0.26, c(0xF2EBD6), s: 1.9)])
+        case .cod:
+            fish(&m, body: c(0x8A9AA6), belly: c(0xDCE0E2), fin: c(0x5E6A74), tail: c(0x6A7680), stripe: nil, tall: 1, s: 1.1)
+        case .salmon:
+            fish(&m, body: c(0xB85A4A), belly: c(0xF0B8A0), fin: c(0x3E5A6E), tail: c(0x8A3A30), stripe: nil, tall: 1, s: 1.3)
+        case .clownfish:
+            fish(&m, body: c(0xF08A1A), belly: c(0xF8A840), fin: c(0x1E1E1E), tail: c(0xF08A1A), stripe: c(0xFFFFFF), tall: 1.2, s: 0.8)
+        case .blueTang:
+            fish(&m, body: c(0x2A6AE0), belly: c(0x5A90F0), fin: c(0x1A1A48), tail: c(0xF2D83A), stripe: nil, tall: 1.5, s: 0.9)
+        case .grumblesaurus, .grinasaurus:
+            // King Grumblesaurus: a huge, scarred bronze rex wearing a gold crown. His brows are drawn
+            // down in a scowl until he's won over, then they relax.
+            let s: Float = 3.4
+            let happy = kind == .grinasaurus
+            let eye = c(0xE8A020), pupil = c(0x1A1008), gold = c(0xE8B83A), goldDark = c(0xA8781E), brow = c(0x1E2410)
+            raptor(&m, body: c(0x4A5A2E), stripe: c(0x2A3418), belly: c(0xC8B488), glow: false, frill: nil, s: s)
+            var face: [Box] = [
+                b(-0.16, 0.42, -0.5, -0.1, 0.47, -0.44, eye, s: s), b(0.1, 0.42, -0.5, 0.16, 0.47, -0.44, eye, s: s),
+                b(-0.14, 0.43, -0.505, -0.12, 0.46, -0.5, pupil, s: s), b(0.12, 0.43, -0.505, 0.14, 0.46, -0.5, pupil, s: s),
+                b(-0.12, 0.52, -0.3, 0.12, 0.58, -0.08, gold, s: s),
+                b(-0.12, 0.58, -0.3, -0.07, 0.66, -0.25, gold, s: s), b(-0.03, 0.58, -0.22, 0.03, 0.68, -0.16, gold, s: s),
+                b(0.07, 0.58, -0.3, 0.12, 0.66, -0.25, gold, s: s),
+                b(-0.12, 0.52, -0.31, 0.12, 0.54, -0.29, goldDark, s: s),
+            ]
+            if !happy {
+                face += [b(-0.18, 0.48, -0.52, -0.08, 0.51, -0.43, brow, s: s), b(0.08, 0.48, -0.52, 0.18, 0.51, -0.43, brow, s: s)]
+            }
+            m.add(.head, SIMD3(0, 0.9, -0.3) * s, face)
         case .allosaurus:
             raptor(&m, body: c(0x6A7A5A), stripe: c(0x3A4A2E), belly: c(0xC8C0A0), glow: false, frill: nil, s: 2.2)
         case .baryonyx:
@@ -238,17 +302,6 @@ enum CreatureModels {
             m.add(.tail, SIMD3(0, 0.35, 0.35), [b(-0.08, 0, 0, 0.08, 0.14, 0.3, shell), b(-0.07, 0.12, 0.25, 0.07, 0.45, 0.4, shell),
                                                 b(-0.07, 0.42, 0.05, 0.07, 0.56, 0.38, shell), b(-0.05, 0.36, -0.08, 0.05, 0.5, 0.06, sting, glow: true)])
 
-        case .villager:
-            let robe = c(0x6A4E8A), trim = c(0xE0B24A), skin = c(0x9AB87A), dark = c(0x3E2E52), eye = c(0x1A1A1A)
-            m.add(.body, .zero, [b(-0.26, 0.72, -0.17, 0.26, 1.45, 0.17, robe), b(-0.27, 0.95, -0.18, 0.27, 1.02, 0.18, trim),
-                                 b(-0.36, 0.98, -0.12, -0.26, 1.42, 0.1, robe), b(0.26, 0.98, -0.12, 0.36, 1.42, 0.1, robe),
-                                 b(-0.3, 1.08, -0.3, 0.3, 1.2, -0.17, skin)])
-            m.add(.head, SIMD3(0, 1.45, 0), [b(-0.2, 0, -0.2, 0.2, 0.42, 0.2, skin), b(-0.1, 0.06, -0.44, 0.1, 0.24, -0.2, skin),
-                                             b(-0.15, 0.25, -0.21, -0.07, 0.32, -0.19, eye), b(0.07, 0.25, -0.21, 0.15, 0.32, -0.19, eye),
-                                             b(-0.05, 0.42, -0.14, 0.05, 0.62, 0.22, trim)])
-            m.add(.leg(0), SIMD3(-0.12, 0.72, 0), [b(-0.09, -0.72, -0.09, 0.09, 0, 0.09, dark)])
-            m.add(.leg(.pi), SIMD3(0.12, 0.72, 0), [b(-0.09, -0.72, -0.09, 0.09, 0, 0.09, dark)])
-
         case .stego:
             let body = c(0x8A7A4A), belly = c(0xC8B888), plate = c(0xC8602A), plate2 = c(0xE0A03A), dark = c(0x5E5230)
             var boxes = [b(-0.55, 0.72, -0.9, 0.55, 1.5, 1.0, body), b(-0.5, 0.66, -0.8, 0.5, 0.74, 0.9, belly)]
@@ -295,6 +348,8 @@ enum CreatureModels {
                 }
                 m.add(.segment(i), SIMD3(0, 0, z), boxes)
             }
+        default:
+            break   // drawn from CreatureShapes above
         }
         return m.parts
     }
@@ -325,12 +380,16 @@ enum CreatureModels {
 
     // MARK: - Drawing
 
-    private static var cache: [CreatureKind: [CreaturePart]] = [:]
+    private static var cache: [String: [CreaturePart]] = [:]
 
-    static func parts(_ kind: CreatureKind) -> [CreaturePart] {
-        if let parts = cache[kind] { return parts }
-        let parts = build(kind)
-        cache[kind] = parts
+    /// The model for a creature; villagers dress by profession (`variant`).
+    static func parts(_ kind: CreatureKind, variant: Int = 0) -> [CreaturePart] {
+        let looks = MobKind(rawValue: kind.rawValue).map { CreatureShapes.variantCount($0) } ?? 1
+        let look = max(0, variant) % max(1, looks)
+        let key = "\(kind.rawValue)#\(look)"
+        if let parts = cache[key] { return parts }
+        let parts = build(kind, variant: look)
+        cache[key] = parts
         return parts
     }
 
@@ -359,26 +418,29 @@ enum CreatureModels {
 
     /// A creature at camera-relative position `rel`, animated like the Mac renderer.
     static func appendCreature(_ v: inout [Float], kind name: String, at rel: SIMD3<Float>, yaw: Float, walk: Float, amount: Float,
-                               lunge: Float, hurt: Float, dying: Float, variant: Int, seed: Double, time: Double) {
+                               lunge: Float, hurt: Float, dying: Float, variant: Int, seed: Double, time: Double, scale: Float = 1,
+                               headYaw: Float = 0, headPitch: Float = 0, tailSwing: Float = 0, breath: Float = 0) {
         guard let kind = CreatureKind(rawValue: name) else { return }
         let tint: SIMD4<Float> = hurt > 0 ? SIMD4(0.9, 0.1, 0.1, min(1, hurt / 0.35) * 0.6)
             : (dying > 0 ? SIMD4(0.9, 0.1, 0.1, 0.45) : (kind == .sheep && variant == 1 ? SIMD4(0.08, 0.08, 0.1, 0.8) : SIMD4(0, 0, 0, 0)))
         let tip: Float = dying > 0 ? min(1, dying / 0.4) * (.pi / 2) : 0
-        let base = MathUtil.translation(rel) * MathUtil.rotationY(yaw) * MathUtil.rotationZ(tip)
-        for part in parts(kind) {
+        // A little side-to-side roll with each step.
+        var base = MathUtil.translation(rel) * MathUtil.rotationY(yaw) * MathUtil.rotationZ(tip + sin(walk) * 0.035 * amount)
+        if scale != 1 { base = base * MathUtil.scale(SIMD3(repeating: scale)) }
+        for part in parts(kind, variant: variant) {
             let local: Mat4
             switch part.role {
             case .body:
-                local = MathUtil.translation(part.pivot + SIMD3(0, abs(sin(walk)) * 0.03 * amount, -lunge * 0.12))
+                local = MathUtil.translation(part.pivot + SIMD3(0, abs(sin(walk)) * 0.03 * amount + breath * 0.012, -lunge * 0.12))
             case .head:
-                local = MathUtil.translation(part.pivot + SIMD3(0, 0, -lunge * 0.2))
-                    * MathUtil.rotationX(Float(sin(time * 1.3 + seed)) * 0.06 + lunge * 0.35 - amount * 0.05)
+                local = MathUtil.translation(part.pivot + SIMD3(0, breath * 0.01, -lunge * 0.2)) * MathUtil.rotationY(headYaw)
+                    * MathUtil.rotationX(Float(sin(time * 1.3 + seed)) * 0.06 + lunge * 0.35 - amount * 0.05 + headPitch)
             case .leg(let phase):
                 local = MathUtil.translation(part.pivot) * MathUtil.rotationX(sin(walk + phase) * 0.7 * amount)
             case .tail:
-                local = MathUtil.translation(part.pivot) * MathUtil.rotationY(Float(sin(time * 2.2 + seed)) * 0.25 + sin(walk) * 0.15 * amount)
+                local = MathUtil.translation(part.pivot) * MathUtil.rotationY(Float(sin(time * 2.2 + seed)) * 0.25 + sin(walk) * 0.15 * amount + tailSwing)
             case .segment(let i):
-                let sway = Float(sin(time * 7 + Double(i) * 0.9 + seed)) * 0.05 * (0.3 + amount)
+                let sway = Float(sin(time * 7 + Double(i) * 0.9 + seed)) * 0.05 * (0.3 + amount) + tailSwing * 0.12 * Float(i + 1)
                 local = MathUtil.translation(part.pivot + SIMD3(sway, 0, 0))
             case .wing(let side):
                 let flap = Float(sin(time * 7 + seed)) * 0.55 + 0.1
@@ -391,12 +453,15 @@ enum CreatureModels {
 
     /// A player with the shared explorer model (and their cosmetics), animated like on the Mac.
     static func appendPlayer(_ v: inout [Float], name: String, look: String?, at rel: SIMD3<Float>, yaw: Float, pitch: Float, walk: Float,
-                             moving: Float, sneaking: Bool, swing: Float, hurt: Float) {
+                             moving: Float, sneaking: Bool, swing: Float, hurt: Float, headYaw: Float = 0, air: Float = 0, sprint: Float = 0) {
         let tint: SIMD4<Float> = hurt > 0 ? SIMD4(0.9, 0.1, 0.1, min(1, hurt / 0.35) * 0.6) : SIMD4(0, 0, 0, 0)
-        let base = MathUtil.translation(rel - SIMD3(0, sneaking ? 0.25 : 0, 0)) * MathUtil.rotationY(yaw)
+        // `yaw` is the body's facing; the head turns a further `headYaw`.
+        let base = PlayerAvatar.base(at: rel, bodyYaw: yaw, sneaking: sneaking, sprint: sprint)
+        let idle = Float(Date().timeIntervalSince1970.truncatingRemainder(dividingBy: 3600)) + Float(name.hashValue & 63)
         for part in PlayerAvatar.parts(PlayerLook.resolve(look, name: name)) {
             let model = base * MathUtil.translation(part.pivot)
-                * PlayerAvatar.pose(kind: part.kind, pitch: pitch, walk: walk, moving: moving, sneaking: sneaking, swing: swing)
+                * PlayerAvatar.pose(kind: part.kind, pitch: pitch, walk: walk, moving: moving, sneaking: sneaking, swing: swing, idle: idle,
+                                    headYaw: headYaw, air: air, sprint: sprint)
             for box in part.boxes { appendBox(&v, model, box.0, box.1, box.2, glow: false, tint: tint) }
         }
     }

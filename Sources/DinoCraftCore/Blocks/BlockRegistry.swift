@@ -3,7 +3,7 @@ import Foundation
 import simd
 #endif
 
-public typealias BlockID = UInt8
+public typealias BlockID = UInt16
 
 public enum RenderLayer: String, Codable, Sendable {
     case opaque, cutout, translucent, invisible
@@ -34,7 +34,7 @@ public struct BlockBox: Sendable, Equatable {
 }
 
 public enum ToolKind: String, Codable, Sendable, CaseIterable {
-    case none, pickaxe, axe, shovel, sword, hoe
+    case none, pickaxe, axe, shovel, sword, hoe, spear, shield
 }
 
 public enum SoundGroup: String, Codable, Sendable, CaseIterable {
@@ -142,8 +142,47 @@ public enum Blocks {
     /// Dyed clay, indexed white, black, red, orange, yellow, green, cyan, blue, purple, pink.
     public static let dyedClay: [BlockID] = Array(136...145)
 
+    // Toonland, the black-and-white cartoon dimension
+    public static let toonGrass: BlockID = 242
+    public static let toonSoil: BlockID = 243
+    public static let toonStone: BlockID = 244
+    public static let smileFlower: BlockID = 245
+    public static let toonLog: BlockID = 246
+    public static let toonLeaves: BlockID = 247
+    public static let checkerBlock: BlockID = 248
+    public static let toonlandPortal: BlockID = 249
+    /// The dark rock of the deep layers, below Y 0.
+    public static let deepSlate: BlockID = 250
+    // The sea floor
+    public static let kelp: BlockID = 251
+    public static let seagrass: BlockID = 252
+    public static let coralBlock: BlockID = 253
+    public static let coral: BlockID = 254
+    public static let seaLantern: BlockID = 255
+    public static let enchantingTable: BlockID = 256
+    public static let fossilDeposit: BlockID = 257
+    public static let displayCase: BlockID = 258
+    /// Display cases with a fossil inside: skull, claw, rib, tooth, fern.
+    public static let displayCases: [BlockID] = [259, 260, 261, 262, 263]
+    public static let meteoriteOre: BlockID = 264
+    public static let marbleBricks: BlockID = 117
+    public static let slateTiles: BlockID = 119
+    public static let goldBlock: BlockID = 87
+    public static let fire: BlockID = 321
+    public static let woolWhite: BlockID = 198
+
+    /// Water, or a plant growing in it (you can drown there, and breaking the plant leaves water).
+    @inlinable public static func holdsWater(_ id: BlockID, _ registry: BlockRegistry) -> Bool {
+        id == water || registry.isSubmerged[Int(id)]
+    }
+
     static let wellKnown: [(String, BlockID)] = [
         ("pink_leaves", pinkLeaves), ("silver_log", silverLog), ("silver_leaves", silverLeaves), ("mushroom_cap", mushroomCap), ("mushroom_stem", mushroomStem), ("bed", bed), ("farmland", farmland), ("wheat_stage0", wheat[0]), ("wheat_stage3", wheat[3]), ("carrots_stage0", carrots[0]), ("carrots_stage3", carrots[3]),
+        ("toon_grass", toonGrass), ("toon_soil", toonSoil), ("toon_stone", toonStone), ("smile_flower", smileFlower), ("toon_log", toonLog),
+        ("toon_leaves", toonLeaves), ("checker_block", checkerBlock), ("toonland_portal", toonlandPortal), ("deep_slate", deepSlate),
+        ("kelp", kelp), ("seagrass", seagrass), ("coral_block", coralBlock), ("coral", coral), ("sea_lantern", seaLantern), ("enchanting_table", enchantingTable), ("fossil_deposit", fossilDeposit),
+        ("display_case", displayCase), ("display_case_skull", displayCases[0]), ("display_case_fern", displayCases[4]), ("meteorite_ore", meteoriteOre),
+        ("marble_bricks", marbleBricks), ("slate_tiles", slateTiles), ("gold_block", goldBlock), ("fire", fire), ("wool_white", woolWhite),
         ("terracotta", terracotta), ("dyed_clay_white", dyedClay[0]), ("dyed_clay_pink", dyedClay[9]),
         ("air", air), ("stone", stone), ("grass", grass), ("dirt", dirt), ("cobblestone", cobblestone),
         ("planks", planks), ("sand", sand), ("gravel", gravel), ("log", log), ("leaves", leaves),
@@ -220,6 +259,12 @@ public struct BlockDefinition: Codable, Sendable {
     public var boxes: [[Int]]?
     /// Orientation rule for facing families: "facePlayer" (front toward the player, default) or "look" (toward where the player looks).
     public var placement: String?
+    /// Grows under water (kelp, seagrass, coral): the cell counts as water for swimming and drawing.
+    public var submerged: Bool?
+    /// Extra looks picked by position (coral colours); the first replaces `textures`.
+    public var variants: [String]?
+    /// Changes colour with the seasons: "all" faces (leaves, plants) or just the "top" (grass).
+    public var seasonal: String?
 }
 
 private struct BlockFile: Codable { var blocks: [BlockDefinition] }
@@ -254,20 +299,32 @@ public struct BlockInfo: Sendable {
     /// Cuboids of a `box` block; `box` is their bounds.
     public let parts: [BlockBox]
     public let placement: String
+    /// Grows under water: the cell is also full of water.
+    public let submerged: Bool
+    /// Textures picked per position, or empty.
+    public let variants: [String]
+    /// 0: never; 1: every face changes colour with the seasons; 2: only the top face.
+    public let seasonal: UInt8
     public var isLiquid: Bool { shape == .liquid }
     public var isBreakable: Bool { hardness >= 0 }
 }
 
 /// Immutable registry of all block types. Loaded once from `Data/blocks.json`
-/// and shared across threads. Hot per-ID flags are stored in flat 256-entry
+/// and shared across threads. Hot per-ID flags are stored in flat tables with one entry per possible id
 /// tables so the mesher, lighting and physics can query without dictionary
 /// lookups.
 public final class BlockRegistry: @unchecked Sendable {
-    public let blocks: [BlockInfo?]            // indexed by id, 256 entries
+    /// Every possible block id has an entry in the lookup tables, so any id read from a save or the
+    /// network can be looked up safely (ids no block uses behave like air).
+    public static let capacity = Int(BlockID.max) + 1
+    /// Blocks are numbered up to here; item ids for other items start just after.
+    public static let maxDefinedID = 4095
+
+    public let blocks: [BlockInfo?]            // indexed by id, `capacity` entries
     public let all: [BlockInfo]                // registered blocks in id order
     private let byName: [String: BlockID]
 
-    // Flat tables (256 entries each)
+    // Flat tables (`capacity` entries each)
     public let isOpaque: [Bool]
     public let isSolid: [Bool]
     public let emission: [UInt8]
@@ -279,9 +336,13 @@ public final class BlockRegistry: @unchecked Sendable {
     public let shapeBoxes: [[BlockBox]]
     /// Facing per id as `BlockFace.rawValue`, or -1.
     public let facingIndex: [Int8]
+    /// Plants growing under water (their cell is also water).
+    public let isSubmerged: [Bool]
+    /// Water, lava, or a plant under water: you swim in it.
+    public let isWet: [Bool]
 
     /// Texture-array layer per (id * 6 + face). Filled after the texture atlas is built.
-    public private(set) var faceLayers: [UInt16] = Array(repeating: 0, count: 256 * 6)
+    public private(set) var faceLayers: [UInt16] = Array(repeating: 0, count: BlockRegistry.capacity * 6)
 
     public enum RegistryError: Error, CustomStringConvertible {
         case invalid(String)
@@ -291,16 +352,16 @@ public final class BlockRegistry: @unchecked Sendable {
     }
 
     public init(definitions: [BlockDefinition]) throws {
-        var table = [BlockInfo?](repeating: nil, count: 256)
+        var table = [BlockInfo?](repeating: nil, count: BlockRegistry.capacity)
         var names: [String: BlockID] = [:]
         for def in definitions {
-            guard (0...255).contains(def.id) else { throw RegistryError.invalid("block '\(def.name)' has out-of-range id \(def.id)") }
+            guard (0...BlockRegistry.maxDefinedID).contains(def.id) else { throw RegistryError.invalid("block '\(def.name)' has out-of-range id \(def.id)") }
             guard table[def.id] == nil else { throw RegistryError.invalid("duplicate block id \(def.id) ('\(def.name)')") }
             guard names[def.name] == nil else { throw RegistryError.invalid("duplicate block name '\(def.name)'") }
             let shape = def.shape ?? .cube
             let layer = def.layer ?? (shape == .cube ? .opaque : .cutout)
             let opaque = def.opaque ?? (shape == .cube && layer == .opaque)
-            let tex = def.textures ?? BlockTextureSpec(all: def.name)
+            let tex = def.textures ?? BlockTextureSpec(all: def.variants?.first ?? def.name)
             let side = tex.side ?? tex.all ?? def.name
             var facing: BlockFace?
             if let f = def.facing {
@@ -344,7 +405,9 @@ public final class BlockRegistry: @unchecked Sendable {
                 waving: def.waving ?? false,
                 needsSupport: def.needsSupport ?? false,
                 box: box, facing: facing, itemName: def.itemName ?? def.name, itemTexture: def.itemTexture,
-                parts: parts, placement: def.placement ?? "facePlayer")
+                parts: parts, placement: def.placement ?? "facePlayer",
+                submerged: def.submerged ?? false, variants: def.variants ?? [],
+                seasonal: def.seasonal == "all" ? 1 : (def.seasonal == "top" ? 2 : 0))
             table[def.id] = info
             names[def.name] = BlockID(def.id)
         }
@@ -365,6 +428,8 @@ public final class BlockRegistry: @unchecked Sendable {
         boxes = table.map { $0?.box }
         shapeBoxes = table.map { $0?.parts ?? [] }
         facingIndex = table.map { Int8($0?.facing?.rawValue ?? -1) }
+        isSubmerged = table.map { $0?.submerged ?? false }
+        isWet = table.map { ($0?.shape == .liquid) || ($0?.submerged ?? false) }
     }
 
     public static func face(named name: String) -> BlockFace? {
@@ -400,21 +465,37 @@ public final class BlockRegistry: @unchecked Sendable {
     @inlinable public subscript(id: BlockID) -> BlockInfo? { blocks[Int(id)] }
     public func id(named name: String) -> BlockID? { byName[name] }
 
-    /// All distinct texture names referenced by blocks.
+    /// Textures the mesher uses besides the blocks' own faces: the halves of a double chest, whose
+    /// border stops at the seam so the two chests read as one.
+    public static let extraTextureNames = ["chest_front_half", "chest_side_half", "chest_top_half"]
+
+    /// Texture-array layers of `extraTextureNames`, filled with the other layers.
+    public private(set) var extraLayers: [String: UInt16] = [:]
+
+    /// Texture-array layers of each block's `variants` (empty for most blocks), indexed by id.
+    public private(set) var variantLayers: [[UInt16]] = Array(repeating: [], count: BlockRegistry.capacity)
+
+    /// All distinct texture names referenced by blocks (and the mesher's extras).
     public var textureNames: [String] {
         var seen = Set<String>(), out: [String] = []
         for b in all where b.shape != .none {
             for t in b.faceTextureNames where seen.insert(t).inserted { out.append(t) }
         }
+        for b in all { for t in b.variants where seen.insert(t).inserted { out.append(t) } }
+        for t in BlockRegistry.extraTextureNames where seen.insert(t).inserted { out.append(t) }
         return out
     }
 
     /// Resolves face textures into texture-array layers once the atlas exists.
     public func bindTextureLayers(_ lookup: (String) -> UInt16) {
-        var layers = [UInt16](repeating: 0, count: 256 * 6)
+        var layers = [UInt16](repeating: 0, count: BlockRegistry.capacity * 6)
         for b in all {
             for f in 0..<6 { layers[Int(b.id) * 6 + f] = lookup(b.faceTextureNames[f]) }
         }
         faceLayers = layers
+        extraLayers = Dictionary(uniqueKeysWithValues: BlockRegistry.extraTextureNames.map { ($0, lookup($0)) })
+        var variants = [[UInt16]](repeating: [], count: BlockRegistry.capacity)
+        for b in all where !b.variants.isEmpty { variants[Int(b.id)] = b.variants.map(lookup) }
+        variantLayers = variants
     }
 }

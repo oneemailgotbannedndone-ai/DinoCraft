@@ -39,9 +39,11 @@ public enum PlayerEvent: Sendable {
 public final class PlayerController {
     public struct Tuning {
         public var walkSpeed = 4.3
-        public var sprintSpeed = 5.8
+        public var sprintSpeed = 7.4
         public var sneakSpeed = 1.35
-        public var swimSpeed = 2.4
+        public var swimSpeed = 3.2
+        /// Sprint-swimming: a fast dive in the direction you look.
+        public var swimSprintSpeed = 5.6
         public var flySpeed = 10.9
         public var flySprintSpeed = 21.6
         public var gravity = 28.0
@@ -69,6 +71,8 @@ public final class PlayerController {
     public private(set) var onGround = false
     public private(set) var inWater = false
     public private(set) var headInWater = false
+    /// Moving along under the water (for swimming animations).
+    public private(set) var isSwimming = false
     public private(set) var isSprinting = false
     public private(set) var isSneaking = false
     public private(set) var collidedHorizontally = false
@@ -114,6 +118,18 @@ public final class PlayerController {
         fallStartY = nil
     }
 
+    /// Updates whether you're in water without moving you (while riding, when physics doesn't run).
+    public func refreshSurroundings(_ world: BlockSource) {
+        let reg = world.registry
+        let hw = width / 2
+        let body = DBox(min: DVec3(position.x - hw, position.y + 0.1, position.z - hw),
+                        max: DVec3(position.x + hw, position.y + 0.9, position.z + hw))
+        inWater = VoxelPhysics.anyBlock(world, in: body) { reg.isWet[Int($0)] }
+        let eye = eyePosition
+        headInWater = world.blockIfLoaded(Int(floor(eye.x)), Int(floor(eye.y)), Int(floor(eye.z))).map { reg.isWet[Int($0)] } ?? false
+        onGround = true
+    }
+
     /// Advances physics by `dt` seconds, sub-stepping for stable collisions.
     public func update(dt: Double, input: MovementInput, world: BlockSource) {
         let total = min(dt, 0.1)
@@ -144,10 +160,10 @@ public final class PlayerController {
         let hw = width / 2
         let body = DBox(min: DVec3(position.x - hw, position.y + 0.1, position.z - hw),
                         max: DVec3(position.x + hw, position.y + 0.9, position.z + hw))
-        inWater = VoxelPhysics.anyBlock(world, in: body) { reg.shape[Int($0)] == .liquid }
+        inWater = VoxelPhysics.anyBlock(world, in: body) { reg.isWet[Int($0)] }
         let eye = eyePosition
         if let id = world.blockIfLoaded(Int(floor(eye.x)), Int(floor(eye.y)), Int(floor(eye.z))) {
-            headInWater = reg.shape[Int(id)] == .liquid
+            headInWater = reg.isWet[Int(id)]
         } else {
             headInWater = false
         }
@@ -182,7 +198,7 @@ public final class PlayerController {
         if flying {
             speed = isSprinting ? tuning.flySprintSpeed : tuning.flySpeed
         } else if inWater {
-            speed = tuning.swimSpeed * (isSprinting ? 1.35 : 1)
+            speed = isSprinting ? tuning.swimSprintSpeed : tuning.swimSpeed
         } else if isSneaking {
             speed = tuning.sneakSpeed
         } else {
@@ -201,11 +217,26 @@ public final class PlayerController {
             if input.sneak { vy -= speed * 0.75 }
             velocity.y += (vy - velocity.y) * (1 - exp(-12 * dt))
         } else if inWater {
-            velocity.y -= tuning.waterGravity * dt
-            velocity.y *= exp(-2.2 * dt)
-            if input.jump {
-                velocity.y = min(velocity.y + 22 * dt, collidedHorizontally ? 5.0 : 3.4)
+            // Is the water surface just above your eyes? Then you float up to it.
+            let aboveEyes = world.blockIfLoaded(Int(floor(position.x)), Int(floor(position.y + eyeHeight + 0.6)), Int(floor(position.z))) ?? Blocks.air
+            let nearSurface = !reg.isWet[Int(aboveEyes)]
+            let targetY: Double
+            if collidedHorizontally && input.jump {
+                targetY = 5.4                                       // climb out onto a ledge
+            } else if (headInWater || pitch < -0.35) && fwd > 0.1 {
+                // Swim where you look: dive, level out or head up.
+                targetY = sin(pitch) * speed * fwd + (input.jump ? 2.5 : 0) - (input.sneak ? 2.5 : 0)
+            } else if input.sneak {
+                targetY = -3                                        // sink
+            } else if input.jump {
+                targetY = headInWater ? 3.6 : 1.6                   // swim up / bob higher at the surface
+            } else if !headInWater || nearSurface {
+                targetY = 0.9 * (headInWater ? 1 : 0)               // float at the surface
+            } else {
+                targetY = -0.7                                      // drift slowly down in deep water
             }
+            velocity.y += (targetY - velocity.y) * (1 - exp(-5 * dt))
+            isSwimming = headInWater && horizontalSpeed > 1
             fallStartY = nil
         } else {
             if input.jump && onGround {
@@ -217,6 +248,7 @@ public final class PlayerController {
             velocity.y = max(velocity.y, -tuning.terminalVelocity)
         }
 
+        if !inWater { isSwimming = false }
         move(velocity * dt, world, sneakEdge: isSneaking && onGround)
 
         horizontalSpeed = sqrt(velocity.x * velocity.x + velocity.z * velocity.z)

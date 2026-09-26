@@ -1,7 +1,8 @@
 import Foundation
 
 public struct WorldMetadata: Codable, Sendable, Identifiable {
-    public static let currentFormat = 1
+    /// 2: deep overworlds that go down to Y -70. Worlds from format 1 keep their old floor at 0.
+    public static let currentFormat = 2
 
     public var formatVersion: Int
     public var id: String                  // folder name
@@ -20,6 +21,9 @@ public struct WorldMetadata: Codable, Sendable, Identifiable {
     /// One life: the world locks into spectator mode when the player dies.
     public var hardcore: Bool?
     public var hardcoreDead: Bool?
+    /// Hardcore multiplayer: players (by player ID, or lowercased name for older versions) who died in this
+    /// world. They can only spectate when they come back.
+    public var hardcoreDeadPlayers: [String]? = nil
     /// Place a chest of starter supplies next to spawn when the world first loads.
     public var bonusChest: Bool?
     /// World rules changed with /gamerule (missing entries use the defaults).
@@ -31,11 +35,13 @@ public struct WorldMetadata: Codable, Sendable, Identifiable {
     public var weatherTimer: Double?
     /// Whether commands like /give and /time work in this world (missing = allowed).
     public var allowCommands: Bool?
+    /// Bosses beaten in this world (e.g. "grumblesaurus").
+    public var defeatedBosses: [String]? = nil
 
     /// Hardcore worlds never allow commands.
     public var commandsAllowed: Bool { !isHardcore && (allowCommands ?? true) }
 
-    public static let gameRuleDefaults: [String: Bool] = ["keepInventory": false, "doDaylightCycle": true, "doMobSpawning": true, "doWeatherCycle": true]
+    public static let gameRuleDefaults: [String: Bool] = ["keepInventory": false, "doDaylightCycle": true, "doMobSpawning": true, "doWeatherCycle": true, "doFireTick": true]
 
     public func rule(_ name: String) -> Bool { gameRules?[name] ?? WorldMetadata.gameRuleDefaults[name] ?? true }
 
@@ -46,6 +52,8 @@ public struct WorldMetadata: Codable, Sendable, Identifiable {
     }
 
     public var isHardcore: Bool { hardcore ?? false }
+    /// Whether this world's overworld has the deep layers (made since the deep update).
+    public var isDeep: Bool { formatVersion >= 2 }
 
     public init(formatVersion: Int = WorldMetadata.currentFormat, id: String, name: String, seedText: String, seed: String,
                 gameMode: GameMode, difficulty: Difficulty, createdAt: Date, lastPlayed: Date, playTimeSeconds: Double,
@@ -64,9 +72,11 @@ public struct SavedStack: Codable, Sendable {
     public var item: String
     public var count: Int
     public var damage: Int?
+    public var enchant: Int?
 
-    public init(slot: Int, item: String, count: Int, damage: Int?) {
+    public init(slot: Int, item: String, count: Int, damage: Int?, enchant: UInt16 = 0) {
         self.slot = slot; self.item = item; self.count = count; self.damage = damage
+        self.enchant = enchant == 0 ? nil : Int(enchant)
     }
 }
 
@@ -84,6 +94,10 @@ public struct PlayerSave: Codable, Sendable {
     public var dimension: String?
     /// Worn armor; `slot` is 0 head … 3 feet.
     public var armor: [SavedStack]?
+    /// Experience points collected in total (see `Experience`).
+    public var xp: Int?
+    /// Villager quests in progress, as JSON written by the game.
+    public var quests: Data?
 
     public init(x: Double, y: Double, z: Double, yaw: Double, pitch: Double, health: Double, hunger: Double,
                 saturation: Double, air: Double?, flying: Bool, selectedSlot: Int, inventory: [SavedStack], dimension: String? = nil) {

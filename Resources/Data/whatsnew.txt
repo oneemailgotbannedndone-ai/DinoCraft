@@ -1,24 +1,283 @@
-DinoCraft - the launcher update
+DinoCraft - the Toonland update
 
-Launcher
-- DinoCraft now opens on a launcher: Play, Update, Cosmetics, Skin Creator, Settings and Quit.
-- The Update button finds new versions by itself, downloads them and restarts into them.
-- Your stats: worlds and time played. Open Game Folder shows your worlds and screenshots.
+Fixes and speed
+- Mac: the game and the launcher start again (a startup check had not been updated for the seasons update,
+  so both stopped before opening).
+- Windows: the block-breaking cracks show properly instead of a purple checkerboard (their pictures were
+  missing from the download).
+- Windows runs faster: hidden faces of blocks are skipped, nearby chunks are drawn first so hidden pixels
+  are thrown away early, and on laptops with an NVIDIA or AMD graphics card the game now asks to run on it
+  instead of the slower built-in graphics.
+- If chunk meshes outgrow your graphics card's memory, the render distance steps down for that session
+  (with a message) instead of the game slowing to a crawl.
+- With VSync on, if the graphics driver ignores it, the game paces frames to your screen itself.
+- Third person (F5): your body turns naturally behind your head, you lean into sprints, arms and legs
+  spread when you jump or fall, and on Windows you can see what you're holding.
 
-Skin Creator
-- Draw your own face and shirt, pixel by pixel, with 16 colours, fill, mirror and ideas to start from.
-- Save & Play goes straight into the game. Friends see your skin in multiplayer.
-- Copy Code and Paste Code share skins with friends.
+Five new dinosaurs, livelier creatures and a more detailed explorer
+- Protoceratops graze in plains, savanna and deserts. Styracosaurus roam the plains with a spiky frill and
+  charge if you hit them. Corythosaurus, with their tall crests, wander the forests. Quetzalcoatlus soar over
+  the mountains, and Dilophosaurus come out at night in swamps and jungles, spitting at anyone nearby.
+- Styracosaurus and Corythosaurus can be tamed and ridden. A tamed Quetzalcoatlus can be ridden through the air.
+- Creatures move more naturally: they turn their heads to look at you, their tails swing as they turn, they
+  breathe when standing still, plant-eaters put their heads down to graze, and they rock from side to side as
+  they walk.
+- Your explorer has more detail: eyes that look ahead, brows, a nose and mouth, ears, a collar with buttons,
+  a belt buckle, sleeve cuffs, and boots with soles and laces. Standing still, you breathe and your arms sway.
 
-Cosmetics
-- Hats: Explorer Hat, Cap, Crown, Top Hat, Dino Hood, Flower Crown.
-- Shirt, trousers and skin colours, plus a Cape, Dino Tail or Backpack.
-- Press F5 in game to see yourself from behind or from the front.
+Shipwrecks, crabs and buried treasure
+- Shipwrecks lie in shallow seas near the coast: broken wooden hulls with a snapped mast, a captain's chest
+  and a supply chest. Crabs scuttle about their decks, and on sandy beaches. They nip if you get close,
+  and their claws are good to eat (cook them in a furnace).
+- Shipwreck chests often hold a Treasure Map. Right-click it: it fixes on the nearest buried treasure and
+  opens your map with a red X (or an arrow at the edge showing how far away it is). The treasure is buried a
+  few blocks under the sand of a beach, and it's worth the dig.
 
-Windows now plays like the Mac
-- Survival, Hardcore and Creative with creatures, crafting, furnaces, chests, farming, bows, armor, beds, villagers, portals, weather and advancements.
-- Texture packs, shader packs, particles, rain and snow, and a Settings screen.
+Seasons, lightning fires and ocean temples
+- The year now turns: spring, summer, autumn and winter, six days each. Leaves and grass go fresh green in
+  spring and gold and orange in autumn. In winter snow settles on treetops and grass, and rain falls as snow.
+  Crops grow fastest in spring and slowest in winter. Type /season to see which it is (or skip ahead).
+- Lightning now really strikes: you'll see the bolt, it hurts anything it hits, and it can set grass, leaves
+  and wood alight. Fire spreads to flammable blocks nearby and burns them away, then dies down. Rain puts it
+  out, and standing in it burns. An Ember Lighter struck on the ground lights a fire too
+  (/gamerule doFireTick false stops it spreading).
+- Ocean Temples stand on the deep sea floor: stepped marble pyramids lit by sea lanterns, with a treasure chest
+  on a gold dais inside. Each is guarded by a Mosasaurus. It circles the temple and charges at anyone who swims
+  near. Beat it (it has a boss bar) for its tooth, diamonds, emeralds and plenty of experience, and the temple
+  is safe from then on. Find one with /locate ocean_temple or on your map.
 
-Looks
-- The Mac now uses the Windows pixel font.
-- Texture packs keep natural colours: TunefulCraft, Pastel Picnic, Retro Pixels and Autumn Woods.
+Amber circuits and decorations
+- Amber Dust (from amber) carries power up to 15 blocks, lighting up as it goes. Power it with a Lever (flip
+  it on and off), a Button (on for a second) or a Pressure Plate (on while something stands on it).
+- Powered dust switches on Amber Lamps, opens doors next to it, and pushes Pistons: a piston shoves up to 12
+  blocks in front of it and pulls its head back when the power stops. Pistons face you when you place them,
+  or up and down when you look steeply.
+- Paintings: hang one on a wall for a random picture (six to collect). Item Frames: put any item in one to
+  show it off, and right-click to take it back. Armour Stands: right-click with armour to dress one up,
+  or with an empty hand to take it all back. Hit it to pick the stand up.
+
+Fossils, volcanoes, meteorites, storms and maps
+- Fossil Dig Sites appear in plains, savannas and deserts: stepped pits with lantern posts, a supply chest and
+  Fossil Deposits. Mine a deposit for a fossil: a Tooth, Claw, Ribs, Fern or, rarely, a Skull.
+- Build a Display Case (glass over planks) and right-click it with a fossil to put it on show. Right-click it
+  again to take the fossil back. Put all five kinds on display for the Curator advancement. The Fossil Hunter
+  now buys fossil teeth too.
+- Volcanoes rise out of the Volcanic Wastes with a lava-filled crater. Now and then they erupt: smoke, spraying
+  lava and flying lava bombs that leave glowing rock where they land. Keep your distance!
+- Some nights bring a meteor shower. Shooting stars streak across the sky, and a few meteorites crash down
+  nearby, leaving a crater with Meteorite ore in the bottom. Mine it with an iron pickaxe or better for
+  Meteorite Shards, then craft a Starmetal Pickaxe (the fastest there is) or a Starmetal Sword.
+- New weather: storms. Heavier rain, darker skies, more lightning, and gusts of wind that slant the rain and
+  push you about when you're out in the open.
+- Paper (from 3 cattails) and a Map (8 paper around an iron ingot): right-click the map to see the land for
+  about 100 blocks around you, with villages, dig sites, ruins and volcanoes marked.
+- New commands: /locate dig_site, /locate volcano, /weather storm, and /event eruption or /event meteors.
+
+Experience, enchanting and villager quests
+- Defeating creatures, mining ore and taking smelted items out of a furnace now give glowing experience orbs.
+  Walk near them to collect them. The green bar above your hotbar shows your level. When you die, some of it
+  spills out as orbs.
+- Enchanting Table (amber on top, then diamond, obsidian, diamond, then three obsidian): right-click it while
+  holding a tool, weapon or piece of armour. It offers three enchantments, paid for with levels and amber:
+  Efficiency, Sharpness, Unbreaking, Power, Protection and Fortune, each up to level III.
+  Enchanted items shimmer, and their tooltip lists what they have.
+- Villagers now ask for help: each one offers a quest a day on its trading screen, such as bringing items,
+  defeating creatures or mining ore, for emeralds and experience. You can take up to three at a time.
+  Your Quest Book tracks them (right-click it). Hand finished quests in to any villager.
+
+Spears, crossbows, shields and flying Pteranodons
+- Spear (flint over two sticks, diagonal): hold right-click and let go to throw it. It sticks where it lands;
+  walk over it to pick it back up.
+- Crossbow (sticks, iron and string): hold right-click to load an arrow, then right-click to fire a hard-hitting bolt.
+- Shield (planks and iron): hold right-click to raise it. It stops attacks from the front and you move slowly.
+- Tame a Pteranodon with fish, saddle it and ride it: fly where you look, sprint to go faster, jump to climb.
+  Saddled Pteranodons grow big enough to carry you.
+
+Dino eggs and babies
+- Feed one of your fully healed tamed dinosaurs its favourite food and it goes looking for a partner. Do the same
+  for a second one of the same kind nearby and they lay a speckled egg.
+- The egg rocks harder as it gets ready and hatches after about 45 seconds into a tamed baby.
+  Babies grow up over about ten minutes; feeding them makes them grow faster. They can't be ridden until grown.
+- New advancements: Sky Rider, The Next Generation, Hatchling, Hold the Line, Javelin and Bolt Action.
+
+One DinoCraft on Mac and Windows
+- Joining a friend's world on Windows now runs the full game, like on the Mac: boats, fishing, taming and riding,
+  the minimap, the guide, advancements, containers and everything else work when you join, not just when you host.
+- Windows gets the Mac's extras: an outline around the block you're aiming at and cracks while you mine it,
+  the name and health bar of whatever creature you're looking at, Tab to see who's playing, command suggestions
+  in chat (Tab completes, Up/Down choose), Q to drop and 1-9 to move items while hovering a slot, Credits,
+  Quit Game, Stop Hosting, Copy Invite Code and a Commands on/off switch in the pause menu, and Discord status.
+- Windows settings gain Master Volume, Clouds, Interface Scale, Shader Strength, Window Size, the three graphics
+  qualities, Discord options, the map and an Open Texture Packs Folder button.
+- The Mac gets Windows' extras: name tags over your tamed creatures, the "Sneak to get off" hint, a Map setting
+  and Unlimited in Max FPS.
+- Both: the Credits are the same everywhere, and you no longer see the inside of a friend standing where you are.
+
+Boats, fishing and a map
+- Craft a Boat from 5 planks (a U shape), right-click water to put it in, right-click it to climb aboard.
+  It goes where you look, sprint to row faster, sneak to get off; hit it once to pick it back up.
+- Craft a Fishing Rod (3 sticks and 2 string). Cast into water, wait for the float to dip under with a splash,
+  then reel in quickly: mostly fish, some junk, and now and then treasure (luckier at night and in the rain).
+- String drops from Cave Crawlers and Sand Scorpions, or craft 3 from any wool.
+- A minimap in the top-right corner, coloured from the real blocks, with your pets, friends and a red X where
+  you last died. Press M for a big map or to hide it (change the key in Controls). Underground it maps the cave.
+- New advancements: Ahoy!, Gone Fishing and Sunken Treasure.
+- Fixed thin cracks that showed across big stretches of water.
+
+Taming, riding and pets
+- Tame creatures by feeding them their favourite food (it can take a few tries):
+  Trikey, Parasaurolophus, Iguanodon, Stegosaurus, Longneck, Pachycephalosaurus and Gallimimus eat berries or wheat;
+  Raptors and Compys eat raw dino meat; Dodos, Oviraptors and Pookpooks make lovely pets.
+- Tamed creatures follow you, catch up if you run off, and sit when you right-click them.
+- Craft a Saddle (5 dino hide + an iron ingot), put it on a big plant-eater and ride it: steer with your movement keys,
+  jump with Jump, sprint to gallop and sneak to get off. Gallimimus is the fastest.
+- Tamed Raptors and Compys are guards: they fight whatever attacks you and whatever you attack.
+- Name them with /name Blue while looking at them. Feed them to heal them. They're saved with your world.
+- New advancements: Best Friends, Dino Rider and Clever Girls.
+
+New dinosaurs
+- Pachycephalosaurus: a dome-headed headbutter on the plains and mountains (leave it alone and it leaves you alone).
+- Gallimimus: an ostrich-like sprinter that races off when startled.
+- Iguanodon: a big, gentle forest plant-eater with spiked thumbs.
+- Oviraptor: a small, bright feathered forager with a tall crest.
+- Microraptor: a four-winged glider flitting through forests and jungles.
+- Therizinosaurus: a towering feathered giant with huge claws, deep in the jungle. Don't make it angry.
+- Each has its own spawn egg.
+
+Better villagers
+- Every villager has a face now, with eyes, brows and a big nose, and stands with folded arms.
+- Each profession dresses the part: Farmers in straw hats, Toolsmiths with goggles and a leather apron,
+  Masons in caps and white aprons, Fossil Hunters in explorer's helmets with a satchel and neckerchief.
+
+Better textures
+- Wood: planks with wavy grain, knots, lit edges and nail heads; bark with deep furrows; log ends with
+  growth rings, a drying crack and a rim of bark (oak, redwood and palm).
+- Dirt with crumbly clods, pebbles and roots; grass with little blades, and grass edges that drip down the side.
+- Sand with wind ripples; stone bricks as big bevelled blocks (plain, mossy and cracked); crisper clay bricks.
+- All 19 texture packs are updated to match.
+
+Fixes and controls
+- Fixed a crash while exploring cold seas: an iceberg next to land or a shallow bank crashed the game.
+  It happened more often with a big render distance, since more of the world is being built.
+- Updates: the launcher now tells you whether the last update worked. On Mac, if macOS blocks the launcher from
+  replacing the apps, nothing is left half-copied: the new apps' folder opens so you can drag them into Applications,
+  or allow DinoCraft Launcher in System Settings > Privacy & Security > App Management.
+- Windows: change your keys in Settings > Controls. Click an action, then press a key or mouse button.
+  Joined games use your keys too.
+- A better hunger bar: pixel drumsticks with a gold rim while you're still full, a shake when you're starving,
+  and a ripple when you eat.
+
+Life under the sea
+- Fish: schools of Cod and Salmon, and Clownfish and Blue Tang on the reefs. They swim all around you,
+  dart away when you hit them and flop about on land. Catch them for Raw Fish and Tropical Fish; cook fish in a furnace.
+- Coral reefs in warm, shallow seas: mounds of coral in five colours, branching coral and glowing Sea Lanterns.
+- Kelp forests sway in cooler seas, and seagrass meadows cover the sea floor. Smelt kelp into Dried Kelp to snack on.
+- Under water now really looks like under water on Windows too: blue-green fog all around (a little clearer on Mac as well).
+- Craft Sea Lanterns from coral, glass and a torch. New advancements: Just Keep Swimming, Something Fishy and Under the Sea.
+
+Toonland
+- A whole new dimension of golden meadows, birch woods and glowing sunblooms.
+- Build a Checker Gateway (coal + bone meal make Checker Blocks) and light it with the Ember Lighter.
+- Follow the checkered roads to the stages, and listen to the Toonland song "Sunny Side Up", with words on screen.
+
+King Grumblesaurus
+- Toonland's boss: mud splatters, ground-shaking stomps and a boss health bar.
+- Cheer him up to beat the game, win the Smile Trophy and hear his own theme, "Grumble Stomp".
+
+Global leaderboard
+- A new Leaderboard in the launcher: see everyone's play time, kills, blocks mined and placed, distance, crafting, deaths and bosses.
+- Your stats are counted in every world and shared automatically every few minutes while you play.
+
+Better ores
+- Every ore is repainted: glossy coal lumps, rusty iron and shiny gold nuggets, faceted diamonds,
+  hexagonal emerald crystals and glowing amber, each set into the stone with a shadow and a glint.
+
+Bigger caves
+- New worlds have wider tunnels and much bigger caverns, and the deep slate caves are bigger too.
+
+Recipe book on Windows
+- The inventory and crafting bench now have a Recipe Book: see every recipe, and click one to fill the grid.
+
+Fixes
+- Mac: joining a friend no longer gives up straight away while macOS asks for Local Network permission.
+- If DinoCraft ever crashes, the launcher offers to send the crash report so it can be fixed (now on Windows too,
+  with the exact error and where it happened).
+- Windows: DinoCraft gets 8 times more room for its main thread, which can stop some crashes.
+
+A crafting-table look
+- Menus, inventories and chests are now oak planks in a dark wooden frame with iron nails, on Mac and Windows.
+
+Zoom
+- Hold Z to zoom in. Scroll while holding it to zoom further in or out. Let go and it zooms back out.
+
+Double chests
+- Put two chests side by side (facing the same way) and they join into one Large Chest with twice the room.
+
+Multiplayer
+- /msg <player> <message> sends a private message (also /tell and /w).
+- Hardcore worlds in multiplayer: players who die can only spectate, even if they leave and rejoin.
+- Hardcore hearts look different: dark crimson with a gold crest.
+
+Toonland looks like DinoCraft now
+- No more black-and-white cartoon filter: golden meadows, birch woods, limestone, marble checker roads and glowing sunblooms.
+- King Grumblesaurus is a real bronze rex with a gold crown.
+
+More
+- Render distance goes up to 64 chunks (for strong computers).
+- Axes, swords, shovels and hoes all match the new pickaxe style.
+
+Friends
+- A new Friends page in the launcher. Press Copy My Friend Code and send it to a friend; they press Add Friend (Paste Code).
+- See which friends are playing right now and join their world in one click.
+- Anyone you play with shows up under "Played with recently", ready to add.
+- The game tells you when a friend joins your world.
+
+Every player is 1 of 1
+- Everyone gets their own tag, like Rex#K7Q2, so no two players are the same, even with the same name.
+- New players start with a one-of-a-kind look made just for them.
+
+12 new texture packs
+- TunefulCraft Remix (for our very first reviewer - thank you, Tuneful!), Candy Land, Desert Sun, Midnight, Deep Sea, Inferno,
+  Pocket Green, Sketchbook, Stained Glass, Blueprint, Watercolour and Gilded. That's 19 packs to choose from.
+
+Better tools
+- Hand-drawn axes with a curved, bevelled blade and swords with a crossguard, wrapped grip and pommel.
+- The launcher's Friends and Reviews buttons show who's playing and the average star rating.
+
+Draw your whole skin
+- The Skin Creator now paints every side of every body part: head (even the top), body, both arms and both legs.
+- The preview turns to show the side you're painting, and "Copy Other Arm/Leg" matches your limbs in one click.
+
+More cosmetics
+- 8 new hats: Wizard Hat, Viking Helmet, Headphones, Halo, Pirate Hat, Beanie, Bunny Ears and Party Hat.
+- 4 new things for your back: Angel Wings, Dragon Wings, a Jetpack and a Sword.
+- More shirt, trouser, skin and accent colours.
+
+DinoCraft Launcher
+- A separate launcher program: news, updates, cosmetics, the skin creator and "How to Beat the Game". Play starts the game.
+
+Guide and loading screens
+- Press G for your next goal, step by step, from the first log to the final boss.
+- New loading screens with tips and a look for every dimension.
+
+Deeper world
+- New worlds now go all the way down to Y -70: a layer of Deep Slate with caverns, lava pools and richer ores.
+- Reach the bottom for the new "Rock Bottom" advancement. Older worlds keep their old floor.
+
+Oceans, ice and swimming
+- Swimming: you float at the surface, swim where you look (dive down, come back up), sprint to swim fast, sneak to sink, and jump at an edge to climb out. Your arm paddles as you swim.
+- New worlds have gentler oceans and smaller icy regions. Cold seas get drifting ice floes and icebergs.
+
+Player reviews
+- The launcher's Player Reviews page shows everyone's star ratings and reviews. Pick your stars and press Write a Review.
+
+Animations
+- Items are 3D on Windows too: in your hand and on the ground. An empty hand shows your arm.
+- Your hand sways when you turn, dips when you land, leans into a sprint and brings food to your mouth (with crumbs).
+- Swords slash sideways; pickaxes and axes chop down.
+
+More
+- New pickaxe and bedrock textures.
+- Sprinting is faster. VSync is off by default, with a Max FPS setting.
+- Three new texture packs: Comic Ink, Frostbite and Neon Nights.
+- Herds sometimes stampede past, and the music repeats less.

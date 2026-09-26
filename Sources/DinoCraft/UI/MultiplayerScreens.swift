@@ -158,7 +158,7 @@ final class ChatScreen: Screen {
             }
         }
 
-        d.fill(field.inset(-6), Color(hex: 0x0A0614, alpha: 0.6), radius: 14)
+        d.fill(field.inset(-6), Color(hex: 0x140A04, alpha: 0.6), radius: 14)
         let submitted = ui.textField("modal.chat", field, &text, placeholder: "Chat, or type / for commands (Tab completes, Enter sends, Esc closes)", maxLength: 200)
         text = text.replacingOccurrences(of: "\t", with: "")
 
@@ -169,14 +169,14 @@ final class ChatScreen: Screen {
             var y = field.y - 12 - Float(rows.count) * rowH - (usage != nil ? 36 : 0)
             if let usage {
                 let bar = Rect(field.x, y, field.w, 30)
-                d.fill(bar, Color(hex: 0x120B22, alpha: 0.94), radius: 8)
+                d.fill(bar, Color(hex: 0x2A180A, alpha: 0.94), radius: 8)
                 d.text(usage, x: bar.x + 12, y: bar.y + 6, size: 14, color: Theme.amber, face: .display, maxWidth: bar.w - 24)
                 y += 36
             }
             for (i, suggestion) in rows.enumerated() {
                 let r = Rect(field.x, y + Float(i) * rowH, field.w, rowH - 2)
                 let active = i == selected
-                d.fill(r, active ? Theme.amber.alpha(0.28) : Color(hex: 0x120B22, alpha: 0.9), radius: 8)
+                d.fill(r, active ? Theme.amber.alpha(0.28) : Color(hex: 0x2A180A, alpha: 0.9), radius: 8)
                 d.text(suggestion.label, x: r.x + 12, y: r.y + 5, size: 15, color: active ? Theme.text : Theme.textMuted, face: active ? .display : .body,
                        maxWidth: field.w * 0.5)
                 if let detail = suggestion.detail {
@@ -222,10 +222,40 @@ enum MultiplayerHUD {
             let size = max(11, 17 - distance * 0.12)
             let tw = d.font.measure(p.name, size: size, face: .display) + 16
             let tag = Rect(sx - tw / 2, sy - size - 8, tw, size + 10)
-            d.fill(tag, Color(hex: 0x0A0614, alpha: 0.55), radius: 7)
+            d.fill(tag, Color(hex: 0x140A04, alpha: 0.55), radius: 7)
             d.text(p.name, in: tag, size: size, color: p.hurtTimer > 0 ? Theme.danger : Theme.text, face: .display)
             let hp = Float(max(0, min(20, p.health)) / 20)
             d.fill(Rect(tag.x + 4, tag.maxY + 2, (tag.w - 8) * hp, 3), Theme.danger.mix(Theme.jungle, hp), radius: 1.5)
+        }
+
+        // Name tags over your tamed creatures (and the name of whatever you're looking at that's yours)
+        if let s = e.session {
+            for m in s.mobs.mobs where m.isTamed && !m.isDying && m !== s.riding {
+                let rel = SIMD3<Float>(Float(m.position.x - e.camera.position.x), Float(m.position.y + m.species.height * m.scale + 0.45 - e.camera.position.y),
+                                       Float(m.position.z - e.camera.position.z))
+                let distance = simd_length(rel)
+                guard distance < 20 else { continue }
+                let clip = viewProj * SIMD4(rel, 1)
+                guard clip.w > 0.1 else { continue }
+                let ndc = SIMD2(clip.x, clip.y) / clip.w
+                guard abs(ndc.x) < 1.2, abs(ndc.y) < 1.2 else { continue }
+                let text = m === s.targetMob ? m.label : (m.petName ?? (m.sitting ? "\(m.species.displayName) (sitting)" : ""))
+                guard !text.isEmpty else { continue }
+                let sx = (ndc.x * 0.5 + 0.5) * W, sy = (1 - (ndc.y * 0.5 + 0.5)) * H
+                let size = max(11, 15 - distance * 0.15)
+                let tw = d.font.measure(text, size: size, face: .display) + 16
+                let tag = Rect(sx - tw / 2, sy - size - 8, tw, size + 10)
+                d.fill(tag, Color(hex: 0x140A04, alpha: 0.5), radius: 7)
+                d.text(text, in: tag, size: size, color: Color(hex: 0xC0FFB4), face: .display)
+            }
+            if s.riding != nil {
+                d.text("Sneak to get off", x: W / 2, y: H - 132, size: 14, color: Theme.text.alpha(0.75), face: .display, align: .center,
+                       shadow: Color(linear: 0, 0, 0, 0.8))
+            }
+            if s.spectator {
+                d.text("Spectator — your Hardcore adventure is over", x: W / 2, y: H - 110, size: 14, color: Theme.text.alpha(0.75),
+                       face: .display, align: .center, shadow: Color(linear: 0, 0, 0, 0.8))
+            }
         }
 
         // Chat log
@@ -237,7 +267,7 @@ enum MultiplayerHUD {
             guard chatOpen || age < 12 else { y += 24; continue }
             let alpha = chatOpen ? 1 : Float(min(1, (12 - age) / 1.5))
             let tw = d.font.measure(entry.text, size: 15) + 20
-            d.fill(Rect(16, y - 2, min(tw, W * 0.6), 24), Color(hex: 0x0A0614, alpha: 0.45 * alpha), radius: 6)
+            d.fill(Rect(16, y - 2, min(tw, W * 0.6), 24), Color(hex: 0x140A04, alpha: 0.45 * alpha), radius: 6)
             d.text(entry.text, x: 26, y: y + 1, size: 15, color: Theme.text.alpha(alpha), maxWidth: W * 0.6 - 20)
             y += 24
         }
@@ -247,7 +277,7 @@ enum MultiplayerHUD {
             let names = [e.settings.username + " (you)"] + e.remotePlayers.map { $0.name }
             let pw: Float = 320, ph = Float(names.count) * 30 + 70
             let panel = Rect(W / 2 - pw / 2, 90, pw, ph)
-            d.fill(panel, Color(hex: 0x120B22, alpha: 0.88), radius: 16)
+            d.fill(panel, Color(hex: 0x2A180A, alpha: 0.88), radius: 16)
             d.stroke(panel, Theme.amber.alpha(0.35), radius: 16, width: 1.2)
             d.text(e.server != nil ? "Hosting · \(names.count) players" : "Players · \(names.count)", in: Rect(panel.x, panel.y + 12, pw, 32),
                    size: 17, color: Theme.amber, face: .display)

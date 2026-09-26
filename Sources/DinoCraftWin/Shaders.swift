@@ -89,8 +89,19 @@ enum Shaders {
         uniform vec3 uSkyHorizon;
         uniform float uTime;
         uniform float uBrightness;
+        uniform vec4 uSeason;
+        uniform float uSnow;
 
         out vec4 fragColor;
+
+        // Leaves, grass and plants take on the season's colours, with snow on their tops in winter.
+        vec3 seasonal(vec3 c, uint flags) {
+            if ((flags & 32u) == 0u) return c;
+            float luma = dot(c, vec3(0.3, 0.59, 0.11));
+            c = mix(c, luma * uSeason.rgb, uSeason.w);
+            if (vNormalY > 0.5) c = mix(c, vec3(0.92, 0.95, 0.98) * (0.85 + luma * 0.3), uSnow);
+            return c;
+        }
 
         float lightCurve(float l) { return pow(0.82, (1.0 - l) * 15.0); }
 
@@ -110,7 +121,7 @@ enum Shaders {
         vec3 applyFog(vec3 color, vec3 viewPos) {
             float d = length(viewPos);
             if (uFogParams.y > 0.5) {
-                float k = 1.0 - exp(-d * 0.085);
+                float k = 1.0 - exp(-d * 0.06);
                 return mix(color, vec3(0.03, 0.14, 0.26) * max(0.25, uSunDaylight.w), k);
             }
             float t = smoothstep(uFogColorStart.w, uFogParams.x, d);
@@ -121,11 +132,11 @@ enum Shaders {
         void main() {
             vec4 c = texture(uBlocks, vec3(vUV, vLayer));
         #if defined(PASS_OPAQUE)
-            vec3 lit = c.rgb * terrainLighting(vSky, vLight, vShade, vFlags);
+            vec3 lit = seasonal(c.rgb, vFlags) * terrainLighting(vSky, vLight, vShade, vFlags);
             fragColor = vec4(applyFog(lit, vViewPos), 1.0);
         #elif defined(PASS_CUTOUT)
             if (c.a < 0.5) discard;
-            vec3 albedo = c.rgb / max(c.a, 0.001);
+            vec3 albedo = seasonal(c.rgb / max(c.a, 0.001), vFlags);
             vec3 lit = albedo * terrainLighting(vSky, vLight, vShade, vFlags);
             fragColor = vec4(applyFog(lit, vViewPos), 1.0);
         #else
@@ -167,6 +178,7 @@ enum Shaders {
     uniform vec2 uTanHalfFov;
     uniform vec4 uSunDaylight;
     uniform vec4 uZenithStars;
+    uniform float uClouds;
     uniform vec4 uHorizonGlow;
     uniform vec3 uCamPos;
     uniform float uTime;
@@ -221,8 +233,8 @@ enum Shaders {
             col += vec3(0.9, 0.95, 1.0) * step(0.985, h) * stars * twinkle * clamp(y * 3.0, 0.0, 1.0);
         }
 
-        if (abs(y) > 0.015) {
-            float dist = (200.0 - uCamPos.y) / y;
+        if (uClouds > 0.5 && abs(y) > 0.015) {
+            float dist = (270.0 - uCamPos.y) / y;
             if (dist > 0.0) {
                 vec2 p = uCamPos.xz + dir.xz * dist;
                 p = p * 0.0045 + vec2(uTime * 0.004, uTime * 0.0015);
@@ -347,6 +359,7 @@ enum Shaders {
     uniform sampler2D uScene;
     uniform vec4 uParams;   // x preset (1 vibrant, 2 cinematic, 3 retro, 4 dreamy), y time, zw size in pixels
     uniform float uStrength;
+    uniform float uMono;    // 1 = black-and-white (not used by any dimension now)
     out vec4 fragColor;
     float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
     float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
@@ -407,7 +420,15 @@ enum Shaders {
             g *= mix(1.0, vignette, 0.35);
         }
         vec3 graded = pow(clamp(g, vec3(0.0), vec3(1.0)), vec3(2.2));
-        fragColor = vec4(mix(base, graded, clamp(uStrength, 0.0, 1.0)), 1.0);
+        vec3 outc = preset > 0 ? mix(base, graded, clamp(uStrength, 0.0, 1.0)) : base;
+        if (uMono > 0.0) {
+            float l = luma(toGamma(outc));
+            l = smoothstep(0.03, 0.97, l);
+            l += (hash(floor(uv * size / 2.0) + fract(time * 12.0) * 57.0) - 0.5) * 0.05;
+            l *= mix(1.0, vignette, 0.55);
+            outc = mix(outc, vec3(pow(clamp(l, 0.0, 1.0), 2.2)), clamp(uMono, 0.0, 1.0));
+        }
+        fragColor = vec4(outc, 1.0);
     }
     """
 

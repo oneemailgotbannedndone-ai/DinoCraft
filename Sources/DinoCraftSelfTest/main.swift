@@ -275,6 +275,28 @@ section("Physics") {
     for _ in 0..<60 { a.update(dt: 1.0 / 60, input: walk, world: open); b.update(dt: 1.0 / 60, input: sprint, world: open) }
     check(abs(b.position.z) > abs(a.position.z) * 1.2, "sprinting covers more ground")
 
+    // Swimming: a deep pool (water from y 1 to 29, surface at 30) with a wall at x = 6
+    let pool = flatWorld(blocks, groundHeight: 1)
+    for z in -30..<30 { for x in -30..<30 { for y in 1..<30 { pool.set(x, y, z, x >= 6 ? Blocks.stone : Blocks.water) } } }
+    let swimmer = PlayerController(position: DVec3(0.5, 28, 0.5))
+    let idle = MovementInput()
+    for _ in 0..<300 { swimmer.update(dt: 1.0 / 60, input: idle, world: pool) }
+    check(swimmer.position.y > 27 && swimmer.position.y < 30, "you float at the surface (y \(String(format: "%.1f", swimmer.position.y)))")
+    var dive = MovementInput(); dive.forward = 1
+    swimmer.pitch = -0.8   // look down
+    swimmer.yaw = Double.pi / 2   // face -X, away from the wall
+    let startY = swimmer.position.y
+    for _ in 0..<120 { swimmer.update(dt: 1.0 / 60, input: dive, world: pool) }
+    check(swimmer.position.y < startY - 3, "swimming forward while looking down dives (to y \(String(format: "%.1f", swimmer.position.y)))")
+    swimmer.pitch = 0.9   // look up
+    for _ in 0..<240 { swimmer.update(dt: 1.0 / 60, input: dive, world: pool) }
+    check(swimmer.position.y > 26, "looking up swims back to the top (y \(String(format: "%.1f", swimmer.position.y)))")
+    let climber = PlayerController(position: DVec3(5.5, 28.6, 0.5))
+    climber.yaw = -Double.pi / 2   // face the wall (+X)
+    var climb = MovementInput(); climb.forward = 1; climb.jump = true
+    for _ in 0..<180 { climber.update(dt: 1.0 / 60, input: climb, world: pool) }
+    check(climber.position.y >= 30 && climber.position.x > 6, "jumping at the edge climbs out of the water (\(String(format: "%.1f, %.1f", climber.position.x, climber.position.y)))")
+
     // Sneaking prevents walking off a ledge
     let ledge = flatWorld(blocks)
     for z in -40..<40 { for x in 2..<40 { ledge.set(x, 9, z, Blocks.air) } }
@@ -361,6 +383,21 @@ func persistenceTests() throws {
     var noise = data.prefix(16)
     for i in 0..<4000 { noise.append(UInt8(truncatingIfNeeded: i &* 2_654_435_761 >> 13)) }
     _ = try? Chunk.deserialize(noise, expected: ChunkPos(-7, 3))   // random payload must not crash
+    // Two-byte block ids: chunks with blocks numbered 256+ use format 3; others keep the old format.
+    check(data.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 4, as: UInt16.self) } == 2, "chunks of original blocks keep format 2")
+    let wide = gen.generate(ChunkPos(-7, 3))
+    wide.set(2, 101, 2, 300)
+    wide.set(3, 101, 3, 4095)
+    wide.set(4, 101, 4, 0x1FF)
+    let wideData = try wide.serialize()
+    check(wideData.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 4, as: UInt16.self) } == 3, "chunks with new blocks use format 3")
+    let wideBack = try Chunk.deserialize(wideData, expected: ChunkPos(-7, 3))
+    check(checksum(wideBack) == checksum(wide) && wideBack.block(2, 101, 2) == 300 && wideBack.block(3, 101, 3) == 4095,
+          "two-byte block ids round-trip")
+    print("  wide chunk file size: \(wideData.count) bytes")
+    var wideCorrupt = wideData; wideCorrupt[18] ^= 0x7F; wideCorrupt[wideCorrupt.count - 3] ^= 0xFF
+    _ = try? Chunk.deserialize(wideCorrupt, expected: ChunkPos(-7, 3))   // must not crash
+    check((try? Chunk.deserialize(wideData.prefix(wideData.count - 5), expected: ChunkPos(-7, 3))) == nil, "truncated wide chunk is rejected")
 
     let storage = WorldStorage(root: tempRoot.appendingPathComponent("worlds"))
     let meta = try storage.createWorld(name: "Dino World", seedText: "Dino World", gameMode: .survival, difficulty: .normal)
@@ -385,8 +422,262 @@ func persistenceTests() throws {
     check(store.settings.renderDistance == 8, "settings keep valid values")
     check(store.settings.binding(for: .jump) == .key(36), "custom keybind loads")
     check(store.settings.binding(for: .forward) == .key(13), "missing keybinds use defaults")
+    check(PlayerIdentity.isValid(store.settings.playerID), "settings get a player ID")
+    check(SettingsStore(url: settingsURL).settings.playerID == store.settings.playerID, "the player ID is kept between launches")
 }
 section("Persistence", persistenceTests)
+
+section("Leaderboard") {
+    var s = PlayerStats.Values()
+    s.playSeconds = 3725; s.deaths = 3; s.kills = 41; s.bossesBeaten = 1; s.blocksMined = 900; s.blocksPlaced = 450; s.itemsCrafted = 70
+    s.foodEaten = 9; s.metresWalked = 12_345
+    let text = Leaderboard.encode(s)
+    var back = Leaderboard.decode(text, playSeconds: 3725)
+    back.metresWalked = s.metresWalked.rounded(.down)
+    var expected = s
+    expected.metresWalked = s.metresWalked.rounded(.down)
+    check(back == expected, "stats survive the trip through the board (\(text))")
+    let one = #"{"dreamlo":{"leaderboard":{"entry":{"name":"Rex_K7Q2","score":"600","seconds":"4","text":"d1k4","date":"x"}}}}"#
+    let many = #"{"dreamlo":{"leaderboard":{"entry":[{"name":"Rex_K7Q2","score":"600","seconds":"4","text":"d1k4"},{"name":"Mo_9WDA","score":"60","seconds":"9","text":"k9m50"}]}}}"#
+    let none = #"{"dreamlo":{"leaderboard":null}}"#
+    let parsedOne = Leaderboard.parse(Data(one.utf8))
+    check(parsedOne.count == 1 && parsedOne[0].name == "Rex" && parsedOne[0].tag == "K7Q2" && parsedOne[0].stats.kills == 4, "reads a board with one entry")
+    let parsedMany = Leaderboard.parse(Data(many.utf8))
+    check(parsedMany.count == 2 && Leaderboard.parse(Data(none.utf8)).isEmpty, "reads boards with several entries, or none")
+    check(Leaderboard.ranked(parsedMany, by: .kills).first?.name == "Mo" && Leaderboard.ranked(parsedMany, by: .playtime).first?.name == "Rex",
+          "the board sorts by any stat")
+    check(Leaderboard.entryName(name: "Rex!", playerID: "0000000000000001").hasPrefix("Rex_"), "entry names are safe for the board")
+    let statsURL = FileManager.default.temporaryDirectory.appendingPathComponent("dinocraft-stats-\(UUID().uuidString).json")
+    let stats = PlayerStats(url: statsURL)
+    stats.record("break", amount: 3); stats.record("kill", "grumblesaurus"); stats.record("die"); stats.record("jump")
+    stats.tick(dt: 2, walked: 1.5)
+    stats.save()
+    let reloaded = PlayerStats(url: statsURL).values
+    check(reloaded.blocksMined == 3 && reloaded.kills == 1 && reloaded.bossesBeaten == 1 && reloaded.deaths == 1 && reloaded.playSeconds == 2,
+          "lifetime stats count and save")
+    try? FileManager.default.removeItem(at: statsURL)
+}
+
+section("Ocean life") {
+    let reg = try! BlockRegistry.loadDefault()
+    check(reg.isSubmerged[Int(Blocks.kelp)] && reg.isWet[Int(Blocks.seagrass)] && reg.isWet[Int(Blocks.water)] && !reg.isWet[Int(Blocks.sand)],
+          "sea plants count as water for swimming")
+    check(reg.variantLayers.count == BlockRegistry.capacity && reg[Blocks.coralBlock]?.variants.count == 5 && reg.textureNames.contains("coral_fan_purple"),
+          "coral comes in five colours")
+    check(reg.emission[Int(Blocks.seaLantern)] == 15, "sea lanterns glow")
+    // Somewhere in a big patch of ocean there are kelp, seagrass and a coral reef.
+    let gen = TerrainGenerator(seed: 1337)
+    var counts: [BlockID: Int] = [:]
+    var reefColumn: (Int, Int)?
+    search: for ring in 0..<60 {
+        for step in 0..<max(1, ring * 8) {
+            let a = Double(step) / Double(max(1, ring * 8)) * 2 * .pi
+            let x = Int(cos(a) * Double(ring * 16)), z = Int(sin(a) * Double(ring * 16))
+            if gen.isReef(x: x, z: z) { reefColumn = (x, z); break search }
+        }
+    }
+    check(reefColumn != nil, "warm seas have coral reefs")
+    if let (x, z) = reefColumn {
+        for dz in -2...2 { for dx in -2...2 {
+            let chunk = gen.generate(ChunkPos(Int32((x >> 4) + dx), Int32((z >> 4) + dz)))
+            for y in 0..<WorldConst.height { for cz in 0..<16 { for cx in 0..<16 {
+                let id = chunk.block(cx, y, cz)
+                if id >= Blocks.kelp { counts[id, default: 0] += 1 }
+            } } }
+        } }
+    }
+    check((counts[Blocks.coralBlock] ?? 0) > 20 && (counts[Blocks.coral] ?? 0) > 10, "reefs are built of coral (\(counts[Blocks.coralBlock] ?? 0) blocks, \(counts[Blocks.coral] ?? 0) plants)")
+    check((counts[Blocks.seagrass] ?? 0) > 10, "seagrass grows on the sea floor (\(counts[Blocks.seagrass] ?? 0))")
+}
+
+section("World generation sweep") {
+    // Lots of chunks spread far apart, in deep and classic worlds, catch generator crashes such as the
+    // iceberg at the edge of land that used to crash while exploring cold seas.
+    var generated = 0
+    for seed in [UInt64(17), 42, 1337] {
+        for deep in [true, false] {
+            let gen = TerrainGenerator(seed: seed, deep: deep)
+            var positions: [ChunkPos] = []
+            for i in 0..<3600 {
+                let cx: Int = (i % 60 - 30) * 5
+                let cz: Int = (i / 60 - 30) * 5
+                positions.append(ChunkPos(Int32(cx), Int32(cz)))
+            }
+            DispatchQueue.concurrentPerform(iterations: positions.count) { i in _ = gen.generate(positions[i]) }
+            generated += positions.count
+        }
+    }
+    check(generated == 21600, "21600 chunks across 3 seeds generate without crashing")
+}
+
+section("Crash reports") {
+    let log = URL(fileURLWithPath: "/tmp/logs/dinocraft-20260925-030000.log")
+    check(CrashReport.companion(of: log).lastPathComponent == "dinocraft-20260925-030000.err.txt", "the error file sits beside its log")
+    let lines = (1...400).map { "2026-09-25 03:00:00.000 [INFO ] [Game] (main) line \($0) with some words in it" }
+    let report = CrashReport(log: log, text: (lines + ["*** DinoCraft crashed at DinoCraft.exe+0x1a2b3c"]).joined(separator: "\n"))
+    let short = report.issueURL(repository: "someone/DinoCraft", build: "build 39", platform: "Windows", maxLength: 2000)
+    check(short.map { $0.absoluteString.count <= 2000 } ?? false, "the Windows report link is short enough for the browser")
+    check(short.map { $0.absoluteString.contains("1a2b3c") } ?? false, "the shortened report keeps the crash itself")
+}
+
+section("Double chests") {
+    var world: [SIMD3<Int>: BlockID] = [:]
+    let north = Blocks.chest[0], east = Blocks.chest[1]
+    func look(_ x: Int, _ y: Int, _ z: Int) -> BlockID { world[SIMD3(x, y, z)] ?? Blocks.air }
+    func partner(_ x: Int, _ z: Int) -> (dx: Int, dz: Int)? {
+        let id = look(x, 0, z)
+        let facing: Int8 = id == north ? Int8(BlockFace.north.rawValue) : Int8(BlockFace.east.rawValue)
+        return DoubleChests.partner(x: x, y: 0, z: z, id: id, facing: facing, block: look)
+    }
+    world[SIMD3(0, 0, 0)] = north
+    check(partner(0, 0) == nil, "a lone chest stays single")
+    world[SIMD3(1, 0, 0)] = north
+    check(partner(0, 0)! == (1, 0) && partner(1, 0)! == (-1, 0), "two chests side by side pair up")
+    world[SIMD3(2, 0, 0)] = north
+    check(partner(2, 0) == nil && partner(0, 0)! == (1, 0), "a third chest beside a pair stays single")
+    world[SIMD3(3, 0, 0)] = north
+    check(partner(2, 0)! == (1, 0) && partner(3, 0)! == (-1, 0), "a row of four makes two pairs")
+    world[SIMD3(0, 0, 1)] = north
+    check(partner(0, 1) == nil, "chests don't pair front to back")
+    world[SIMD3(5, 0, 0)] = east; world[SIMD3(6, 0, 0)] = east
+    check(partner(5, 0) == nil, "east-facing chests pair along z, not x")
+    world[SIMD3(5, 0, 1)] = east
+    check(partner(5, 0)! == (0, 1), "east-facing chests side by side pair up")
+}
+
+section("Friends") {
+    let a = PlayerIdentity.newID(), b = PlayerIdentity.newID()
+    check(a != b && PlayerIdentity.isValid(a), "player IDs are random and valid")
+    check(PlayerIdentity.tag(for: a).count == 4 && PlayerIdentity.tag(for: a) == PlayerIdentity.tag(for: a), "tags are four stable characters")
+    var tags = Set<String>()
+    for _ in 0..<2000 { tags.insert(PlayerIdentity.tag(for: PlayerIdentity.newID())) }
+    check(tags.count > 1990, "tags rarely repeat (\(tags.count) of 2000)")
+    let code = FriendCode.encode(name: "Rex!", id: a, address: "DINO-3M4KA-9QX2B")
+    check(FriendCode.decode("hey add me " + code + "\nthanks") == FriendCode.Contents(name: "Rex", id: a, address: "DINO-3M4KA-9QX2B"),
+          "friend codes round-trip (\(code))")
+    check(FriendCode.decode(FriendCode.encode(name: "Mo", id: b, address: nil))?.address == nil, "friend codes work without an address")
+    check(FriendCode.decode("FRIEND:Rex:nothex") == nil && FriendCode.decode("DINO-3M4KA-9QX2B") == nil, "bad friend codes are refused")
+    check(Wire.parseAddress("10.0.0.5:1234") == ("10.0.0.5", 1234) && Wire.parseAddress("10.0.0.5").port == Wire.defaultPort, "addresses parse")
+
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("dinocraft-friends-\(UUID().uuidString).json")
+    let list = FriendList(url: url)
+    let me = PlayerIdentity.newID()
+    check(list.add(code: FriendCode.encode(name: "Me", id: me, address: nil), myID: me).contains("own"), "you can't add yourself")
+    list.add(code: code, myID: me)
+    check(list.isFriend(a) && list.friends.first?.address == "DINO-3M4KA-9QX2B", "adding a friend code")
+    check(!list.met(id: b, name: "Mo", look: "hat=cap", address: nil, myID: me) && list.recent.first?.id == b, "players you meet go in recent")
+    check(list.met(id: a, name: "Rex", look: "hat=crown", address: "1.2.3.4:25650", myID: me), "meeting a friend is noticed")
+    list.befriend(b)
+    list.remove(a)
+    let reloaded = FriendList(url: url)
+    check(reloaded.isFriend(b) && !reloaded.isFriend(a) && reloaded.recent.first?.id == a && reloaded.recent.first?.look == "hat=crown",
+          "the friends list saves and loads")
+    try? FileManager.default.removeItem(at: url)
+
+    // A live host answers the status question without anyone joining.
+    let hostID = PlayerIdentity.newID()
+    let host = try WireHost(settings: WireHost.Settings(worldName: "Friendly Plains", seed: "1", gameMode: "survival", difficulty: "normal",
+                                                        hostName: "Rex", hostID: hostID),
+                            port: 0, loopbackOnly: true) { TerrainGenerator(seed: 1).generate($0) }
+    var met: String?
+    host.onMet = { id, _, _ in met = id }
+    final class Reply: @unchecked Sendable {
+        let lock = NSLock()
+        var status: Wire.Status?
+        var finished = false
+    }
+    let reply = Reply(), port = host.port
+    DispatchQueue(label: "probe").async {
+        let answer = StatusProbe.check(address: "127.0.0.1:\(port)")
+        reply.lock.lock(); reply.status = answer; reply.finished = true; reply.lock.unlock()
+    }
+    let deadline = Date().addingTimeInterval(5)
+    while Date() < deadline {
+        host.poll()
+        reply.lock.lock(); let done = reply.finished; reply.lock.unlock()
+        if done { break }
+        Thread.sleep(forTimeInterval: 0.02)
+    }
+    let status = reply.status
+    check(status == Wire.Status(hostID: hostID, hostName: "Rex", world: "Friendly Plains", players: 1), "status check sees the hosted world (\(String(describing: status)))")
+    let joiner = try WireConnection.connect(host: "127.0.0.1", port: host.port)
+    joiner.send(.hello, Wire.Hello(version: Wire.protocolVersion, username: "Mo", playerID: b, look: "hat=cap"))
+    var welcome: Wire.Welcome?
+    let joinDeadline = Date().addingTimeInterval(5)
+    while Date() < joinDeadline && welcome == nil {
+        host.poll()
+        for event in joiner.poll() {
+            if case .message(.welcome, let data) = event { welcome = try? JSONDecoder().decode(Wire.Welcome.self, from: data) }
+        }
+        Thread.sleep(forTimeInterval: 0.02)
+    }
+    check(met == b, "the host learns who joined")
+    check(welcome?.players.first?.playerID == hostID, "joiners learn who the host is")
+    check(StatusProbe.check(address: "127.0.0.1:1", timeout: 1) == nil, "nobody hosting reads as offline")
+
+    // Private messages: Mo whispers to Zed, and to the host.
+    let second = try WireConnection.connect(host: "127.0.0.1", port: host.port)
+    second.send(.hello, Wire.Hello(version: Wire.protocolVersion, username: "Zed"))
+    var hostHeard: (String, String)?
+    host.onWhisper = { from, text in hostHeard = (from, text) }
+    var zedChats: [Wire.Chat] = [], moChats: [Wire.Chat] = []
+    func pump(_ seconds: Double, until done: () -> Bool) {
+        let end = Date().addingTimeInterval(seconds)
+        while Date() < end && !done() {
+            host.poll()
+            for event in second.poll() { if case .message(.chat, let d) = event, let c = try? JSONDecoder().decode(Wire.Chat.self, from: d) { zedChats.append(c) } }
+            for event in joiner.poll() { if case .message(.chat, let d) = event, let c = try? JSONDecoder().decode(Wire.Chat.self, from: d) { moChats.append(c) } }
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+    }
+    pump(2) { host.playerCount == 2 }
+    joiner.send(.chat, Wire.Chat(from: "Mo", text: "psst", to: "zed"))
+    joiner.send(.chat, Wire.Chat(from: "Mo", text: "hi host", to: "Rex"))
+    joiner.send(.chat, Wire.Chat(from: "Mo", text: "hello?", to: "Nobody"))
+    pump(3) { zedChats.contains { $0.text == "psst" } && hostHeard != nil && moChats.count >= 3 }
+    check(zedChats.contains { $0.text == "psst" && $0.from == "Mo" && $0.to == "Zed" }, "/msg reaches only its player")
+    check(hostHeard?.0 == "Mo" && hostHeard?.1 == "hi host", "/msg to the host reaches the host")
+    check(moChats.contains { $0.text.contains("You whisper to Zed") } && moChats.contains { $0.text.contains("No player called Nobody") },
+          "the sender sees their whisper, or that nobody has that name")
+    check(host.whisper(from: "Rex", to: "MO", text: "hey") && !host.whisper(from: "Rex", to: "ghost", text: "boo"), "the host can whisper to a player")
+    check(!zedChats.contains { $0.text == "hi host" || $0.text == "hello?" }, "other players don't see private messages")
+    second.close()
+    joiner.close()
+    host.stop()
+
+    // Hardcore multiplayer: a joiner who dies is remembered and can only spectate when they rejoin.
+    let hc = try WireHost(settings: WireHost.Settings(worldName: "One Life", seed: "1", gameMode: "survival", difficulty: "hard",
+                                                      hostName: "Rex", hostID: hostID, hardcore: true),
+                          port: 0, loopbackOnly: true) { TerrainGenerator(seed: 1).generate($0) }
+    var died: (String, String)?
+    hc.onHardcoreDeath = { key, name in died = (key, name) }
+    func joinHardcore() throws -> (WireConnection, Wire.Welcome?) {
+        let c = try WireConnection.connect(host: "127.0.0.1", port: hc.port)
+        c.send(.hello, Wire.Hello(version: Wire.protocolVersion, username: "Mo", playerID: b))
+        var w: Wire.Welcome?
+        let end = Date().addingTimeInterval(5)
+        while Date() < end && w == nil {
+            hc.poll()
+            for event in c.poll() { if case .message(.welcome, let d) = event { w = try? JSONDecoder().decode(Wire.Welcome.self, from: d) } }
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+        return (c, w)
+    }
+    let (first, firstWelcome) = try joinHardcore()
+    check(firstWelcome?.hardcore == true && firstWelcome?.spectator == false, "hardcore hosts say so, and new players can play")
+    first.send(.playerState, Wire.PlayerState(id: 0, x: 0, y: 80, z: 0, yaw: 0, pitch: 0, moving: 0, sneaking: false, swinging: false,
+                                              held: nil, health: 0, dead: true))
+    let deathEnd = Date().addingTimeInterval(3)
+    while Date() < deathEnd && died == nil { hc.poll(); Thread.sleep(forTimeInterval: 0.02) }
+    check(died?.0 == b && died?.1 == "Mo", "the hardcore host notices a joiner's death")
+    first.close()
+    Thread.sleep(forTimeInterval: 0.2)
+    hc.poll()
+    let (again, againWelcome) = try joinHardcore()
+    check(againWelcome?.spectator == true, "a player who died in hardcore comes back as a spectator")
+    again.close()
+    hc.stop()
+}
 
 section("Villages") {
     let gen = TerrainGenerator(seed: 1234)
@@ -419,6 +710,18 @@ section("Structures") {
     check(list.contains { $0.kind == .dungeon }, "dungeons generate near spawn")
     check(list.contains { $0.kind == .ruin || $0.kind == .desertRuin }, "ruins generate near spawn")
     check(list == TerrainGenerator(seed: 1234).structures(near: 0, z: 0, radius: 1200), "structure placement is deterministic")
+    let far = gen.structures(near: 0, z: 0, radius: 4000)
+    check(far.contains { $0.kind == .digSite }, "fossil dig sites generate")
+    check(far.contains { $0.kind == .volcano }, "volcanoes generate in the Volcanic Wastes")
+    check(far.contains { $0.kind == .oceanTemple }, "ocean temples generate in deep ocean")
+    check(far.contains { $0.kind == .shipwreck }, "shipwrecks generate in shallow seas")
+    check(far.contains { $0.kind == .buriedTreasure }, "treasure is buried on beaches")
+    if let site = far.first(where: { $0.kind == .digSite }) {
+        let c = gen.generate(ChunkPos(Int32(site.x >> 4), Int32(site.z >> 4)))
+        var deposits = 0
+        for y in 0..<WorldConst.height { for z in 0..<16 { for x in 0..<16 where c.block(x, y, z) == Blocks.fossilDeposit { deposits += 1 } } }
+        check(deposits > 0, "dig sites have fossil deposits (\(deposits) in the centre chunk)")
+    }
     if let d = list.first(where: { $0.kind == .dungeon }) {
         let c = gen.generate(ChunkPos(Int32(d.x >> 4), Int32(d.z >> 4)))
         let lx = d.x - Int(c.pos.originX), lz = d.z - Int(c.pos.originZ)
@@ -494,7 +797,7 @@ section("Biomes") {
 }
 
 section("Dimensions") {
-    for dim in [WorldDimension.underworld, .skylands] {
+    for dim in [WorldDimension.underworld, .skylands, .toonland] {
         let a = dim.makeGenerator(seed: 4242), b = dim.makeGenerator(seed: 4242)
         let p = ChunkPos(3, -2)
         let (ca, t) = time { a.generate(p) }
@@ -513,6 +816,10 @@ section("Dimensions") {
             check((counts[Blocks.lava] ?? 0) > 1_000, "underworld has a lava sea")
             check((counts[Blocks.air] ?? 0) > 50_000, "underworld has open caverns")
             check(ca.block(5, 127, 5) == Blocks.bedrock && ca.block(5, 0, 5) == Blocks.bedrock, "underworld has a bedrock ceiling and floor")
+        case .toonland:
+            check((counts[Blocks.toonGrass] ?? 0) > 1_000, "toonland hills are covered in toon grass")
+            check((counts[Blocks.checkerBlock] ?? 0) > 400, "toonland has a checkered stage and roads (\(counts[Blocks.checkerBlock] ?? 0))")
+            check(a.generate(ChunkPos(0, 0)).block(3, ToonlandGenerator.stageFloor, 3) == Blocks.checkerBlock, "a stage sits at the origin")
         default:
             check((counts[Blocks.skyGrass] ?? 0) > 50, "skylands islands are grassy (\(counts[Blocks.skyGrass] ?? 0))")
             check((counts[Blocks.cloud] ?? 0) > 500, "skylands has a cloud sea")
@@ -520,6 +827,23 @@ section("Dimensions") {
     }
     check(WorldDimension.overworld.destination(through: Blocks.underworldPortal) == .underworld, "bone gateways lead to the Underworld")
     check(WorldDimension.underworld.destination(through: Blocks.underworldPortal) == .overworld, "gateways lead home from other dimensions")
+    check(WorldDimension.overworld.destination(through: Blocks.toonlandPortal) == .toonland, "checker gateways lead to Toonland")
+    check(WorldDimension.gateways.count == 3, "three kinds of gateway")
+
+    // The deep layers: new overworlds go down to Y -70, older worlds keep their floor.
+    let deep = TerrainGenerator(seed: 777), flat = TerrainGenerator(seed: 777, deep: false)
+    let dc = deep.generate(ChunkPos(2, 5)), fc = flat.generate(ChunkPos(2, 5))
+    var slate = 0
+    for y in 5..<60 { for z in 0..<16 { for x in 0..<16 where dc.block(x, y, z) == Blocks.deepSlate { slate += 1 } } }
+    check(dc.block(4, 0, 4) == Blocks.bedrock && fc.block(4, 0, 4) == Blocks.bedrock, "both kinds of world have bedrock at the bottom")
+    check(slate > 5_000, "the deep layers are Deep Slate (\(slate))")
+    check(deep.seaLevel == flat.seaLevel + WorldConst.deepLayers && deep.depthOffset == 70 && flat.depthOffset == 0, "deep worlds sit 70 blocks higher")
+    check(dc.maxHeight > WorldConst.deepLayers + 30, "the land sits on top of the deep layers")
+    var deepest = Int.max
+    for z in stride(from: -4000, through: 4000, by: 160) { for x in stride(from: -4000, through: 4000, by: 160) {
+        deepest = min(deepest, deep.columnInfo(x: x, z: z).height)
+    } }
+    check(deepest >= deep.seaLevel - 24, "oceans in new worlds stay fairly shallow (deepest floor \(deepest - deep.seaLevel))")
     let storage = WorldStorage(root: tempRoot.appendingPathComponent("dims"))
     let meta = try storage.createWorld(name: "Hard", seedText: "1", gameMode: .creative, difficulty: .easy, hardcore: true)
     check(meta.isHardcore && meta.gameMode == .survival && meta.difficulty == .hard, "hardcore worlds are survival on hard")
@@ -568,6 +892,30 @@ section("PNG") {
         check(opaque > 0 && mismatched == 0, "PNG decoder matches ImageIO on \(url.lastPathComponent) (\(mismatched) of \(opaque) pixels differ)")
     }
     #endif
+}
+
+section("Enchantments") {
+    var packed: UInt16 = 0
+    packed = Enchantments.setting(.efficiency, to: 2, in: packed)
+    packed = Enchantments.setting(.unbreaking, to: 3, in: packed)
+    packed = Enchantments.setting(.fortune, to: 9, in: packed)
+    check(Enchantments.level(.efficiency, in: packed) == 2 && Enchantments.level(.unbreaking, in: packed) == 3, "enchantment levels pack and unpack")
+    check(Enchantments.level(.fortune, in: packed) == 3 && Enchantments.level(.sharpness, in: packed) == 0, "levels clamp to 3 and others stay 0")
+    check(Enchantments.describe(Enchantments.setting(.sharpness, to: 1, in: 0)) == "Sharpness I", "enchantments describe themselves")
+    let pick = items.id(named: "iron_pickaxe")!, dirt = items.id(named: "dirt")!
+    let plain = ItemStack(item: dirt, count: 3), magic = ItemStack(item: dirt, count: 3, enchant: 5)
+    check(!plain.canStack(with: magic) && plain.canStack(with: plain), "enchanted stacks don't merge with plain ones")
+    let inv = Inventory(registry: items)
+    _ = inv.add(ItemStack(item: pick, count: 1, enchant: packed))
+    check(inv.slots[0]?.enchant == packed, "adding keeps enchantments")
+    _ = inv.add(ItemStack(item: dirt, count: 70))
+    check(inv.remove(item: dirt, count: 66) == 66 && inv.count(of: dirt) == 4, "remove takes across stacks")
+    let saved = SavedStack(slot: 0, item: "iron_pickaxe", count: 1, damage: nil, enchant: packed)
+    let round = try JSONDecoder().decode(SavedStack.self, from: JSONEncoder().encode(saved))
+    check(round.enchant == Int(packed), "saved stacks keep enchantments")
+    let old = try JSONDecoder().decode(SavedStack.self, from: Data(#"{"slot":1,"item":"dirt","count":2}"#.utf8))
+    check(old.enchant == nil, "older saves load without enchantments")
+    check(blocks.id(named: "enchanting_table").map { $0 > 255 } == true, "the enchanting table uses a two-byte block id")
 }
 
 section("Multiplayer wire protocol") {

@@ -46,6 +46,9 @@ final class NetConnection: @unchecked Sendable {
     var onReady: (() -> Void)?
     var onClose: ((String) -> Void)?
 
+    /// Why the connection is still waiting to connect, if it is (shown if joining times out).
+    private(set) var lastWaitingReason: String?
+
     private(set) var bytesSent = 0
     private(set) var bytesReceived = 0
 
@@ -73,7 +76,11 @@ final class NetConnection: @unchecked Sendable {
             case .failed(let error):
                 self.finish("Connection failed: \(error.localizedDescription)")
             case .waiting(let error):
-                self.finish("Could not reach the host: \(error.localizedDescription)")
+                // Not a failure: macOS may be asking for Local Network permission, or the network is
+                // still coming up. Keep trying (the joining screen gives up after a while) and remember why.
+                Log.warning("Connection to \(self.label) is waiting: \(error)", category: "Net")
+                let reason = error.localizedDescription
+                DispatchQueue.main.async { self.lastWaitingReason = reason }
             case .cancelled:
                 self.finish("Disconnected")
             default:

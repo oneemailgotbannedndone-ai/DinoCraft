@@ -1,8 +1,7 @@
 name: Windows
 
 # Builds DinoCraft for Windows and Mac. On pushes to main (or when "publish" is ticked) both
-# downloads go to the public DinoCraft-Releases repository, where the launcher's update button finds them.
-# Publishing needs a RELEASES_TOKEN secret: a GitHub token that can create releases in that repository.
+# downloads are published on this repository's Releases page, where the launcher's update button finds them.
 
 on:
   push:
@@ -10,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: Publish this build to DinoCraft-Releases
+        description: Publish this build on the Releases page
         type: boolean
         default: false
 
@@ -60,7 +59,8 @@ jobs:
 
       - name: Build DinoCraft for Windows
         shell: pwsh
-        run: swift build -c release --product DinoCraftWin -Xcc "-I$env:SDL3_DIR/include" -Xlinker "-L$env:SDL3_DIR/lib/x64"
+        # An 8 MB main-thread stack (Windows' default is 1 MB).
+        run: swift build -c release --product DinoCraftWin -Xcc "-I$env:SDL3_DIR/include" -Xlinker "-L$env:SDL3_DIR/lib/x64" -Xlinker "/STACK:8388608"
 
       - name: Package
         shell: pwsh
@@ -68,6 +68,7 @@ jobs:
           $out = "DinoCraft-Windows"
           New-Item -ItemType Directory -Force "$out/Resources/Textures" | Out-Null
           Copy-Item .build/release/DinoCraftWin.exe "$out/DinoCraft.exe"
+          Copy-Item .build/release/DinoCraftWin.exe "$out/DinoCraft Launcher.exe"
           Copy-Item "$env:SDL3_DIR/lib/x64/SDL3.dll" $out
           $roots = @("$env:LOCALAPPDATA\Programs\Swift", "C:\Program Files\Swift", "C:\Library") | Where-Object { Test-Path $_ }
           $runtime = Get-ChildItem -Path $roots -Recurse -Filter swiftCore.dll -ErrorAction SilentlyContinue |
@@ -81,6 +82,7 @@ jobs:
           Copy-Item Resources/Data "$out/Resources/Data" -Recurse
           Copy-Item Resources/Textures/blocks "$out/Resources/Textures/blocks" -Recurse
           Copy-Item Resources/Textures/items "$out/Resources/Textures/items" -Recurse
+          Copy-Item Resources/Textures/misc "$out/Resources/Textures/misc" -Recurse
           Copy-Item Resources/TexturePacks "$out/Resources/TexturePacks" -Recurse
           Copy-Item Resources/Sounds "$out/Resources/Sounds" -Recurse
           Copy-Item Resources/Music "$out/Resources/Music" -Recurse
@@ -89,7 +91,7 @@ jobs:
 
       - name: Automated check with software OpenGL
         shell: pwsh
-        timeout-minutes: 10
+        timeout-minutes: 15
         run: |
           gh release download --repo pal1000/mesa-dist-win --pattern "mesa3d-*-release-msvc.7z" --dir mesa
           $archive = Get-ChildItem mesa -Filter *.7z | Select-Object -First 1
@@ -115,12 +117,36 @@ jobs:
           $p4 = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--screenshot `"$shot4`" --demo-screen worlds --hide-console" -PassThru -Wait -NoNewWindow
           Write-Host "World list check exit code: $($p4.ExitCode)"
           if (-not (Test-Path $shot4)) { throw "The game did not produce the world list screenshot" }
-          foreach ($screen in @("creative", "furnace", "pause", "settings")) {
+          foreach ($screen in @("creative", "furnace", "pause", "settings", "controls", "crafting", "double-chest", "villagers", "dinos", "pets", "boat", "mining", "chat", "nursery", "armory", "sky", "enchanting", "quests", "questbook", "xp", "digsite", "museum", "meteors", "storm", "map", "circuits", "decorations", "autumn", "winter", "fire", "shipwreck", "treasure", "newdinos", "explorer")) {
             $shotN = "$PWD/screenshot-$screen.png"
             $pN = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--screenshot `"$shotN`" --frames 5 --render-distance 4 --seed dino --demo-entities --demo-screen $screen" -PassThru -Wait -NoNewWindow
             Write-Host "$screen check exit code: $($pN.ExitCode)"
             if (-not (Test-Path $shotN)) { throw "The game did not produce the $screen screenshot" }
           }
+          # Under the sea: a coral reef with fish (the camera dives there, then the chunks load).
+          $shotR = "$PWD/screenshot-reef.png"
+          $pR = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--screenshot `"$shotR`" --frames 120 --render-distance 4 --seed dino --demo-screen reef" -PassThru -Wait -NoNewWindow
+          Write-Host "Reef check exit code: $($pR.ExitCode)"
+          if (-not (Test-Path $shotR)) { throw "The game did not produce the reef screenshot" }
+          # Multiplayer: host a world, join it from a second copy of the game (the full shared game on both ends).
+          $hostP = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--host Alice --render-distance 4 --seed dino --hide-console" -PassThru -NoNewWindow
+          Start-Sleep -Seconds 30
+          $shotJ = "$PWD/screenshot-join.png"
+          $pJ = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--join 127.0.0.1 --name Bob --screenshot `"$shotJ`" --frames 60 --render-distance 4 --hide-console" -PassThru -Wait -NoNewWindow
+          Write-Host "Join check exit code: $($pJ.ExitCode)"
+          Stop-Process -Id $hostP.Id -Force -ErrorAction SilentlyContinue
+          if (-not (Test-Path $shotJ)) { Write-Host "::warning::Joining a hosted world did not produce a screenshot" }
+          # The launcher's online work (updates, reviews, friends, sharing stats) and the leaderboard, for real.
+          # The leaderboard address is changed so nothing is posted to the real board.
+          $env:DINOCRAFT_LEADERBOARD_URL = "http://dreamlo.com/lb/automated-check"
+          '{"playSeconds":120,"deaths":1,"kills":2,"bossesBeaten":0,"blocksMined":5,"blocksPlaced":3,"itemsCrafted":1,"metresWalked":40,"foodEaten":0}' | Out-File -FilePath smoke-home/stats.json -Encoding ascii
+          foreach ($screen in @("menu", "leaderboard")) {
+            $shotO = "$PWD/screenshot-online-$screen.png"
+            $pO = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--screenshot `"$shotO`" --demo-screen $screen --online --frames 400" -PassThru -Wait -NoNewWindow
+            Write-Host "Online $screen check exit code: $($pO.ExitCode)"
+            if (-not (Test-Path $shotO)) { throw "The game did not produce the online $screen screenshot" }
+          }
+          Remove-Item Env:DINOCRAFT_LEADERBOARD_URL
           $shotC = "$PWD/screenshot-create.png"
           $pC = Start-Process -FilePath "smoke/DinoCraft.exe" -ArgumentList "--screenshot `"$shotC`" --demo-screen create --hide-console" -PassThru -Wait -NoNewWindow
           Write-Host "Create world check exit code: $($pC.ExitCode)"
@@ -142,6 +168,41 @@ jobs:
             screenshot-pause.png
             screenshot-settings.png
             screenshot-create.png
+            screenshot-crafting.png
+            screenshot-double-chest.png
+            screenshot-reef.png
+            screenshot-controls.png
+            screenshot-villagers.png
+            screenshot-dinos.png
+            screenshot-pets.png
+            screenshot-boat.png
+            screenshot-mining.png
+            screenshot-chat.png
+            screenshot-nursery.png
+            screenshot-armory.png
+            screenshot-sky.png
+            screenshot-enchanting.png
+            screenshot-quests.png
+            screenshot-questbook.png
+            screenshot-xp.png
+            screenshot-digsite.png
+            screenshot-museum.png
+            screenshot-meteors.png
+            screenshot-storm.png
+            screenshot-map.png
+            screenshot-circuits.png
+            screenshot-decorations.png
+            screenshot-autumn.png
+            screenshot-winter.png
+            screenshot-fire.png
+            screenshot-shipwreck.png
+            screenshot-treasure.png
+            screenshot-newdinos.png
+            screenshot-explorer.png
+            screenshot-join.png
+            screenshot-online-menu.png
+            screenshot-online-leaderboard.png
+            .build/release/*.pdb
             smoke-home/logs/
           if-no-files-found: ignore
 
@@ -177,8 +238,30 @@ jobs:
       - name: Build DinoCraft.app
         run: zsh Scripts/build_app.sh
 
+      - name: Compile the Metal shaders
+        # The game compiles its shaders at startup, so check them here where a mistake can't reach players.
+        run: |
+          cat Resources/Shaders/*.metal > "$RUNNER_TEMP/all.metal"
+          set +e
+          out=$(xcrun -sdk macosx metal -std=metal3.0 -c "$RUNNER_TEMP/all.metal" -o "$RUNNER_TEMP/all.air" 2>&1)
+          code=$?
+          set -e
+          echo "$out"
+          if [ $code -ne 0 ]; then
+            if echo "$out" | grep -qi "toolchain\|unable to find utility\|not a developer tool"; then
+              echo "::warning::Metal compiler not available on this runner; shader check skipped"
+            else
+              echo "::error::Metal shaders failed to compile"
+              exit 1
+            fi
+          fi
+
       - name: Zip for the launcher's updater
-        run: ditto -c -k --keepParent dist/DinoCraft.app DinoCraft-Mac.zip
+        run: |
+          mkdir -p mac-zip
+          ditto dist/DinoCraft.app mac-zip/DinoCraft.app
+          ditto "dist/DinoCraft Launcher.app" "mac-zip/DinoCraft Launcher.app"
+          ditto -c -k mac-zip DinoCraft-Mac.zip
 
       - name: Upload Mac zip
         uses: actions/upload-artifact@v4
@@ -186,10 +269,56 @@ jobs:
           name: mac-zip
           path: DinoCraft-Mac.zip
 
+      - name: Launch the Mac apps
+        # Actually start the launcher and the game on the runner, so a crash at startup shows up here
+        # (with the game's log and backtrace) instead of on a player's Mac.
+        run: |
+          set +e
+          mkdir -p mac-check
+          fail=0
+          run() {
+            name="$1"; shift
+            export DINOCRAFT_HOME="$RUNNER_TEMP/home-$name"
+            rm -rf "$DINOCRAFT_HOME"
+            "$@" > "mac-check/$name-stdout.txt" 2>&1 &
+            pid=$!
+            for i in $(seq 1 90); do kill -0 $pid 2>/dev/null || break; sleep 1; done
+            if kill -0 $pid 2>/dev/null; then
+              echo "$name was still running after 90s; stopping it"
+              kill $pid; sleep 2; kill -9 $pid 2>/dev/null
+              code=0
+            else
+              wait $pid; code=$?
+            fi
+            echo "=== $name exit code: $code ==="
+            cat "mac-check/$name-stdout.txt" | tail -60
+            for f in "$DINOCRAFT_HOME"/logs/*; do [ -f "$f" ] && { echo "--- $f"; tail -80 "$f"; cp "$f" "mac-check/$name-$(basename "$f")"; }; done
+            if [ $code -ne 0 ] || grep -q "crashed: fatal signal\|Fatal error\|FATAL" "mac-check/$name-stdout.txt" "$DINOCRAFT_HOME"/logs/* 2>/dev/null; then
+              echo "::error::The Mac $name did not start cleanly (exit $code)"
+              fail=1
+            fi
+          }
+          run launcher "dist/DinoCraft Launcher.app/Contents/MacOS/DinoCraft Launcher" --windowed \
+              --screenshot "$PWD/mac-check/launcher.png" --screenshot-after 8 --exit-after 14
+          run game dist/DinoCraft.app/Contents/MacOS/DinoCraft --windowed --skip-launcher --world ci --seed 42 \
+              --screenshot "$PWD/mac-check/game.png" --screenshot-after 25 --exit-after 35
+          ls -la mac-check
+          ls ~/Library/Logs/DiagnosticReports 2>/dev/null | grep -i dino && cp ~/Library/Logs/DiagnosticReports/*DinoCraft* mac-check/ 2>/dev/null
+          exit $fail
+
+      - name: Upload Mac check
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-check
+          path: mac-check
+
   release:
     needs: [build, mac]
     if: always() && needs.build.result == 'success' && (github.event_name == 'push' || inputs.publish)
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -206,19 +335,15 @@ jobs:
           name: mac-zip
           path: out
 
-      - name: Publish to DinoCraft-Releases
+      - name: Publish the release
         env:
-          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if [ -z "$GH_TOKEN" ]; then
-            echo "::warning::The RELEASES_TOKEN secret isn't set, so this build wasn't published."
-            exit 0
-          fi
           {
             echo "## Download"
             echo ""
-            echo "- **Windows:** download **DinoCraft-Windows.zip**, right-click it and choose *Extract All*, then open **DinoCraft.exe**."
-            echo "- **Mac (Apple Silicon):** download **DinoCraft-Mac.zip**, double-click it, then right-click **DinoCraft.app** and choose *Open* the first time."
+            echo "- **Windows:** download **DinoCraft-Windows.zip** below, right-click it and choose *Extract All*, then open **DinoCraft Launcher.exe** (if Windows warns you, click *More info* → *Run anyway*)."
+            echo "- **Mac (Apple Silicon):** download **DinoCraft-Mac.zip** below, double-click it, drag **DinoCraft.app** and **DinoCraft Launcher.app** to Applications and open the launcher (the first time: System Settings → Privacy & Security → *Open Anyway*)."
             echo ""
             echo "Already playing? The launcher's **Update** button installs this version for you."
             echo ""
@@ -228,6 +353,7 @@ jobs:
           } > notes.txt
           ls -la out
           gh release create "build-${{ github.run_number }}" out/*.zip \
-            --repo oneemailgotbannedndone-ai/DinoCraft-Releases \
+            --repo "${{ github.repository }}" \
+            --target "${{ github.sha }}" \
             --title "DinoCraft build ${{ github.run_number }}" \
             --notes-file notes.txt

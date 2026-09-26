@@ -24,6 +24,45 @@ struct EffectBuilder {
              uv: (uv, uv + SIMD2(uvSize, 0), uv + SIMD2(uvSize, uvSize), uv + SIMD2(0, uvSize)), layer: layer, color: color, glow: glow)
     }
 
+    /// The block you're aiming at, like on the Mac: a thin dark outline along its edges, and break
+    /// cracks (texture layer `crackLayer`) on every face while you mine it. `origin` is its camera-relative corner.
+    mutating func blockHighlight(origin: SIMD3<Float>, crackLayer: Float?) {
+        if let crackLayer {
+            let e: Float = 0.003
+            let lo = origin - e, hi = origin + 1 + e
+            let faces: [[SIMD3<Float>]] = [
+                [SIMD3(hi.x, hi.y, hi.z), SIMD3(hi.x, hi.y, lo.z), SIMD3(hi.x, lo.y, lo.z), SIMD3(hi.x, lo.y, hi.z)],
+                [SIMD3(lo.x, hi.y, lo.z), SIMD3(lo.x, hi.y, hi.z), SIMD3(lo.x, lo.y, hi.z), SIMD3(lo.x, lo.y, lo.z)],
+                [SIMD3(lo.x, hi.y, lo.z), SIMD3(hi.x, hi.y, lo.z), SIMD3(hi.x, hi.y, hi.z), SIMD3(lo.x, hi.y, hi.z)],
+                [SIMD3(lo.x, lo.y, hi.z), SIMD3(hi.x, lo.y, hi.z), SIMD3(hi.x, lo.y, lo.z), SIMD3(lo.x, lo.y, lo.z)],
+                [SIMD3(lo.x, hi.y, hi.z), SIMD3(hi.x, hi.y, hi.z), SIMD3(hi.x, lo.y, hi.z), SIMD3(lo.x, lo.y, hi.z)],
+                [SIMD3(hi.x, hi.y, lo.z), SIMD3(lo.x, hi.y, lo.z), SIMD3(lo.x, lo.y, lo.z), SIMD3(hi.x, lo.y, lo.z)],
+            ]
+            let uv = (SIMD2<Float>(0, 0), SIMD2<Float>(1, 0), SIMD2<Float>(1, 1), SIMD2<Float>(0, 1))
+            for f in faces { quad(f[0], f[1], f[2], f[3], uv: uv, layer: crackLayer, color: SIMD4(0.85, 0.85, 0.85, 0.75), glow: 1) }
+        }
+        // Each edge as two thin crossed strips.
+        let e: Float = 0.004, w: Float = 0.009
+        let lo = origin - e, hi = origin + 1 + e
+        let color = SIMD4<Float>(0.02, 0.02, 0.03, 0.62)
+        let uv = (SIMD2<Float>.zero, SIMD2<Float>.zero, SIMD2<Float>.zero, SIMD2<Float>.zero)
+        func strip(_ a: SIMD3<Float>, _ b: SIMD3<Float>, _ c: SIMD3<Float>, _ d: SIMD3<Float>) {
+            quad(a, b, c, d, uv: uv, layer: -1, color: color, glow: 1)
+        }
+        for y in [lo.y, hi.y] { for z in [lo.z, hi.z] {
+            strip(SIMD3(lo.x, y - w, z), SIMD3(hi.x, y - w, z), SIMD3(hi.x, y + w, z), SIMD3(lo.x, y + w, z))
+            strip(SIMD3(lo.x, y, z - w), SIMD3(hi.x, y, z - w), SIMD3(hi.x, y, z + w), SIMD3(lo.x, y, z + w))
+        } }
+        for x in [lo.x, hi.x] { for z in [lo.z, hi.z] {
+            strip(SIMD3(x - w, lo.y, z), SIMD3(x + w, lo.y, z), SIMD3(x + w, hi.y, z), SIMD3(x - w, hi.y, z))
+            strip(SIMD3(x, lo.y, z - w), SIMD3(x, lo.y, z + w), SIMD3(x, hi.y, z + w), SIMD3(x, hi.y, z - w))
+        } }
+        for x in [lo.x, hi.x] { for y in [lo.y, hi.y] {
+            strip(SIMD3(x - w, y, lo.z), SIMD3(x + w, y, lo.z), SIMD3(x + w, y, hi.z), SIMD3(x - w, y, hi.z))
+            strip(SIMD3(x, y - w, lo.z), SIMD3(x, y + w, lo.z), SIMD3(x, y + w, hi.z), SIMD3(x, y - w, hi.z))
+        } }
+    }
+
     /// A textured unit cube (-0.5…0.5) transformed by `m`, with one texture layer per face in `BlockFace` order.
     mutating func cube(_ m: Mat4, faceLayers: [Float], light: Float = 1, glow: Float = 0) {
         func p(_ x: Float, _ y: Float, _ z: Float) -> SIMD3<Float> {
@@ -44,6 +83,71 @@ struct EffectBuilder {
         for (i, face) in faces.enumerated() {
             let shade = face.1 * light
             quad(face.0[0], face.0[1], face.0[2], face.0[3], uv: uv, layer: faceLayers[i], color: SIMD4(shade, shade, shade, 1), glow: glow)
+        }
+    }
+
+    /// Local-space geometry of extruded items, per texture layer: position, uv and shade per vertex.
+    static var extrusionCache: [Float: [(SIMD3<Float>, SIMD2<Float>, Float)]] = [:]
+
+    /// An item picture given thickness like on the Mac: front and back faces plus a wall along
+    /// every edge between solid and see-through pixels (-0.5…0.5, 1/16 thick), transformed by `m`.
+    mutating func extruded(_ m: Mat4, layer: Float, mask: [Bool], light: Float = 1, glow: Float = 0) {
+        let geometry: [(SIMD3<Float>, SIMD2<Float>, Float)]
+        if let cached = EffectBuilder.extrusionCache[layer] {
+            geometry = cached
+        } else {
+            var g: [(SIMD3<Float>, SIMD2<Float>, Float)] = []
+            let n = Int(Double(mask.count).squareRoot())
+            let t: Float = 1.0 / 32, px = 1 / Float(n)
+            func quad(_ p: [SIMD3<Float>], _ uv: [SIMD2<Float>], _ shade: Float) {
+                for i in [0, 1, 2, 0, 2, 3] { g.append((p[i], uv[i], shade)) }
+            }
+            quad([SIMD3(-0.5, 0.5, t), SIMD3(0.5, 0.5, t), SIMD3(0.5, -0.5, t), SIMD3(-0.5, -0.5, t)],
+                 [SIMD2(0, 0), SIMD2(1, 0), SIMD2(1, 1), SIMD2(0, 1)], 1)
+            quad([SIMD3(0.5, 0.5, -t), SIMD3(-0.5, 0.5, -t), SIMD3(-0.5, -0.5, -t), SIMD3(0.5, -0.5, -t)],
+                 [SIMD2(1, 0), SIMD2(0, 0), SIMD2(0, 1), SIMD2(1, 1)], 0.8)
+            func solid(_ x: Int, _ y: Int) -> Bool { x >= 0 && y >= 0 && x < n && y < n && mask[y * n + x] }
+            for y in 0..<n {
+                for x in 0..<n where solid(x, y) {
+                    let x0 = -0.5 + Float(x) * px, x1 = x0 + px
+                    let y1 = 0.5 - Float(y) * px, y0 = y1 - px
+                    let uv = SIMD2<Float>((Float(x) + 0.5) * px, (Float(y) + 0.5) * px)
+                    let uvs = [uv, uv, uv, uv]
+                    if !solid(x - 1, y) { quad([SIMD3(x0, y0, -t), SIMD3(x0, y0, t), SIMD3(x0, y1, t), SIMD3(x0, y1, -t)], uvs, 0.7) }
+                    if !solid(x + 1, y) { quad([SIMD3(x1, y0, t), SIMD3(x1, y0, -t), SIMD3(x1, y1, -t), SIMD3(x1, y1, t)], uvs, 0.7) }
+                    if !solid(x, y - 1) { quad([SIMD3(x0, y1, t), SIMD3(x1, y1, t), SIMD3(x1, y1, -t), SIMD3(x0, y1, -t)], uvs, 0.9) }
+                    if !solid(x, y + 1) { quad([SIMD3(x0, y0, -t), SIMD3(x1, y0, -t), SIMD3(x1, y0, t), SIMD3(x0, y0, t)], uvs, 0.55) }
+                }
+            }
+            EffectBuilder.extrusionCache[layer] = g
+            geometry = g
+        }
+        vertices.reserveCapacity(vertices.count + geometry.count * EffectBuilder.floatsPerVertex)
+        for (p, uv, shade) in geometry {
+            let q = m * SIMD4<Float>(p.x, p.y, p.z, 1)
+            let c = shade * light
+            vertices += [q.x, q.y, q.z, uv.x, uv.y, layer, c, c, c, 1, glow]
+        }
+    }
+
+    /// An untextured box from `lo` to `hi` transformed by `m`, shaded per face.
+    mutating func box(_ m: Mat4, _ lo: SIMD3<Float>, _ hi: SIMD3<Float>, color: SIMD3<Float>, light: Float = 1) {
+        func p(_ x: Float, _ y: Float, _ z: Float) -> SIMD3<Float> {
+            let q = m * SIMD4<Float>(x, y, z, 1)
+            return SIMD3(q.x, q.y, q.z)
+        }
+        let uv = (SIMD2<Float>(0, 0), SIMD2<Float>(1, 0), SIMD2<Float>(1, 1), SIMD2<Float>(0, 1))
+        let faces: [([SIMD3<Float>], Float)] = [
+            ([p(hi.x, hi.y, hi.z), p(hi.x, hi.y, lo.z), p(hi.x, lo.y, lo.z), p(hi.x, lo.y, hi.z)], 0.7),
+            ([p(lo.x, hi.y, lo.z), p(lo.x, hi.y, hi.z), p(lo.x, lo.y, hi.z), p(lo.x, lo.y, lo.z)], 0.7),
+            ([p(lo.x, hi.y, lo.z), p(hi.x, hi.y, lo.z), p(hi.x, hi.y, hi.z), p(lo.x, hi.y, hi.z)], 1.0),
+            ([p(lo.x, lo.y, hi.z), p(hi.x, lo.y, hi.z), p(hi.x, lo.y, lo.z), p(lo.x, lo.y, lo.z)], 0.5),
+            ([p(lo.x, hi.y, hi.z), p(hi.x, hi.y, hi.z), p(hi.x, lo.y, hi.z), p(lo.x, lo.y, hi.z)], 0.85),
+            ([p(hi.x, hi.y, lo.z), p(lo.x, hi.y, lo.z), p(lo.x, lo.y, lo.z), p(hi.x, lo.y, lo.z)], 0.85),
+        ]
+        for face in faces {
+            let c = color * face.1 * light
+            quad(face.0[0], face.0[1], face.0[2], face.0[3], uv: uv, layer: -1, color: SIMD4(c, 1))
         }
     }
 
@@ -76,7 +180,11 @@ extension WinSolo {
         } else {
             let layer = renderer.iconLayer(item, items: items, blocks: blocks)
             guard layer >= 0 else { return }
-            fx.card(m, layer: layer, light: light)
+            if let mask = renderer.alphaMask(layer: layer) {
+                fx.extruded(m, layer: layer, mask: mask, light: light)
+            } else {
+                fx.card(m, layer: layer, light: light)
+            }
         }
     }
 
@@ -105,6 +213,48 @@ extension WinSolo {
             }
         }
 
+        // Items in item frames: still, flat against the wall.
+        for f in s.framedItems {
+            let r = rel(f.position)
+            guard Double(simd_length(r)) < maxDistance, let info = items[f.stack.item] else { continue }
+            let scale: Float = isCubeItem(info) ? 0.3 : 0.55
+            let light = brightness(s.world.light(at: f.position))
+            let m = MathUtil.translation(r) * MathUtil.rotationY(f.yaw) * MathUtil.scale(SIMD3(repeating: scale))
+            appendItem(&solid, f.stack.item, m, light: light)
+        }
+
+        // What players are holding, in their right hand (you too, in F5), following the arm's swing.
+        func held(_ item: ItemID, at position: DVec3, yaw: Float, headYaw: Float, sneaking: Bool, walk: Float, moving: Float,
+                  swing: Float, air: Float, sprint: Float, seed: Int) {
+            let r = rel(position)
+            guard Double(simd_length(r)) < maxDistance, let info = items[item] else { return }
+            let idle = Float(Date().timeIntervalSince1970.truncatingRemainder(dividingBy: 3600)) + Float(seed & 63)
+            let m = PlayerAvatar.base(at: r, bodyYaw: yaw, sneaking: sneaking, sprint: sprint) * MathUtil.translation(SIMD3(0.37, 1.4, 0))
+                * PlayerAvatar.pose(kind: 3, pitch: 0, walk: walk, moving: moving, sneaking: sneaking, swing: swing, idle: idle,
+                                    headYaw: headYaw, air: air, sprint: sprint)
+                * MathUtil.translation(SIMD3(0, -0.72, -0.18)) * MathUtil.rotationX(-.pi / 2)
+                * MathUtil.scale(SIMD3(repeating: isCubeItem(info) ? 0.25 : 0.45))
+            appendItem(&solid, item, m, light: brightness(s.world.light(at: position + DVec3(0, 1.2, 0))))
+        }
+        if cameraView != .firstPerson && !s.isDead, let stack = s.inventory.selectedStack {
+            let p = s.player, m = s.selfMotion
+            held(stack.item, at: p.position, yaw: Float(m.body(p.yaw)), headYaw: Float(m.headYaw(p.yaw)), sneaking: p.isSneaking,
+                 walk: Float(s.bobPhase * .pi), moving: Float(p.onGround ? min(1, p.horizontalSpeed / 4.3) : 0),
+                 swing: Float(s.swingProgress), air: Float(m.air), sprint: Float(m.sprint), seed: settings.username.hashValue)
+        }
+        for p in client?.remotePlayers ?? [] where !p.dead {
+            guard let name = p.held, let item = items.id(named: name) else { continue }
+            held(item, at: p.position, yaw: Float(p.motion.body(p.yaw)), headYaw: Float(p.motion.headYaw(p.yaw)), sneaking: p.sneaking,
+                 walk: Float(p.walkPhase), moving: Float(p.moving), swing: Float(p.swing), air: Float(p.motion.air), sprint: 0, seed: p.name.hashValue)
+        }
+
+        // The block you're aiming at
+        if let hit = s.target, !s.spectator, cameraView != .front {
+            let origin = rel(DVec3(Double(hit.block.x), Double(hit.block.y), Double(hit.block.z)))
+            let cracking = s.breakProgress > 0 && s.breakingPos == hit.block
+            blended.blockHighlight(origin: origin, crackLayer: cracking ? renderer.crackLayer(stage: Int(s.breakProgress * 10)) : nil)
+        }
+
         // Camera-facing axes for particles.
         let forward = camera.forward
         let crossRight = simd_cross(forward, SIMD3<Float>(0, 1, 0))
@@ -128,11 +278,12 @@ extension WinSolo {
 
         // Rain streaks and snowflakes around the camera (overworld only).
         let strength = s.weather.intensity
-        let precipitation = WeatherSystem.precipitation(for: s.biome)
+        let precipitation = s.precipitation
         if s.dimension == .overworld, strength > 0.02, precipitation != .none {
             let radius = precipitation == .snow ? 12 : 14
             let cx = Int(floor(camera.position.x)), cz = Int(floor(camera.position.z))
-            let density = strength * (precipitation == .snow ? 0.5 : 0.85)
+            let density = strength * (precipitation == .snow ? 0.5 : 0.85) * s.weather.downpour
+            let wind = s.weather.wind
             for dz in -radius...radius {
                 for dx in -radius...radius where dx * dx + dz * dz <= radius * radius {
                     let x = cx + dx, z = cz + dz
@@ -146,9 +297,12 @@ extension WinSolo {
                         let wx = Double(x) + Double(WinSolo.hash(x, z, 20 + k)) - camera.position.x
                         let wz = Double(z) + Double(WinSolo.hash(x, z, 30 + k)) - camera.position.z
                         if precipitation == .rain {
-                            let y = top - (time * 15 + phase).truncatingRemainder(dividingBy: span)
-                            let c = SIMD3<Float>(Float(wx), Float(y - camera.position.y), Float(wz))
-                            blended.billboard(c, right: flatRight * 0.03, up: SIMD3(0, 0.5, 0), layer: -1,
+                            let fallen = (time * 15 + phase).truncatingRemainder(dividingBy: span)
+                            let y = top - fallen
+                            // Storm wind blows the drops sideways as they fall.
+                            let drift = Float(fallen / 15) - 0.5
+                            let c = SIMD3<Float>(Float(wx) + wind.x * drift, Float(y - camera.position.y), Float(wz) + wind.y * drift)
+                            blended.billboard(c, right: flatRight * 0.03, up: SIMD3(wind.x / 30, 0.5, wind.y / 30), layer: -1,
                                               color: SIMD4(0.72, 0.78, 0.9, 0.6 * strength))
                         } else {
                             let y = top - (time * 1.7 + phase).truncatingRemainder(dividingBy: span)
@@ -161,8 +315,9 @@ extension WinSolo {
             }
         }
 
-        // The held item (or nothing), swinging and bobbing like on the Mac.
-        if !s.spectator, !hudHidden, cameraView == .firstPerson, let stack = s.inventory.selectedStack, let info = items[stack.item] {
+        // The held item (or your arm), swinging and bobbing like on the Mac.
+        if !s.spectator, !hudHidden, cameraView == .firstPerson {
+            let stack = s.inventory.selectedStack, info = stack.flatMap { items[$0.item] }
             let t = Float(s.swingProgress)
             let swingA = sin(t * .pi), swingB = sin(sqrt(t) * .pi)
             let equip = Float(s.equipOffset)
@@ -170,15 +325,30 @@ extension WinSolo {
             let bobX = sin(phase) * 0.018 * amount, bobY = -abs(cos(phase)) * 0.022 * amount
             let view = MathUtil.rotationY(Float(camera.yaw)) * MathUtil.rotationX(Float(camera.pitch))
             let light = brightness(s.world.light(at: s.player.eyePosition))
+            let motion = s.hand.motion
+            let handMotion = MathUtil.translation(motion.offset) * MathUtil.rotationZ(motion.roll) * MathUtil.rotationY(motion.yaw)
+                * MathUtil.rotationX(motion.pitch)
             let local: Mat4
+            if let stack, let info {
             if isCubeItem(info) {
                 local = MathUtil.translation(SIMD3(0.56 + bobX - swingB * 0.18, -0.46 + bobY - equip * 0.6 + swingA * 0.12, -0.9 - swingA * 0.12))
                     * MathUtil.rotationX(-swingA * 0.9) * MathUtil.rotationY(0.78) * MathUtil.scale(SIMD3(repeating: 0.26))
             } else {
-                local = MathUtil.translation(SIMD3(0.46 + bobX - swingB * 0.16, -0.36 + bobY - equip * 0.6 + swingA * 0.1, -0.7 - swingA * 0.1))
-                    * MathUtil.rotationX(-swingA * 1.2) * MathUtil.rotationY(-0.35) * MathUtil.rotationZ(0.35) * MathUtil.scale(SIMD3(repeating: 0.42))
+                // A 3D item held at an angle so its thickness shows, like on the Mac
+                local = MathUtil.translation(SIMD3(0.5 + bobX - swingB * 0.16, -0.38 + bobY - equip * 0.6 + swingA * 0.1, -0.76 - swingA * 0.1))
+                    * MathUtil.rotationX(-swingA * 1.2) * MathUtil.rotationY(-1.25) * MathUtil.rotationZ(0.35) * MathUtil.scale(SIMD3(repeating: 0.55))
             }
-            appendItem(&hand, stack.item, view * local, light: light)
+            appendItem(&hand, stack.item, view * handMotion * local, light: light)
+            } else {
+                // Empty hand: your gloved arm
+                local = MathUtil.translation(SIMD3(0.56 + bobX - swingB * 0.2, -0.54 + bobY - equip * 0.5 + swingA * 0.16, -0.4 - swingA * 0.18))
+                    * MathUtil.rotationY(-0.28) * MathUtil.rotationX(0.45 - swingA * 1.1)
+                let m = view * handMotion * local
+                let skin = SIMD3<Float>(0.8, 0.58, 0.42), glove = SIMD3<Float>(0.36, 0.24, 0.16), cuff = SIMD3<Float>(0.62, 0.42, 0.18)
+                hand.box(m, SIMD3(-0.1, -0.1, -0.55), SIMD3(0.1, 0.1, -0.22), color: glove * glove, light: light)
+                hand.box(m, SIMD3(-0.105, -0.105, -0.25), SIMD3(0.105, 0.105, -0.17), color: cuff * cuff, light: light)
+                hand.box(m, SIMD3(-0.095, -0.095, -0.17), SIMD3(0.095, 0.095, 0.4), color: skin * skin, light: light)
+            }
         }
         return WorldEffects(solid: solid.vertices, blended: blended.vertices, hand: hand.vertices)
     }

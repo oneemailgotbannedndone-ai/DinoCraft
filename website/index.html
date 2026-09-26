@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DinoCraft — Download</title>
+<meta name="description" content="Download DinoCraft for Windows and Mac: a blocky prehistoric adventure with dinosaurs to tame, ride and battle.">
+<link rel="icon" href="icon.png">
+<meta property="og:title" content="DinoCraft">
+<meta property="og:description" content="A blocky prehistoric adventure. Free for Windows and Mac.">
+<meta property="og:image" content="icon.png">
+<style>
+  :root {
+    --bg: #1b120b; --panel: #3a2615; --panel-edge: #5c3d22; --text: #f6ead8; --dim: #cdb89a;
+    --accent: #f08a2e; --accent-2: #ffe69a; --green: #4e9a3a;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--text);
+    background: radial-gradient(ellipse 120% 900px at top, #3b5a2a 0%, #20301a 40%, var(--bg) 100%) no-repeat, var(--bg);
+    min-height: 100vh; line-height: 1.5;
+  }
+  main { max-width: 980px; margin: 0 auto; padding: 48px 16px 64px; }
+  header { text-align: center; }
+  header img { width: 128px; height: 128px; image-rendering: pixelated; border-radius: 24px; box-shadow: 0 8px 30px #0008; }
+  h1 {
+    font-size: clamp(40px, 9vw, 72px); margin: 16px 0 4px; letter-spacing: 1px;
+    background: linear-gradient(var(--accent-2), var(--accent)); -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 3px 0 #0006);
+  }
+  .tag { color: var(--dim); font-size: 18px; margin: 0 0 8px; }
+  .version { color: var(--dim); font-size: 14px; min-height: 1.5em; }
+  .downloads { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin: 32px 0; }
+  .card {
+    background: var(--panel); border: 3px solid var(--panel-edge); border-radius: 14px; padding: 20px;
+    box-shadow: inset 0 3px 0 #ffffff14, 0 6px 18px #0006;
+  }
+  .card h2 { margin: 0 0 4px; font-size: 22px; }
+  .card a:not(.btn) { color: var(--accent-2); }
+  .card .size { color: var(--dim); font-size: 14px; margin-bottom: 14px; min-height: 1.5em; }
+  .btn {
+    display: block; text-align: center; text-decoration: none; font-weight: 700; font-size: 18px; color: #2a1606;
+    background: linear-gradient(#ffc36a, var(--accent)); border: 3px solid #8a4a14; border-radius: 10px; padding: 12px;
+    box-shadow: inset 0 3px 0 #fff6, 0 4px 0 #5a2e0a; transition: transform .08s;
+  }
+  .btn:hover { transform: translateY(-1px); filter: brightness(1.06); }
+  .btn:active { transform: translateY(2px); box-shadow: inset 0 3px 0 #fff6, 0 1px 0 #5a2e0a; }
+  ol { padding-left: 20px; margin: 14px 0 0; color: var(--dim); font-size: 15px; }
+  ol li { margin: 4px 0; }
+  code { background: #0005; padding: 1px 6px; border-radius: 5px; font-size: 13px; color: var(--accent-2); word-break: break-all; }
+  section.features { background: #0004; border-radius: 14px; padding: 20px 24px; }
+  section.features h2 { margin-top: 0; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px 24px; }
+  .grid div::before { content: "🦖 "; }
+  footer { text-align: center; color: var(--dim); font-size: 13px; margin-top: 32px; }
+  footer a { color: var(--accent-2); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <img src="icon.png" alt="DinoCraft icon">
+    <h1>DinoCraft</h1>
+    <p class="tag">A blocky prehistoric adventure. Tame, ride and battle dinosaurs.</p>
+    <p class="version" id="version">Free for Windows, Mac and iPhone</p>
+  </header>
+
+  <div class="downloads">
+    <div class="card">
+      <h2>Windows</h2>
+      <div class="size" id="win-size">Windows 10 or 11 (64-bit)</div>
+      <a class="btn" id="win-link" href="https://github.com/oneemailgotbannedndone-ai/DinoCraft/releases/latest/download/DinoCraft-Windows.zip">Download</a>
+      <ol>
+        <li>Right-click the zip and choose <b>Extract All</b>.</li>
+        <li>Open <b>DinoCraft Launcher.exe</b>.</li>
+        <li>If Windows warns you, click <b>More info</b>, then <b>Run anyway</b>.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h2>Mac</h2>
+      <div class="size" id="mac-size">Apple Silicon (M1 or newer), macOS 14+</div>
+      <a class="btn" id="mac-link" href="https://github.com/oneemailgotbannedndone-ai/DinoCraft/releases/latest/download/DinoCraft-Mac.zip">Download</a>
+      <ol>
+        <li>Double-click the zip, then drag <b>DinoCraft</b> and <b>DinoCraft Launcher</b> into Applications.</li>
+        <li>Open <b>DinoCraft Launcher</b>.</li>
+        <li>If macOS blocks it: System Settings → Privacy &amp; Security → <b>Open Anyway</b>.
+          Or run <code>xattr -cr "/Applications/DinoCraft Launcher.app" /Applications/DinoCraft.app</code> in Terminal.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h2>iPhone &amp; iPad</h2>
+      <div class="size" id="ios-size">Offline edition · iOS 16+ · sideload</div>
+      <a class="btn" id="ios-link" href="https://github.com/oneemailgotbannedndone-ai/DinoCraft/releases/download/mobile/DinoCraft-Mobile.ipa">Download .ipa</a>
+      <ol>
+        <li>Install <a href="https://altstore.io">AltStore</a> or <a href="https://sidestore.io">SideStore</a> on your device.</li>
+        <li>Download the .ipa on your iPhone or iPad.</li>
+        <li>In AltStore/SideStore, go to <b>My Apps</b>, tap <b>+</b> and pick the file.</li>
+      </ol>
+    </div>
+  </div>
+
+  <section class="features">
+    <h2>What's inside</h2>
+    <div class="grid">
+      <div>Dozens of dinosaurs to tame, breed and ride</div>
+      <div>Flying mounts, boats and fishing</div>
+      <div>Caves, volcanoes, meteors and shipwrecks</div>
+      <div>Treasure maps and buried loot</div>
+      <div>Enchanting, quests and villagers</div>
+      <div>Amber circuits, pistons and lamps</div>
+      <div>Seasons, storms and lightning</div>
+      <div>Multiplayer with friends</div>
+    </div>
+  </section>
+
+  <footer>
+    The launcher updates the game for you after the first download.<br>
+    <a href="https://github.com/oneemailgotbannedndone-ai/DinoCraft/releases">All versions</a>
+  </footer>
+</main>
+<script>
+  // Show the newest build number and download sizes (the buttons work even if this fails).
+  fetch("https://api.github.com/repos/oneemailgotbannedndone-ai/DinoCraft/releases/latest")
+    .then(r => r.ok ? r.json() : Promise.reject(r.status))
+    .then(release => {
+      const date = release.published_at ? new Date(release.published_at).toLocaleDateString() : "";
+      document.getElementById("version").textContent =
+        (release.name || release.tag_name || "Latest version") + (date ? " · " + date : "");
+      const mb = bytes => Math.round(bytes / 1048576) + " MB";
+      for (const asset of release.assets || []) {
+        if (asset.name === "DinoCraft-Windows.zip") {
+          document.getElementById("win-size").textContent = "Windows 10 or 11 (64-bit) · " + mb(asset.size);
+        } else if (asset.name === "DinoCraft-Mac.zip") {
+          document.getElementById("mac-size").textContent = "Apple Silicon, macOS 14+ · " + mb(asset.size);
+        }
+      }
+    })
+    .catch(() => {});
+  fetch("https://api.github.com/repos/oneemailgotbannedndone-ai/DinoCraft/releases/tags/mobile")
+    .then(r => r.ok ? r.json() : Promise.reject(r.status))
+    .then(release => {
+      const ipa = (release.assets || []).find(a => a.name === "DinoCraft-Mobile.ipa");
+      if (ipa) document.getElementById("ios-size").textContent = "Offline edition · iOS 16+ · " + Math.round(ipa.size / 1048576) + " MB";
+    })
+    .catch(() => {});
+</script>
+</body>
+</html>

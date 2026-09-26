@@ -10,25 +10,51 @@ import Foundation
 /// (the Mac host and client), which uses the same message numbers and JSON keys.
 public enum Wire {
     public static let defaultPort: UInt16 = 25650
-    public static let protocolVersion = 1
+    public static let protocolVersion = 2
     public static let maxFrame = 8 * 1024 * 1024
 
     public enum Kind: UInt8 {
         case hello = 1, welcome, reject, chunkRequest, chunkData, blockChange, playerState, playerJoined, playerLeft, chat,
              mobSnapshot, itemSnapshot, attackPlayer, attackMob, dropItem, giveItem, damage, worldTime, dimensionChange,
-             disconnect, containerOpen, containerData, containerSet, spawnMob
+             disconnect, containerOpen, containerData, containerSet, spawnMob,
+             /// "What are you playing?" — answered without joining, for the friends list.
+             status
     }
 
     public struct Hello: Codable {
         public var version: Int
         public var username: String
-        public init(version: Int, username: String) { self.version = version; self.username = username }
+        /// The player's one-of-a-kind ID (`PlayerIdentity`) and look; older versions leave them out.
+        public var playerID: String?
+        public var look: String?
+        public init(version: Int, username: String, playerID: String? = nil, look: String? = nil) {
+            self.version = version; self.username = username; self.playerID = playerID; self.look = look
+        }
     }
 
     public struct PlayerInfo: Codable {
         public var id: Int
         public var name: String
-        public init(id: Int, name: String) { self.id = id; self.name = name }
+        public var playerID: String?
+        public var look: String?
+        public init(id: Int, name: String, playerID: String? = nil, look: String? = nil) {
+            self.id = id; self.name = name; self.playerID = playerID; self.look = look
+        }
+    }
+
+    public struct StatusRequest: Codable {
+        public init() {}
+    }
+
+    /// A host's answer to `status`.
+    public struct Status: Codable, Equatable {
+        public var hostID: String?
+        public var hostName: String
+        public var world: String
+        public var players: Int
+        public init(hostID: String?, hostName: String, world: String, players: Int) {
+            self.hostID = hostID; self.hostName = hostName; self.world = world; self.players = players
+        }
     }
 
     public struct Welcome: Codable {
@@ -42,9 +68,16 @@ public enum Wire {
         public var x: Double, y: Double, z: Double
         public var worldTime: Double
         public var players: [PlayerInfo]
+        /// Whether the host's overworld goes down to Y -70 (nil from older hosts: no).
+        public var deep: Bool?
+        /// Hardcore: this player already died here, so they can only spectate.
+        public var spectator: Bool?
 
         public init(playerID: Int, worldName: String, seed: String, dimension: String, gameMode: String, difficulty: String,
-                    hardcore: Bool, x: Double, y: Double, z: Double, worldTime: Double, players: [PlayerInfo]) {
+                    hardcore: Bool, x: Double, y: Double, z: Double, worldTime: Double, players: [PlayerInfo], deep: Bool? = nil,
+                    spectator: Bool? = nil) {
+            self.deep = deep
+            self.spectator = spectator
             self.playerID = playerID; self.worldName = worldName; self.seed = seed; self.dimension = dimension
             self.gameMode = gameMode; self.difficulty = difficulty; self.hardcore = hardcore
             self.x = x; self.y = y; self.z = z; self.worldTime = worldTime; self.players = players
@@ -63,7 +96,7 @@ public enum Wire {
 
     public struct BlockChange: Codable {
         public var x: Int32, y: Int32, z: Int32
-        public var id: UInt8
+        public var id: BlockID
         public var harvest: Bool?
         public init(pos: BlockPos, id: BlockID, harvest: Bool? = nil) { x = pos.x; y = pos.y; z = pos.z; self.id = id; self.harvest = harvest }
     }
@@ -92,7 +125,9 @@ public enum Wire {
     public struct Chat: Codable {
         public var from: String
         public var text: String
-        public init(from: String, text: String) { self.from = from; self.text = text }
+        /// Set for a private message (`/msg`): who it's for.
+        public var to: String?
+        public init(from: String, text: String, to: String? = nil) { self.from = from; self.text = text; self.to = to }
     }
 
     public struct MobState: Codable {

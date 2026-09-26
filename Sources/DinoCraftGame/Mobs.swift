@@ -6,8 +6,16 @@ import DinoCraftCore
 
 enum MobKind: String, CaseIterable, Codable {
     case trikey, dodo, longneck, raptor, spitter, crawler, magmaRaptor, villager, stego, ankylo, rex, compy, ptero, parasaur, sailback, boneWalker, scorpion,
-         pig, cow, sheep, chicken, pookpook, carnotaurus, allosaurus, baryonyx, troodon, spinosaurus
+         pig, cow, sheep, chicken, pookpook, carnotaurus, allosaurus, baryonyx, troodon, spinosaurus,
+         grumblesaurus, grinasaurus,
+         cod, salmon, clownfish, blueTang,
+         pachy, iguanodon, therizino, gallimimus, oviraptor, microraptor,
+         boat, egg, armorStand, mosasaurus, crab,
+         protoceratops, styracosaurus, dilophosaurus, corythosaurus, quetzalcoatlus
 }
+
+/// Kinds of particle burst the game can ask for.
+enum EffectBurst { case dust, confetti, ink, crumbs, splash, smoke, lavaSpray, impact, trail, starTrail }
 
 struct MobDrop {
     let item: String
@@ -60,7 +68,8 @@ struct MobSpecies {
                              callPitch: 1.1, deepCall: false),
         .crawler: MobSpecies(kind: .crawler, displayName: "Cave Crawler", hostile: true, maxHealth: 12, width: 0.9, height: 0.5,
                              walkSpeed: 1.4, runSpeed: 3.6, damage: 2, attackReach: 1.0, attackCooldown: 0.8, ranged: false, fireproof: false,
-                             detectRange: 14, drops: [MobDrop(item: "dino_hide", min: 0, max: 1, chance: 1), MobDrop(item: "amber", min: 0, max: 1, chance: 0.3)],
+                             detectRange: 14, drops: [MobDrop(item: "dino_hide", min: 0, max: 1, chance: 1), MobDrop(item: "amber", min: 0, max: 1, chance: 0.3),
+                                                     MobDrop(item: "string", min: 0, max: 2, chance: 1)],
                              callPitch: 2.8, deepCall: false),
         .magmaRaptor: MobSpecies(kind: .magmaRaptor, displayName: "Magma Raptor", hostile: true, maxHealth: 24, width: 0.7, height: 1.3,
                                  walkSpeed: 2.0, runSpeed: 6.0, damage: 5, attackReach: 1.3, attackCooldown: 1.0, ranged: false, fireproof: true,
@@ -106,7 +115,8 @@ struct MobSpecies {
                                 callPitch: 0.7, deepCall: false),
         .scorpion: MobSpecies(kind: .scorpion, displayName: "Sand Scorpion", hostile: true, maxHealth: 12, width: 0.9, height: 0.55,
                               walkSpeed: 1.6, runSpeed: 4.8, damage: 2.5, attackReach: 0.9, attackCooldown: 0.9, ranged: false, fireproof: false,
-                              detectRange: 16, drops: [MobDrop(item: "raptor_claw", min: 0, max: 1, chance: 0.3), MobDrop(item: "dino_hide", min: 0, max: 1, chance: 1)],
+                              detectRange: 16, drops: [MobDrop(item: "raptor_claw", min: 0, max: 1, chance: 0.3), MobDrop(item: "dino_hide", min: 0, max: 1, chance: 1),
+                                                      MobDrop(item: "string", min: 0, max: 1, chance: 0.6)],
                               callPitch: 2.2, deepCall: false),
         .pig: MobSpecies(kind: .pig, displayName: "Pig", hostile: false, maxHealth: 10, width: 0.8, height: 0.9,
                    walkSpeed: 1.2, runSpeed: 3.6, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: false,
@@ -148,14 +158,110 @@ struct MobSpecies {
                    walkSpeed: 1.8, runSpeed: 5.0, damage: 9, attackReach: 2.0, attackCooldown: 1.6, ranged: false, fireproof: false,
                    detectRange: 30, drops: [MobDrop(item: "raw_dino_meat", min: 5, max: 9, chance: 1), MobDrop(item: "dino_bone", min: 3, max: 5, chance: 1), MobDrop(item: "emerald", min: 1, max: 3, chance: 0.6)],
                    callPitch: 0.4, deepCall: true),
+        .grumblesaurus: MobSpecies(kind: .grumblesaurus, displayName: "King Grumblesaurus", hostile: true, maxHealth: 320, width: 2.2, height: 4.4,
+                   walkSpeed: 2.2, runSpeed: 5.0, damage: 7, attackReach: 2.4, attackCooldown: 1.6, ranged: false, fireproof: true,
+                   detectRange: 48, drops: [MobDrop(item: "smile_trophy", min: 1, max: 1, chance: 1), MobDrop(item: "diamond", min: 3, max: 6, chance: 1),
+                                            MobDrop(item: "emerald", min: 4, max: 8, chance: 1), MobDrop(item: "checker_block", min: 8, max: 16, chance: 1)],
+                   callPitch: 0.35, deepCall: true),
+        .cod: MobSpecies(kind: .cod, displayName: "Cod", hostile: false, maxHealth: 3, width: 0.5, height: 0.35,
+                   walkSpeed: 1.4, runSpeed: 4.2, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: false,
+                   detectRange: 0, drops: [MobDrop(item: "raw_fish", min: 1, max: 1, chance: 1), MobDrop(item: "bone_meal", min: 0, max: 1, chance: 0.05)],
+                   callPitch: 1, deepCall: false),
+        .salmon: MobSpecies(kind: .salmon, displayName: "Salmon", hostile: false, maxHealth: 3, width: 0.6, height: 0.4,
+                   walkSpeed: 1.6, runSpeed: 4.6, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: false,
+                   detectRange: 0, drops: [MobDrop(item: "raw_fish", min: 1, max: 2, chance: 1), MobDrop(item: "bone_meal", min: 0, max: 1, chance: 0.05)],
+                   callPitch: 1, deepCall: false),
+        .clownfish: MobSpecies(kind: .clownfish, displayName: "Clownfish", hostile: false, maxHealth: 3, width: 0.35, height: 0.3,
+                   walkSpeed: 1.2, runSpeed: 4.0, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: false,
+                   detectRange: 0, drops: [MobDrop(item: "tropical_fish", min: 1, max: 1, chance: 1)],
+                   callPitch: 1, deepCall: false),
+        .blueTang: MobSpecies(kind: .blueTang, displayName: "Blue Tang", hostile: false, maxHealth: 3, width: 0.4, height: 0.4,
+                   walkSpeed: 1.3, runSpeed: 4.2, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: false,
+                   detectRange: 0, drops: [MobDrop(item: "tropical_fish", min: 1, max: 1, chance: 1)],
+                   callPitch: 1, deepCall: false),
+        .pachy: MobSpecies(kind: .pachy, displayName: "Pachycephalosaurus", hostile: false, maxHealth: 22, width: 0.9, height: 1.6,
+                   walkSpeed: 1.3, runSpeed: 4.2, damage: 4, attackReach: 1.3, attackCooldown: 1.4, ranged: false, fireproof: false,
+                   detectRange: 0, drops: [MobDrop(item: "raw_dino_meat", min: 1, max: 3, chance: 1), MobDrop(item: "dino_bone", min: 0, max: 2, chance: 1)],
+                   callPitch: 0.95, deepCall: true),
+        .iguanodon: MobSpecies(kind: .iguanodon, displayName: "Iguanodon", hostile: false, maxHealth: 34, width: 1.1, height: 2.4,
+                   walkSpeed: 1.0, runSpeed: 3.0, damage: 4, attackReach: 1.6, attackCooldown: 1.8, ranged: false, fireproof: false,
+                   detectRange: 0, drops: [MobDrop(item: "raw_dino_meat", min: 2, max: 4, chance: 1), MobDrop(item: "dino_hide", min: 1, max: 2, chance: 1)],
+                   callPitch: 0.75, deepCall: true),
+        .therizino: MobSpecies(kind: .therizino, displayName: "Therizinosaurus", hostile: false, maxHealth: 50, width: 1.2, height: 3.2,
+                   walkSpeed: 1.0, runSpeed: 3.2, damage: 7, attackReach: 2.0, attackCooldown: 1.6, ranged: false, fireproof: false,
+                   detectRange: 0, drops: [MobDrop(item: "raw_dino_meat", min: 2, max: 5, chance: 1), MobDrop(item: "feather", min: 2, max: 5, chance: 1), MobDrop(item: "raptor_claw", min: 1, max: 2, chance: 0.7)],
+                   callPitch: 0.6, deepCall: true),
+        .gallimimus: MobSpecies(kind: .gallimimus, displayName: "Gallimimus", hostile: false, maxHealth: 12, width: 0.7, height: 1.9,
+                   walkSpeed: 1.8, runSpeed: 7.0, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: false,
+                   detectRange: 0, drops: [MobDrop(item: "raw_poultry", min: 1, max: 2, chance: 1), MobDrop(item: "feather", min: 0, max: 2, chance: 1)],
+                   callPitch: 1.8, deepCall: false),
+        .oviraptor: MobSpecies(kind: .oviraptor, displayName: "Oviraptor", hostile: false, maxHealth: 8, width: 0.6, height: 1.1,
+                   walkSpeed: 1.5, runSpeed: 4.8, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: false,
+                   detectRange: 0, drops: [MobDrop(item: "feather", min: 1, max: 3, chance: 1), MobDrop(item: "raw_poultry", min: 0, max: 1, chance: 0.7)],
+                   callPitch: 2.3, deepCall: false),
+        .microraptor: MobSpecies(kind: .microraptor, displayName: "Microraptor", hostile: false, maxHealth: 6, width: 0.5, height: 0.5,
+                   walkSpeed: 2.6, runSpeed: 5.0, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: false,
+                   detectRange: 0, drops: [MobDrop(item: "feather", min: 1, max: 3, chance: 1)],
+                   callPitch: 2.8, deepCall: false),
+        .boat: MobSpecies(kind: .boat, displayName: "Boat", hostile: false, maxHealth: 4, width: 1.2, height: 0.6,
+                   walkSpeed: 0, runSpeed: 7.5, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: false,
+                   detectRange: 0, drops: [], callPitch: 1, deepCall: false),
+        .protoceratops: MobSpecies(kind: .protoceratops, displayName: "Protoceratops", hostile: false, maxHealth: 14, width: 0.8, height: 0.8,
+                   walkSpeed: 1.2, runSpeed: 3.6, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: false,
+                   detectRange: 0, drops: [MobDrop(item: "raw_dino_meat", min: 1, max: 2, chance: 1), MobDrop(item: "dino_hide", min: 0, max: 1, chance: 1)],
+                   callPitch: 1.5, deepCall: false),
+        .styracosaurus: MobSpecies(kind: .styracosaurus, displayName: "Styracosaurus", hostile: false, maxHealth: 44, width: 1.5, height: 1.6,
+                   walkSpeed: 0.9, runSpeed: 3.2, damage: 7, attackReach: 1.8, attackCooldown: 1.6, ranged: false, fireproof: false,
+                   detectRange: 0, drops: [MobDrop(item: "raw_dino_meat", min: 2, max: 5, chance: 1), MobDrop(item: "dino_hide", min: 1, max: 3, chance: 1)],
+                   callPitch: 0.7, deepCall: true),
+        .dilophosaurus: MobSpecies(kind: .dilophosaurus, displayName: "Dilophosaurus", hostile: true, maxHealth: 22, width: 0.8, height: 1.7,
+                   walkSpeed: 1.6, runSpeed: 4.4, damage: 4, attackReach: 11, attackCooldown: 2.2, ranged: true, fireproof: false,
+                   detectRange: 18, drops: [MobDrop(item: "raw_dino_meat", min: 1, max: 3, chance: 1), MobDrop(item: "dino_bone", min: 0, max: 2, chance: 1)],
+                   callPitch: 1.2, deepCall: false),
+        .corythosaurus: MobSpecies(kind: .corythosaurus, displayName: "Corythosaurus", hostile: false, maxHealth: 32, width: 1.1, height: 2.3,
+                   walkSpeed: 1.1, runSpeed: 3.4, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: false,
+                   detectRange: 0, drops: [MobDrop(item: "raw_dino_meat", min: 2, max: 4, chance: 1), MobDrop(item: "dino_hide", min: 1, max: 2, chance: 1)],
+                   callPitch: 0.9, deepCall: true),
+        .quetzalcoatlus: MobSpecies(kind: .quetzalcoatlus, displayName: "Quetzalcoatlus", hostile: false, maxHealth: 30, width: 1.4, height: 1.6,
+                   walkSpeed: 3.0, runSpeed: 7.0, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: false,
+                   detectRange: 0, drops: [MobDrop(item: "feather", min: 2, max: 5, chance: 1), MobDrop(item: "raw_dino_meat", min: 1, max: 3, chance: 1)],
+                   callPitch: 1.1, deepCall: false),
+        .crab: MobSpecies(kind: .crab, displayName: "Crab", hostile: true, maxHealth: 8, width: 0.7, height: 0.45,
+                   walkSpeed: 1.3, runSpeed: 2.8, damage: 2, attackReach: 0.6, attackCooldown: 1.0, ranged: false, fireproof: false,
+                   detectRange: 7, drops: [MobDrop(item: "crab_claw", min: 1, max: 2, chance: 0.9)], callPitch: 1.8, deepCall: false),
+        .mosasaurus: MobSpecies(kind: .mosasaurus, displayName: "Mosasaurus", hostile: true, maxHealth: 140, width: 1.8, height: 1.3,
+                   walkSpeed: 3.2, runSpeed: 7.5, damage: 9, attackReach: 2.4, attackCooldown: 1.3, ranged: false, fireproof: false,
+                   detectRange: 30, drops: [MobDrop(item: "mosasaurus_tooth", min: 1, max: 1, chance: 1),
+                                            MobDrop(item: "emerald", min: 3, max: 7, chance: 1),
+                                            MobDrop(item: "diamond", min: 1, max: 2, chance: 0.6),
+                                            MobDrop(item: "raw_fish", min: 3, max: 6, chance: 1)],
+                   callPitch: 0.5, deepCall: true),
+        .armorStand: MobSpecies(kind: .armorStand, displayName: "Armour Stand", hostile: false, maxHealth: 1, width: 0.5, height: 1.9,
+                   walkSpeed: 0, runSpeed: 0, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: false,
+                   detectRange: 0, drops: [], callPitch: 1, deepCall: false),
+        .egg: MobSpecies(kind: .egg, displayName: "Dino Egg", hostile: false, maxHealth: 3, width: 0.46, height: 0.58,
+                   walkSpeed: 0, runSpeed: 0, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: false,
+                   detectRange: 0, drops: [], callPitch: 1.6, deepCall: false),
+        .grinasaurus: MobSpecies(kind: .grinasaurus, displayName: "Happy Grumblesaurus", hostile: false, maxHealth: 320, width: 2.2, height: 4.4,
+                   walkSpeed: 1.2, runSpeed: 2.0, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: true,
+                   detectRange: 0, drops: [], callPitch: 0.6, deepCall: true),
     ]
 
     static func of(_ kind: MobKind) -> MobSpecies { table[kind]! }
 
-    var flying: Bool { kind == .ptero }
+    var flying: Bool { kind == .ptero || kind == .microraptor || kind == .quetzalcoatlus }
+
+    /// Fish: they swim anywhere in the water and flop about on land.
+    var aquatic: Bool { [.cod, .salmon, .clownfish, .blueTang, .mosasaurus].contains(kind) }
+
+    /// Bosses get a health bar across the top of the screen.
+    var isBoss: Bool { kind == .grumblesaurus || kind == .mosasaurus }
+
+    /// Boats: ridden, not alive (see `Boats`).
+    var isVehicle: Bool { kind == .boat }
 
     /// Neutral creatures leave you alone until you hit them, then fight back.
-    var neutral: Bool { [.trikey, .longneck, .stego, .ankylo, .parasaur, .pookpook].contains(kind) }
+    var neutral: Bool { [.trikey, .longneck, .stego, .ankylo, .parasaur, .pookpook, .pachy, .iguanodon, .therizino, .styracosaurus].contains(kind) }
 
     var callSound: String {
         switch kind {
@@ -199,6 +305,37 @@ final class Mob {
     var variant = 0
     /// Villagers stay near their village plaza.
     var home: DVec3?
+    /// Boss attack timers.
+    var volleyTimer = 3.0
+    var stompTimer = 7.0
+    var airborne = false
+    var enraged = false
+    /// Fish: seconds spent out of the water.
+    var dryTime = 0.0
+    /// Tamed by the player (see `Taming`).
+    var owner: String?
+    var sitting = false
+    var saddled = false
+    var petName: String?
+    /// A guardian's current enemy.
+    weak var guardTarget: Mob?
+    /// While ridden: where the rider steers, and whether they sprint or jump.
+    var rideInput: DVec3?
+    var rideSprint = false
+    var rideJump = false
+    /// Breeding (see `Breeding`): 0 for a new hatchling, 1 grown up.
+    var growth = 1.0
+    var loveTimer = 0.0
+    var breedCooldown = 0.0
+    /// Eggs: seconds until it hatches.
+    var hatchTimer = 0.0
+    /// In love: where its partner is.
+    var mateTarget: DVec3?
+    /// Experience already handed out for defeating it.
+    var rewarded = false
+    /// Animation (see `Animation`): head turn and dip, tail swing, breathing.
+    var headYaw = 0.0, headPitch = 0.0, tailSwing = 0.0, breath = 0.0
+    var lastAnimYaw = 0.0, grazeTimer = Double.random(in: 4...16), grazeLeft = 0.0
 
     init(species: MobSpecies, position: DVec3) {
         id = Mob.nextID
@@ -210,10 +347,19 @@ final class Mob {
 
     var isDying: Bool { deathTimer >= 0 }
 
+    /// How big it is drawn and collides: babies start small and grow up.
+    var scale: Double {
+        if let netScale { return netScale }
+        if saddled && species.kind == .ptero { return Breeding.saddledPteroScale }   // big enough to carry you
+        return growth >= 1 ? 1 : 0.45 + 0.55 * max(0, growth)
+    }
+    /// A joined game's copy: the size the host sent.
+    var netScale: Double?
+
     var box: DBox {
-        let hw = species.width / 2
+        let hw = species.width / 2 * scale
         return DBox(min: DVec3(position.x - hw, position.y, position.z - hw),
-                    max: DVec3(position.x + hw, position.y + species.height, position.z + hw))
+                    max: DVec3(position.x + hw, position.y + species.height * scale, position.z + hw))
     }
 }
 
@@ -223,6 +369,8 @@ final class Projectile {
     var age = 0.0
     var removed = false
     let damage: Double
+    var cause = "Spat on by a Spitter"
+    var attacker = "Spitter"
 
     init(position: DVec3, velocity: DVec3, damage: Double) {
         self.position = position
@@ -238,6 +386,12 @@ private struct SavedMob: Codable {
     var yaw: Double
     var variant: Int?
     var hx: Double?, hy: Double?, hz: Double?
+    var owner: String?
+    var sitting: Bool?
+    var saddled: Bool?
+    var name: String?
+    var growth: Double?
+    var hatch: Double?
 }
 
 /// Creatures: spawning rules per dimension, biome, light and time of day;
@@ -248,6 +402,9 @@ final class MobManager {
     private var spawnTimer = 2.0
     private var villagerTimer = 3.0
     private var guardTimer = 5.0
+    private var stageTimer = 1.0
+    fileprivate var peacefulHintShown = false
+    private var eventTimer = Double.random(in: 240...480)
     private var scratch: [DBox] = []
 
     func clear() {
@@ -261,6 +418,7 @@ final class MobManager {
         m.yaw = Double.random(in: 0..<(2 * .pi))
         if kind == .villager { m.variant = Int.random(in: 0..<VillagerProfession.all.count) }
         if kind == .sheep { m.variant = Int.random(in: 0..<10) == 0 ? 1 : 0 }
+        if kind == .egg { m.hatchTimer = Breeding.hatchTime }
         mobs.append(m)
         return m
     }
@@ -283,6 +441,18 @@ final class MobManager {
         if guardTimer <= 0 {
             guardTimer = 15
             spawnDungeonGuards(s)
+            spawnTempleGuardian(s)
+            spawnWreckCrabs(s)
+        }
+        stageTimer -= dt
+        if stageTimer <= 0 {
+            stageTimer = 2
+            spawnStageGuests(s)
+        }
+        eventTimer -= dt
+        if eventTimer <= 0 {
+            eventTimer = Double.random(in: 300...600)
+            startStampede(s)
         }
         let player = s.player
         let targets = s.hostileTargets()
@@ -297,7 +467,7 @@ final class MobManager {
             }
             let toPlayer = (chosen?.pos ?? player.position) - m.position
             let distance = simd_length(toPlayer)
-            if m.species.hostile && simd_distance(player.position, m.position) > 96 && best > 96 { m.removed = true; continue }
+            if m.species.hostile && !m.isTamed && simd_distance(player.position, m.position) > 96 && best > 96 { m.removed = true; continue }
 
             m.hurtTimer = max(0, m.hurtTimer - dt)
             m.attackTimer = max(0, m.attackTimer - dt)
@@ -309,6 +479,46 @@ final class MobManager {
                 m.deathTimer += dt
                 if m.deathTimer > 0.8 { finishDeath(m, s) }
                 physics(m, desired: .zero, speed: 0, dt: dt, session: s)
+                continue
+            }
+            if m.species.kind == .grumblesaurus {
+                updateBoss(m, target: chosen, dt: dt, session: s)
+                continue
+            }
+            if m.species.isVehicle {
+                boatPhysics(m, dt: dt, session: s)
+                continue
+            }
+            if m.species.kind == .egg {
+                updateEgg(m, dt: dt, session: s)
+                continue
+            }
+            if m.species.kind == .armorStand {
+                physics(m, desired: .zero, speed: 0, dt: dt, session: s)
+                continue
+            }
+            if m.isTamed {
+                updateBreeding(m, dt: dt, session: s)
+                updateTamed(m, dt: dt, session: s)
+                continue
+            }
+            if m.species.kind == .mosasaurus {
+                updateMosasaurus(m, target: chosen, dt: dt, session: s)
+                continue
+            }
+            if m.species.aquatic {
+                // Fish drift about and dart away from whoever hit them; they don't wander off for good.
+                if simd_distance(player.position, m.position) > 80 { m.removed = true; continue }
+                var desired = DVec3.zero, speed = 0.0
+                if m.fleeTimer > 0 && distance < 16 {
+                    let away = m.position - (chosen?.pos ?? player.position) - DVec3(0, 0.8, 0)
+                    let length = simd_length(away)
+                    desired = length > 0.01 ? away / length : DVec3(0, 0, 1)
+                    speed = m.species.runSpeed
+                } else {
+                    swimWander(m, dt: dt, world: world, desired: &desired, speed: &speed)
+                }
+                swimPhysics(m, desired: desired, speed: speed, dt: dt, session: s)
                 continue
             }
 
@@ -335,6 +545,7 @@ final class MobManager {
                         m.lunge = 1
                         s.damageTarget(id: target.id, amount: m.species.damage, cause: "Snatched by a \(m.species.displayName)",
                                        attacker: m.species.displayName, knockback: dir)
+                        alertGuardians(against: m, near: s.player.position)
                         s.onSound?("amb_dino_high", audible(distance) * 0.6, m.species.callPitch)
                     }
                 } else if m.species.ranged {
@@ -354,6 +565,7 @@ final class MobManager {
                         m.lunge = 1
                         s.damageTarget(id: target.id, amount: m.species.damage, cause: "Mauled by a \(m.species.displayName)",
                                        attacker: m.species.displayName, knockback: dir)
+                        alertGuardians(against: m, near: s.player.position)
                     }
                 }
             } else if m.fleeTimer > 0 && distance < 24 {
@@ -423,19 +635,23 @@ final class MobManager {
         }
     }
 
-    private func physics(_ m: Mob, desired input: DVec3, speed: Double, dt: Double, session s: GameSession) {
+    func physics(_ m: Mob, desired input: DVec3, speed: Double, dt: Double, session s: GameSession) {
         let world = s.world
         let reg = world.registry
+        if m.species.aquatic {
+            swimPhysics(m, desired: input, speed: speed, dt: dt, session: s)
+            return
+        }
         if m.species.flying {
             flyPhysics(m, desired: input, speed: speed, dt: dt, world: world)
             return
         }
         var desired = input
         // Friendly creatures won't walk off cliffs or into water.
-        if !m.species.hostile && simd_length(desired) > 0 && m.onGround && !m.inLiquid {
+        if !m.species.hostile && m.rideInput == nil && simd_length(desired) > 0 && m.onGround && !m.inLiquid {
             let probe = m.position + desired * (m.species.width / 2 + 0.6)
             let px = Int(floor(probe.x)), pz = Int(floor(probe.z)), py = Int(floor(m.position.y))
-            let wet = reg.shape[Int(world.block(px, py, pz))] == .liquid || reg.shape[Int(world.block(px, py - 1, pz))] == .liquid
+            let wet = reg.isWet[Int(world.block(px, py, pz))] || reg.isWet[Int(world.block(px, py - 1, pz))]
             if wet || !(1...3).contains(where: { reg.isSolid[Int(world.block(px, py - $0, pz))] }) {
                 desired = .zero
                 m.wanderTarget = nil
@@ -443,7 +659,7 @@ final class MobManager {
         }
         let cx = Int(floor(m.position.x)), cz = Int(floor(m.position.z))
         let middle = world.block(cx, Int(floor(m.position.y + m.species.height * 0.4)), cz)
-        m.inLiquid = reg.shape[Int(middle)] == .liquid
+        m.inLiquid = reg.isWet[Int(middle)]
         if !m.species.fireproof && (middle == Blocks.lava || world.block(cx, Int(floor(m.position.y + 0.1)), cz) == Blocks.lava) {
             m.health -= 6 * dt
             m.hurtTimer = 0.2
@@ -458,7 +674,7 @@ final class MobManager {
         if m.inLiquid {
             // Swim low in the water: rise while the upper body is under, sink gently once it's out.
             let upper = world.block(cx, Int(floor(m.position.y + m.species.height * 0.8)), cz)
-            let deep = reg.shape[Int(upper)] == .liquid
+            let deep = reg.isWet[Int(upper)]
             m.velocity.y += ((deep ? 1.4 : -0.5) - m.velocity.y) * min(1, dt * 2.5)
         } else {
             m.velocity.y = max(-40, m.velocity.y - 26 * dt)
@@ -477,7 +693,7 @@ final class MobManager {
     }
 
     /// Returns true if horizontal movement was blocked.
-    private func move(_ m: Mob, _ d: DVec3, _ world: World) -> Bool {
+    func move(_ m: Mob, _ d: DVec3, _ world: World) -> Bool {
         var box = m.box
         var dx = d.x, dy = d.y, dz = d.z
         let sweep = box.expanded(d)
@@ -517,6 +733,81 @@ final class MobManager {
     }
 
     /// Gliding flight: cruise about nine blocks above the ground, circle when idle, fall when dying.
+    // MARK: Fish
+
+    private func wet(_ world: World, _ p: DVec3) -> Bool {
+        world.registry.isWet[Int(world.block(Int(floor(p.x)), Int(floor(p.y)), Int(floor(p.z))))]
+    }
+
+    /// Picks spots to swim to that are under water, a few blocks away, often at a new depth.
+    func swimWander(_ m: Mob, dt: Double, world: World, desired: inout DVec3, speed: inout Double) {
+        m.wanderTimer -= dt
+        if let target = m.wanderTarget, m.wanderTimer > 0 {
+            let d = target - m.position
+            let l = simd_length(d)
+            if l > 0.5 {
+                desired = d / l
+                speed = m.species.walkSpeed
+                return
+            }
+        }
+        m.wanderTarget = nil
+        for _ in 0..<6 {
+            let a = Double.random(in: 0..<(2 * .pi)), r = Double.random(in: 2...7)
+            let p = m.position + DVec3(cos(a) * r, Double.random(in: -2...2), sin(a) * r)
+            // Stay under water, clear of the surface.
+            if wet(world, p) && wet(world, p + DVec3(0, 0.7, 0)) {
+                m.wanderTarget = p
+                m.wanderTimer = Double.random(in: 3...7)
+                return
+            }
+        }
+    }
+
+    func swimPhysics(_ m: Mob, desired input: DVec3, speed: Double, dt: Double, session s: GameSession) {
+        let world = s.world
+        let middle = m.position + DVec3(0, m.species.height * 0.5, 0)
+        m.inLiquid = wet(world, middle)
+        if m.inLiquid {
+            m.dryTime = 0
+            var desired = input
+            // Don't swim out of the water: turn back at the surface and at the shore.
+            let ahead = middle + desired * (m.species.width / 2 + 0.4)
+            if simd_length(desired) > 0 && !wet(world, ahead) {
+                desired = wet(world, ahead - DVec3(0, 1, 0)) ? DVec3(desired.x * 0.3, -0.6, desired.z * 0.3) : -desired * 0.5
+                m.wanderTarget = nil
+            }
+            if !wet(world, middle + DVec3(0, 0.6, 0)) { desired.y = min(desired.y, -0.3) }
+            let k = 1 - exp(-4 * dt)
+            m.velocity += (desired * speed - m.velocity) * k
+            if m.isDying { m.velocity.y = 0.6 }   // belly up, floating away
+        } else {
+            // Out of the water: flop about, and dry out slowly.
+            m.velocity.y = max(-30, m.velocity.y - 26 * dt)
+            m.velocity.x *= exp(-2 * dt); m.velocity.z *= exp(-2 * dt)
+            if m.onGround && Double.random(in: 0..<1) < dt * 2.5 {
+                let a = Double.random(in: 0..<(2 * .pi))
+                m.velocity = DVec3(cos(a) * 1.6, 4.5, sin(a) * 1.6)
+            }
+            m.dryTime += dt
+            if m.dryTime > 6 && !m.isDying {
+                m.dryTime = 4.5
+                m.health -= 1
+                m.hurtTimer = 0.35
+                if m.health <= 0 { m.deathTimer = 0 }
+            }
+        }
+        _ = move(m, m.velocity * dt, world)
+        let horizontal = DVec3(m.velocity.x, 0, m.velocity.z)
+        let hs = simd_length(horizontal)
+        if hs > 0.15 && !m.isDying {
+            m.yaw = MobManager.lerpAngle(m.yaw, atan2(-horizontal.x, -horizontal.z), 1 - exp(-6 * dt))
+        }
+        m.moveAmount += (min(1, simd_length(m.velocity) / max(0.5, m.species.walkSpeed)) - m.moveAmount) * (1 - exp(-6 * dt))
+        m.walkPhase += dt * (m.inLiquid ? 6 + 10 * m.moveAmount : 18)
+        if m.position.y < -80 { m.removed = true }
+    }
+
     private func flyPhysics(_ m: Mob, desired input: DVec3, speed: Double, dt: Double, world: World) {
         var desired = input
         if m.isDying {
@@ -566,7 +857,8 @@ final class MobManager {
         MobSnapshotMessage(mobs: mobs.filter { !$0.removed }.map {
             MobState(id: $0.id, kind: $0.species.kind.rawValue, x: $0.position.x, y: $0.position.y, z: $0.position.z, yaw: Float($0.yaw),
                      health: Float($0.health), maxHealth: Float($0.species.maxHealth), walk: Float($0.walkPhase), move: Float($0.moveAmount),
-                     hurt: Float($0.hurtTimer), dying: Float($0.deathTimer), lunge: Float($0.lunge), variant: $0.variant)
+                     hurt: Float($0.hurtTimer), dying: Float($0.deathTimer), lunge: Float($0.lunge), variant: $0.variant,
+                     scale: $0.scale != 1 ? Float($0.scale) : nil)
         }, spits: projectiles.map { [$0.position.x, $0.position.y, $0.position.z] })
     }
 
@@ -592,6 +884,7 @@ final class MobManager {
             m.deathTimer = Double(st.dying)
             m.lunge = Double(st.lunge)
             m.variant = st.variant ?? 0
+            m.netScale = st.scale.map { Double($0) }
             next.append(m)
         }
         mobs = next
@@ -609,6 +902,14 @@ final class MobManager {
 
     func hurt(_ m: Mob, amount: Double, knockback: DVec3, session s: GameSession) {
         guard !m.isDying else { return }
+        if m.species.isVehicle {
+            breakBoat(m, session: s)
+            return
+        }
+        if m.species.kind == .armorStand {
+            breakArmorStand(m, session: s)
+            return
+        }
         m.health -= amount
         m.hurtTimer = 0.35
         let strength = m.species.width > 1.2 ? 2.0 : 6.5
@@ -624,6 +925,8 @@ final class MobManager {
 
     private func finishDeath(_ m: Mob, _ s: GameSession) {
         m.removed = true
+        if m.species.kind == .grumblesaurus { bossCheeredUp(m, s) }
+        if m.species.kind == .mosasaurus { mosasaurusDefeated(m, s) }
         let center = m.position + DVec3(0, m.species.height * 0.5, 0)
         for drop in m.species.drops {
             guard Double.random(in: 0..<1) < drop.chance, let item = s.items.id(named: drop.item) else { continue }
@@ -642,8 +945,8 @@ final class MobManager {
     func raycast(origin: DVec3, direction: DVec3, maxDistance: Double) -> (Mob, Double)? {
         var best: (Mob, Double)?
         for m in mobs where !m.removed && !m.isDying {
-            let hw = m.species.width / 2 + 0.1
-            let box = DBox(min: m.position - DVec3(hw, 0, hw), max: m.position + DVec3(hw, m.species.height + 0.1, hw))
+            let hw = m.species.width / 2 * m.scale + 0.1
+            let box = DBox(min: m.position - DVec3(hw, 0, hw), max: m.position + DVec3(hw, m.species.height * m.scale + 0.1, hw))
             if let t = MobManager.rayBox(origin, direction, box), t <= maxDistance, t < (best?.1 ?? .infinity) {
                 best = (m, t)
             }
@@ -693,7 +996,7 @@ final class MobManager {
             if let hit = s.hostileTargets().first(where: { simd_distance(p.position, $0.pos + DVec3(0, 0.9, 0)) < 0.9 }) {
                 p.removed = true
                 let flat = DVec3(p.velocity.x, 0, p.velocity.z)
-                s.damageTarget(id: hit.id, amount: p.damage, cause: "Spat on by a Spitter", attacker: "Spitter",
+                s.damageTarget(id: hit.id, amount: p.damage, cause: p.cause, attacker: p.attacker,
                                knockback: simd_length(flat) > 0.01 ? simd_normalize(flat) * 0.5 : .zero)
                 s.onSound?("splash", 0.5, 1.5)
             }
@@ -714,9 +1017,10 @@ final class MobManager {
         case .normal: hostileCap = 5
         case .hard: hostileCap = 9
         }
-        if difficulty == .peaceful { mobs.removeAll { $0.species.hostile } }
+        if difficulty == .peaceful { mobs.removeAll { $0.species.hostile && !$0.isTamed } }
+        if s.dimension == .overworld { trySpawnFish(s) }
         let hostiles = mobs.filter { $0.species.hostile }.count
-        let friendlies = mobs.filter { !$0.species.hostile && $0.species.kind != .villager }.count
+        let friendlies = mobs.filter { !$0.species.hostile && $0.species.kind != .villager && !$0.species.aquatic && !$0.species.isVehicle && !$0.isTamed && $0.species.kind != .egg && $0.species.kind != .armorStand }.count
         let allowHostile = hostiles < hostileCap
         let allowFriendly = friendlies < 10 && Double.random(in: 0..<1) < 0.25
         guard allowHostile || allowFriendly else { return }
@@ -739,12 +1043,46 @@ final class MobManager {
             let box = DBox(min: DVec3(Double(x) + 0.5 - hw, Double(y) + 0.01, Double(z) + 0.5 - hw),
                            max: DVec3(Double(x) + 0.5 + hw, Double(y) + species.height, Double(z) + 0.5 + hw))
             guard !VoxelPhysics.collides(world, box, scratch: &scratch),
-                  !VoxelPhysics.anyBlock(world, in: box, where: { world.registry.shape[Int($0)] == .liquid }) else { continue }
+                  !VoxelPhysics.anyBlock(world, in: box, where: { world.registry.isWet[Int($0)] }) else { continue }
             let group = (kind == .compy || kind == .troodon) ? 2 : (species.hostile || kind == .stego || kind == .ankylo ? 1 : Int.random(in: 1...3))
             for i in 0..<group {
                 spawn(kind, at: DVec3(Double(x) + 0.5 + Double(i) * 0.8, Double(y) + (species.flying ? 8 : 0), Double(z) + 0.5 + Double(i) * 0.4))
             }
             Log.debug("Spawned \(group)× \(species.displayName) at \(x), \(y), \(z)", category: "Game")
+            return
+        }
+    }
+
+    /// Schools of fish in the seas and rivers around the player: reef fish over coral, cod and salmon elsewhere.
+    private func trySpawnFish(_ s: GameSession) {
+        let world = s.world
+        guard mobs.filter({ $0.species.aquatic }).count < 16, Double.random(in: 0..<1) < 0.5,
+              let generator = world.generator as? TerrainGenerator else { return }
+        let p = s.player.position
+        let sea = generator.seaLevel
+        for _ in 0..<3 {
+            let angle = Double.random(in: 0..<(2 * .pi)), r = Double.random(in: 12...40)
+            let x = Int(floor(p.x + cos(angle) * r)), z = Int(floor(p.z + sin(angle) * r))
+            guard world.slot(at: ChunkPos(Int32(x >> 4), Int32(z >> 4)))?.mesh != nil else { continue }
+            let info = generator.columnInfo(x: x, z: z)
+            guard info.biome == .ocean || info.biome == .river else { continue }
+            // Somewhere between the floor and the surface, in open water.
+            var floor = sea - 2
+            while floor > 1 && world.registry.isWet[Int(world.block(x, floor - 1, z))] { floor -= 1 }
+            guard sea - 2 - floor >= 1 else { continue }
+            let y = Int.random(in: floor...(sea - 2))
+            guard world.block(x, y, z) == Blocks.water, world.block(x, y + 1, z) == Blocks.water else { continue }
+            let kind: MobKind
+            if info.biome == .river { kind = .salmon }
+            else if generator.isReef(x: x, z: z) || info.temperature > 0.45 { kind = Bool.random() ? .clownfish : .blueTang }
+            else { kind = info.temperature < -0.2 || Bool.random() ? .cod : .salmon }
+            let school = Int.random(in: 3...6)
+            for i in 0..<school {
+                let offset = DVec3(Double.random(in: -1...1), Double(i % 2) * 0.4, Double.random(in: -1...1))
+                let spot = DVec3(Double(x) + 0.5, Double(y) + 0.2, Double(z) + 0.5) + offset
+                if wet(world, spot) { spawn(kind, at: spot) }
+            }
+            Log.debug("Spawned a school of \(school)× \(MobSpecies.of(kind).displayName) at \(x), \(y), \(z)", category: "Game")
             return
         }
     }
@@ -759,14 +1097,20 @@ final class MobManager {
         case .skylands:
             guard allowFriendly, ground == Blocks.skyGrass else { return nil }
             return roll < 0.5 ? .longneck : .dodo
+        case .toonland:
+            // A happy place: only friendly critters wander the hills.
+            guard allowFriendly, ground == Blocks.toonGrass else { return nil }
+            let herd: [(Double, MobKind)] = [(0.25, .pookpook), (0.45, .dodo), (0.6, .sheep), (0.75, .pig), (0.88, .chicken), (1.01, .trikey)]
+            return herd.first(where: { roll < $0.0 })?.1 ?? .dodo
         case .overworld:
             let dark = light.sky < 0.35 && light.block < 0.3
-            let nightSurface = (s.isNight || s.weather.kind == .thunder) && light.sky > 0.5 && light.block < 0.4
+            let nightSurface = (s.isNight || s.weather.kind.stormy) && light.sky > 0.5 && light.block < 0.4
             let biome = s.world.generator.biome(x: x, z: z)
             if allowHostile && (biome == .mountains || biome == .snowyPeaks) && light.sky > 0.6 && roll < 0.12 { return .ptero }
             if allowHostile && (dark || nightSurface) {
-                if dark && y < WorldConst.seaLevel { return roll < 0.45 ? .crawler : (roll < 0.75 ? .boneWalker : .raptor) }
-                if (biome == .swamp || biome == .fernJungle) && roll < 0.35 { return .spitter }
+                if dark && y < s.world.generator.seaLevel { return roll < 0.45 ? .crawler : (roll < 0.75 ? .boneWalker : .raptor) }
+                if (biome == .swamp || biome == .fernJungle) && roll < 0.2 { return .dilophosaurus }
+                if (biome == .swamp || biome == .fernJungle) && roll < 0.4 { return .spitter }
                 if biome == .desert && roll < 0.5 { return .scorpion }
                 if (biome == .forest || biome == .fernJungle) && roll < 0.55 { return .troodon }
                 if nightSurface && roll > 0.94 { return .rex }
@@ -788,8 +1132,33 @@ final class MobManager {
                 }
             }
             guard allowFriendly, !s.isNight, light.sky > 0.7, goodGround else { return nil }
-            if ground == Blocks.sand { return roll < 0.6 ? .dodo : .pookpook }
+            if ground == Blocks.sand && biome == .beach && roll < 0.4 { return .crab }
+            if ground == Blocks.sand && biome != .desert && biome != .redMesa { return roll < 0.6 ? .dodo : .pookpook }
             if (biome == .swamp || biome == .fernJungle) && roll < 0.35 { return .sailback }
+            // The newer dinosaurs, each at home in its own kind of country.
+            let roll2 = Double.random(in: 0..<1)
+            switch biome {
+            case .plains, .savanna, .flowerMeadow:
+                if roll2 < 0.14 { return .protoceratops }
+                if roll2 < 0.22 && biome == .savanna { return .styracosaurus }
+                if roll2 < 0.3 { return .gallimimus }
+                if roll2 < 0.32 { return .pachy }
+            case .forest, .blossomGrove, .silverForest:
+                if roll2 < 0.1 { return .corythosaurus }
+                if roll2 < 0.22 { return .iguanodon }
+                if roll2 < 0.28 { return .oviraptor }
+                if roll2 < 0.36 { return .microraptor }
+            case .desert, .redMesa:
+                if roll2 < 0.3 { return .protoceratops }
+            case .fernJungle:
+                if roll2 < 0.16 { return .therizino }
+                if roll2 < 0.28 { return .microraptor }
+                if roll2 < 0.38 { return .oviraptor }
+            case .mountains, .snowyPeaks:
+                if roll2 < 0.12 { return .quetzalcoatlus }
+                if roll2 < 0.3 { return .pachy }
+            default: break
+            }
             if biome == .snowyTundra || biome == .redwoodTaiga {
                 return roll < 0.4 ? .sheep : (roll < 0.65 ? .cow : (roll < 0.8 ? .pookpook : .stego))
             }
@@ -802,9 +1171,11 @@ final class MobManager {
     // MARK: Persistence (friendly creatures persist; hostiles are ambient)
 
     func save(to url: URL) {
-        let saved = mobs.filter { !$0.species.hostile && !$0.isDying && !$0.removed }.map {
+        let saved = mobs.filter { (!$0.species.hostile || $0.isTamed) && !$0.species.aquatic && !$0.isDying && !$0.removed }.map {
             SavedMob(kind: $0.species.kind.rawValue, x: $0.position.x, y: $0.position.y, z: $0.position.z, health: $0.health, yaw: $0.yaw,
-                     variant: $0.variant, hx: $0.home?.x, hy: $0.home?.y, hz: $0.home?.z)
+                     variant: $0.variant, hx: $0.home?.x, hy: $0.home?.y, hz: $0.home?.z,
+                     owner: $0.owner, sitting: $0.sitting ? true : nil, saddled: $0.saddled ? true : nil, name: $0.petName,
+                     growth: $0.growth < 1 ? $0.growth : nil, hatch: $0.species.kind == .egg ? $0.hatchTimer : nil)
         }
         do {
             try AtomicFile.write(JSONEncoder().encode(saved), to: url)
@@ -823,6 +1194,12 @@ final class MobManager {
                 m.yaw = s.yaw
                 m.variant = s.variant ?? m.variant
                 if let hx = s.hx, let hy = s.hy, let hz = s.hz { m.home = DVec3(hx, hy, hz) }
+                m.owner = s.owner
+                m.sitting = s.sitting ?? false
+                m.saddled = s.saddled ?? false
+                m.petName = s.name
+                m.growth = s.growth ?? 1
+                m.hatchTimer = s.hatch ?? 0
             }
             Log.info("Restored \(mobs.count) creatures", category: "Save")
         } catch {
@@ -844,5 +1221,160 @@ extension MobKind {
     static func forEgg(named name: String) -> MobKind? {
         guard name.hasPrefix("spawn_egg_") else { return nil }
         return allCases.first { $0.eggItemName == name }
+    }
+}
+
+// MARK: - World events
+
+extension MobManager {
+    /// Now and then a herd thunders past in daylight, so the overworld doesn't feel the same every day.
+    fileprivate func startStampede(_ s: GameSession) {
+        guard s.dimension == .overworld, !s.isRemote, !s.isNight, !s.isUnderground, s.meta.rule("doMobSpawning") else { return }
+        let p = s.player.position
+        let herds: [(MobKind, String)] = [(.parasaur, "Parasaurolophus"), (.trikey, "Trikeys"), (.stego, "Stegosaurus"), (.dodo, "Dodos")]
+        let (kind, name) = herds.randomElement()!
+        let a = Double.random(in: 0..<(2 * .pi))
+        let center = DVec3(p.x + cos(a) * 22, p.y, p.z + sin(a) * 22)
+        var placed = 0
+        for i in 0..<Int.random(in: 4...7) {
+            let x = Int(floor(center.x)) + (i % 3) * 2 - 2, z = Int(floor(center.z)) + (i / 3) * 2 - 2
+            guard s.world.isLoaded(x, z), let y = s.world.findStandingY(x, z, near: Int(p.y)), abs(y - Int(p.y)) < 12 else { continue }
+            let m = spawn(kind, at: DVec3(Double(x) + 0.5, Double(y), Double(z) + 0.5))
+            m.fleeTimer = 14
+            placed += 1
+        }
+        guard placed > 0 else { return }
+        s.onToast?("A herd of \(name) is stampeding past!")
+        s.onSound?("amb_dino_low", 0.9, 0.8)
+    }
+}
+
+// MARK: - King Grumblesaurus
+
+extension MobManager {
+    /// The boss fighting near `p`, for the boss health bar.
+    func boss(near p: DVec3) -> Mob? {
+        mobs.first { $0.species.isBoss && !$0.removed && simd_distance($0.position, p) < 64 }
+    }
+
+    /// Keeps King Grumblesaurus on the nearest Toonland stage until he's cheered up,
+    /// and a happy Grumblesaurus there afterwards.
+    fileprivate func spawnStageGuests(_ s: GameSession) {
+        guard s.dimension == .toonland, !s.isRemote else { return }
+        let p = s.player.position
+        let stage = ToonlandGenerator.nearestStage(x: Int(floor(p.x)), z: Int(floor(p.z)))
+        let center = DVec3(Double(stage.x) + 0.5, Double(ToonlandGenerator.stageFloor + 1), Double(stage.z) + 0.5)
+        guard simd_distance(SIMD2(p.x, p.z), SIMD2(center.x, center.z)) < 40,
+              s.world.slot(at: ChunkPos(Int32(stage.x >> 4), Int32(stage.z >> 4)))?.mesh != nil else { return }
+        if s.isBossDefeated("grumblesaurus") {
+            guard !mobs.contains(where: { $0.species.kind == .grinasaurus && simd_distance($0.position, center) < 40 }) else { return }
+            let m = spawn(.grinasaurus, at: center)
+            m.home = center
+        } else if !mobs.contains(where: { $0.species.kind == .grumblesaurus }) {
+            guard s.meta.difficulty != .peaceful else {
+                if !peacefulHintShown { s.onToast?("King Grumblesaurus only comes out on Easy difficulty or harder") }
+                peacefulHintShown = true
+                return
+            }
+            let m = spawn(.grumblesaurus, at: center)
+            m.home = center
+            s.onToast?("King Grumblesaurus stomps onto the stage! Cheer him up!")
+            s.onSound?("amb_dino_low", 1, 0.35)
+            s.effectBursts.append((center, .ink))
+        }
+    }
+
+    fileprivate func updateBoss(_ m: Mob, target: (id: Int, pos: DVec3)?, dt: Double, session s: GameSession) {
+        if !m.enraged && m.health < m.species.maxHealth * 0.5 {
+            m.enraged = true
+            s.onToast?("King Grumblesaurus is getting REALLY grumpy!")
+            s.onSound?("amb_dino_low", 1, 0.3)
+        }
+        let rage = m.enraged ? 1.35 : 1.0
+        var desired = DVec3.zero
+        var speed = 0.0
+        if let target, simd_distance(target.pos, m.position) < 56 {
+            let to = target.pos - m.position
+            let flat = DVec3(to.x, 0, to.z)
+            let dist = simd_length(flat)
+            let dir = dist > 0.01 ? flat / dist : DVec3(0, 0, 1)
+            if dist > 2 && !m.airborne { desired = dir; speed = 3.0 * rage }
+            m.yaw = MobManager.lerpAngle(m.yaw, atan2(-dir.x, -dir.z), 1 - exp(-6 * dt))
+
+            // Chomp
+            if dist < m.species.attackReach + m.species.width / 2 && abs(to.y) < 3 && m.attackTimer <= 0 {
+                m.attackTimer = m.species.attackCooldown / rage
+                m.lunge = 1
+                s.damageTarget(id: target.id, amount: m.species.damage, cause: "Chomped by King Grumblesaurus",
+                               attacker: "King Grumblesaurus", knockback: dir * 1.5)
+                s.onSound?("amb_dino_low", 0.8, 0.45)
+            }
+            // Ink splatter volley
+            m.volleyTimer -= dt * rage
+            if m.volleyTimer <= 0 && dist > 4 {
+                m.volleyTimer = 5
+                let origin = m.position + DVec3(0, m.species.height * 0.8, 0)
+                let shots = m.enraged ? 5 : 3
+                for i in 0..<shots {
+                    let spread = (Double(i) - Double(shots - 1) / 2) * 0.22
+                    let aim = target.pos + DVec3(0, 1, 0) - origin
+                    let d = simd_length(aim)
+                    let flatAim = DVec3(aim.x, 0, aim.z)
+                    let side = simd_length(flatAim) > 0.01 ? simd_normalize(DVec3(-flatAim.z, 0, flatAim.x)) : DVec3(1, 0, 0)
+                    let v = simd_normalize(aim) * 15 + side * spread * 15 + DVec3(0, d * 0.35, 0)
+                    let blob = Projectile(position: origin, velocity: v, damage: 4)
+                    blob.cause = "Splattered by King Grumblesaurus"
+                    blob.attacker = "King Grumblesaurus"
+                    projectiles.append(blob)
+                }
+                m.lunge = 1
+                s.onSound?("splash", 0.9, 0.6)
+            }
+            // Grumpy stomp: a big jump and a shockwave on landing
+            m.stompTimer -= dt * rage
+            if m.stompTimer <= 0 && m.onGround && !m.airborne {
+                m.stompTimer = 9
+                m.airborne = true
+                m.velocity.y = 12
+                m.velocity += dir * 3
+                s.onSound?("amb_dino_low", 0.9, 0.5)
+            }
+        } else if let home = m.home, simd_distance(SIMD2(home.x, home.z), SIMD2(m.position.x, m.position.z)) > 6 {
+            let to = DVec3(home.x - m.position.x, 0, home.z - m.position.z)
+            desired = simd_normalize(to)
+            speed = m.species.walkSpeed
+        }
+        let wasAirborne = m.airborne && m.velocity.y < 0
+        physics(m, desired: desired, speed: speed, dt: dt, session: s)
+        if wasAirborne && m.onGround {
+            m.airborne = false
+            s.effectBursts.append((m.position, .dust))
+            s.onSound?("break_stone", 1, 0.5)
+            for t in s.hostileTargets() {
+                let d = t.pos - m.position
+                let flat = DVec3(d.x, 0, d.z)
+                let dist = simd_length(flat)
+                guard dist < 7.5, abs(d.y) < 2.5 else { continue }
+                let away = dist > 0.01 ? flat / dist : DVec3(1, 0, 0)
+                s.damageTarget(id: t.id, amount: 6 * (1 - dist / 12), cause: "Stomped by King Grumblesaurus",
+                               attacker: "King Grumblesaurus", knockback: away * 2)
+            }
+        }
+        m.callTimer -= dt
+        if m.callTimer <= 0 {
+            m.callTimer = Double.random(in: 6...12)
+            s.onSound?("amb_dino_low", 0.7, m.species.callPitch)
+        }
+    }
+
+    /// Defeating the boss cheers him up: confetti, a happy Grumblesaurus and a trophy.
+    fileprivate func bossCheeredUp(_ m: Mob, _ s: GameSession) {
+        s.effectBursts.append((m.position + DVec3(0, 2, 0), .confetti))
+        s.markBossDefeated("grumblesaurus")
+        let happy = spawn(.grinasaurus, at: m.position)
+        happy.yaw = m.yaw
+        happy.home = m.home
+        s.onToast?("You cheered up King Grumblesaurus! You beat DinoCraft! Keep exploring and building.")
+        s.onSound?("discover", 1, 1.4)
     }
 }

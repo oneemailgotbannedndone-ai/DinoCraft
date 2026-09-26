@@ -2,12 +2,16 @@ import Foundation
 
 public enum WorldConst {
     public static let chunkSize = 16
-    public static let height = 256
-    public static let seaLevel = 62
+    /// Layers of deep slate under the old bedrock: the bottom of the world is Y -70.
+    public static let deepLayers = 70
+    public static let height = 256 + deepLayers
+    /// Sea level in new (deep) overworlds. Worlds from before the deep update keep theirs at 62
+    /// (see `WorldGenerator.seaLevel`).
+    public static let seaLevel = 62 + deepLayers
     public static let blocksPerChunk = chunkSize * chunkSize * height
 }
 
-/// A 16 × 256 × 16 column of blocks.
+/// A 16 × 326 × 16 column of blocks.
 ///
 /// Storage is a single contiguous byte buffer indexed as `y << 8 | z << 4 | x`.
 /// Chunks are mutated only on the main (game) thread; background meshing jobs
@@ -95,8 +99,11 @@ public final class Chunk: @unchecked Sendable {
     // MARK: Serialization
 
     private static let magic: UInt32 = 0x4843_4344   // "DCCH"
-    /// 2 = portable run-length codec (every platform). 1 = LZFSE, still readable on Apple platforms.
+    /// 3 = two-byte block ids: the low bytes then the high bytes, each run-length coded (only used when a
+    /// chunk holds a block numbered 256 or above). 2 = one-byte ids, run-length coded (every platform).
+    /// 1 = one-byte ids, LZFSE, still readable on Apple platforms.
     private static let formatVersion: UInt16 = 2
+    private static let wideFormatVersion: UInt16 = 3
 
     public enum ChunkIOError: Error, CustomStringConvertible {
         case badHeader, badVersion(UInt16), wrongPosition, sizeMismatch, compressionFailed
@@ -114,10 +121,25 @@ public final class Chunk: @unchecked Sendable {
     /// Serializes blocks with the portable run-length codec, so saves and multiplayer
     /// chunks work the same on macOS and Windows.
     public func serialize() throws -> Data {
-        let compressed = BlockRLE.encode(UnsafeBufferPointer(start: blocks, count: WorldConst.blocksPerChunk))
+        let n = WorldConst.blocksPerChunk
+        var low = [UInt8](repeating: 0, count: n)
+        var high = [UInt8](repeating: 0, count: n)
+        var wide = false
+        for i in 0..<n {
+            let id = blocks[i]
+            low[i] = UInt8(truncatingIfNeeded: id)
+            if id > 255 { high[i] = UInt8(truncatingIfNeeded: id >> 8); wide = true }
+        }
+        // Chunks with only the original blocks keep the one-byte format, readable by older versions too.
+        var compressed = low.withUnsafeBufferPointer { BlockRLE.encode($0) }
+        if wide {
+            let highPart = high.withUnsafeBufferPointer { BlockRLE.encode($0) }
+            var lowLength = UInt32(compressed.count).littleEndian
+            compressed = Data(bytes: &lowLength, count: 4) + compressed + highPart
+        }
         var out = Data(capacity: compressed.count + 16)
         withUnsafeBytes(of: Chunk.magic.littleEndian) { out.append(contentsOf: $0) }
-        withUnsafeBytes(of: Chunk.formatVersion.littleEndian) { out.append(contentsOf: $0) }
+        withUnsafeBytes(of: (wide ? Chunk.wideFormatVersion : Chunk.formatVersion).littleEndian) { out.append(contentsOf: $0) }
         withUnsafeBytes(of: UInt16(0)) { out.append(contentsOf: $0) }
         withUnsafeBytes(of: pos.x.littleEndian) { out.append(contentsOf: $0) }
         withUnsafeBytes(of: pos.z.littleEndian) { out.append(contentsOf: $0) }
@@ -135,18 +157,37 @@ public final class Chunk: @unchecked Sendable {
         guard read(8, Int32.self) == expected.x, read(12, Int32.self) == expected.z else { throw ChunkIOError.wrongPosition }
         let payload = data.subdata(in: 16..<data.count)
         let chunk = Chunk(pos: expected)
+        let n = WorldConst.blocksPerChunk
+        var bytes = [UInt8](repeating: 0, count: n)
         switch version {
-        case 2:
-            guard let written = BlockRLE.decode(payload, into: chunk.blocks, capacity: WorldConst.blocksPerChunk) else {
+        case 2, 3:
+            var lowPart = payload, highPart = Data()
+            if version == 3 {
+                guard payload.count >= 4 else { throw ChunkIOError.badHeader }
+                let lowLength = Int(payload.withUnsafeBytes { UInt32(littleEndian: $0.loadUnaligned(as: UInt32.self)) })
+                guard 4 + lowLength <= payload.count else { throw ChunkIOError.sizeMismatch }
+                let start = payload.startIndex + 4
+                lowPart = payload.subdata(in: start..<(start + lowLength))
+                highPart = payload.subdata(in: (start + lowLength)..<payload.endIndex)
+            }
+            guard let written = bytes.withUnsafeMutableBufferPointer({ BlockRLE.decode(lowPart, into: $0.baseAddress!, capacity: n) }) else {
                 throw ChunkIOError.compressionFailed
             }
-            guard written == WorldConst.blocksPerChunk else { throw ChunkIOError.sizeMismatch }
+            // Chunks saved before the deep update are 256 blocks tall; the extra layers above them stay air.
+            guard written == n || written == 256 * 256 else { throw ChunkIOError.sizeMismatch }
+            for i in 0..<written { chunk.blocks[i] = BlockID(bytes[i]) }
+            if version == 3 {
+                guard let highWritten = bytes.withUnsafeMutableBufferPointer({ BlockRLE.decode(highPart, into: $0.baseAddress!, capacity: n) }),
+                      highWritten == written else { throw ChunkIOError.compressionFailed }
+                for i in 0..<written where bytes[i] != 0 { chunk.blocks[i] |= BlockID(bytes[i]) << 8 }
+            }
         #if canImport(Darwin)
         case 1:
             let raw: NSData
             do { raw = try (payload as NSData).decompressed(using: .lzfse) } catch { throw ChunkIOError.compressionFailed }
-            guard raw.length == WorldConst.blocksPerChunk else { throw ChunkIOError.sizeMismatch }
-            raw.getBytes(chunk.blocks, length: WorldConst.blocksPerChunk)
+            guard raw.length == n || raw.length == 256 * 256 else { throw ChunkIOError.sizeMismatch }
+            raw.getBytes(&bytes, length: raw.length)
+            for i in 0..<raw.length { chunk.blocks[i] = BlockID(bytes[i]) }
         #endif
         default:
             throw ChunkIOError.badVersion(version)

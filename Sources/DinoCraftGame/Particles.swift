@@ -120,7 +120,117 @@ final class ParticleSystem {
             particles[i] = p
             i += 1
         }
+        for burst in s.effectBursts { emitBurst(burst.kind, at: burst.position) }
+        s.effectBursts.removeAll()
         ambient(dt: dt, session: s, blocks: blocks)
+    }
+
+    /// Big one-off effects: a stomp's dust ring, cheer-up confetti, a splash of mud.
+    func emitBurst(_ kind: EffectBurst, at center: DVec3) {
+        switch kind {
+        case .dust:
+            for k in 0..<60 {
+                let a = Double(k) / 60 * 2 * .pi
+                var p = Particle(center + DVec3(cos(a) * 1.5, 0.2, sin(a) * 1.5), DVec3(cos(a) * 7, Double.random(in: 0.5...2), sin(a) * 7),
+                                 life: 0.9, size: 0.18, color: SIMD4(0.85, 0.85, 0.85, 0.8))
+                p.drag = 2.5
+                p.shrink = true
+                emit(p)
+            }
+        case .confetti:
+            let colors: [SIMD4<Float>] = [SIMD4(1, 0.3, 0.3, 1), SIMD4(1, 0.85, 0.2, 1), SIMD4(0.3, 0.8, 1, 1), SIMD4(0.5, 1, 0.4, 1), SIMD4(1, 0.5, 0.9, 1), SIMD4(1, 1, 1, 1)]
+            for k in 0..<220 {
+                var p = Particle(center, DVec3(Double.random(in: -6...6), Double.random(in: 4...12), Double.random(in: -6...6)),
+                                 life: Float.random(in: 2...3.5), size: 0.09, color: colors[k % colors.count])
+                p.layer = -2
+                p.gravity = 7
+                p.drag = 1.2
+                p.emissive = true
+                emit(p)
+            }
+        case .crumbs:
+            for _ in 0..<10 {
+                var p = Particle(center + DVec3(Double.random(in: -0.1...0.1), 0, Double.random(in: -0.1...0.1)),
+                                 DVec3(Double.random(in: -0.8...0.8), Double.random(in: 0.5...1.5), Double.random(in: -0.8...0.8)),
+                                 life: 0.6, size: 0.035, color: SIMD4(0.72, 0.52, 0.3, 1))
+                p.layer = -2
+                p.gravity = 12
+                emit(p)
+            }
+        case .splash:
+            for _ in 0..<18 {
+                var p = Particle(center + DVec3(Double.random(in: -0.15...0.15), 0, Double.random(in: -0.15...0.15)),
+                                 DVec3(Double.random(in: -1.4...1.4), Double.random(in: 2...4.5), Double.random(in: -1.4...1.4)),
+                                 life: Float.random(in: 0.4...0.8), size: 0.05, color: SIMD4(0.75, 0.88, 1, 0.9))
+                p.layer = -2
+                p.gravity = 14
+                p.fade = true
+                emit(p)
+            }
+        case .smoke:
+            // A volcano's plume: big dark puffs billowing up and spreading.
+            for _ in 0..<6 {
+                var p = Particle(center + DVec3(Double.random(in: -2...2), Double.random(in: 0...1.5), Double.random(in: -2...2)),
+                                 DVec3(Double.random(in: -1.2...1.2), Double.random(in: 4...8), Double.random(in: -1.2...1.2)),
+                                 life: Float.random(in: 3.5...6), size: Float.random(in: 0.9...1.6), color: SIMD4(0.2, 0.18, 0.18, 0.7))
+                p.drag = 0.35
+                emit(p)
+            }
+        case .lavaSpray:
+            for _ in 0..<24 {
+                var p = Particle(center, DVec3(Double.random(in: -5...5), Double.random(in: 6...14), Double.random(in: -5...5)),
+                                 life: Float.random(in: 1...2), size: Float.random(in: 0.08...0.16), color: SIMD4(1, Float.random(in: 0.35...0.7), 0.1, 1))
+                p.layer = -2
+                p.gravity = 14
+                p.emissive = true
+                p.shrink = true
+                emit(p)
+            }
+        case .impact:
+            // A fireball hitting the ground: sparks, rock chips and a smoke ring.
+            for k in 0..<70 {
+                let a = Double(k) / 70 * 2 * .pi
+                var p = Particle(center, DVec3(cos(a) * Double.random(in: 3...9), Double.random(in: 3...10), sin(a) * Double.random(in: 3...9)),
+                                 life: Float.random(in: 0.6...1.4), size: Float.random(in: 0.06...0.14),
+                                 color: k % 3 == 0 ? SIMD4(0.3, 0.26, 0.24, 1) : SIMD4(1, Float.random(in: 0.4...0.85), 0.15, 1))
+                p.layer = -2
+                p.gravity = 16
+                p.emissive = k % 3 != 0
+                p.collide = true
+                emit(p)
+            }
+            for k in 0..<24 {
+                let a = Double(k) / 24 * 2 * .pi
+                var p = Particle(center + DVec3(0, 0.3, 0), DVec3(cos(a) * 4, Double.random(in: 0.5...2), sin(a) * 4),
+                                 life: 2.2, size: 0.7, color: SIMD4(0.3, 0.28, 0.27, 0.6))
+                p.drag = 1.5
+                emit(p)
+            }
+        case .trail:
+            // Behind a lava bomb or meteorite: a glowing ember and a wisp of smoke.
+            var ember = Particle(center, DVec3(Double.random(in: -0.4...0.4), Double.random(in: -0.2...0.6), Double.random(in: -0.4...0.4)),
+                                 life: 0.5, size: 0.22, color: SIMD4(1, 0.55, 0.12, 1))
+            ember.emissive = true
+            ember.shrink = true
+            emit(ember)
+            var smoke = Particle(center, DVec3(0, 0.8, 0), life: 1.6, size: 0.35, color: SIMD4(0.25, 0.22, 0.22, 0.45))
+            smoke.drag = 0.8
+            emit(smoke)
+        case .starTrail:
+            var p = Particle(center, .zero, life: 0.7, size: 0.35, color: SIMD4(0.85, 0.9, 1, 1))
+            p.emissive = true
+            p.shrink = true
+            emit(p)
+        case .ink:
+            for _ in 0..<80 {
+                var p = Particle(center + DVec3(Double.random(in: -1...1), Double.random(in: 0...3), Double.random(in: -1...1)),
+                                 DVec3(Double.random(in: -3...3), Double.random(in: 1...5), Double.random(in: -3...3)),
+                                 life: 1.4, size: 0.16, color: SIMD4(0.14, 0.09, 0.05, 1))   // thick mud
+                p.gravity = 9
+                p.collide = true
+                emit(p)
+            }
+        }
     }
 
     private func ambient(dt: Double, session s: GameSession, blocks: BlockRegistry) {
@@ -128,7 +238,7 @@ final class ParticleSystem {
         let eye = s.player.eyePosition
 
         // Rain splashes where drops land near the player.
-        if s.dimension == .overworld, s.weather.intensity > 0.2, WeatherSystem.precipitation(for: s.biome) == .rain {
+        if s.dimension == .overworld, s.weather.intensity > 0.2, s.precipitation == .rain {
             splashBudget += dt * 45 * Double(s.weather.intensity)
             while splashBudget >= 1 {
                 splashBudget -= 1
@@ -156,6 +266,16 @@ final class ParticleSystem {
                                  DVec3(Double.random(in: -0.3...0.3), -0.35, Double.random(in: -0.3...0.3)),
                                  life: 5, size: 0.035, color: SIMD4(0.55, 0.5, 0.5, 0.8))
                 p.layer = -2
+                emit(p)
+            }
+        } else if s.dimension == .toonland {
+            // Happy bubbles drifting up through the air.
+            for _ in 0..<2 {
+                var p = Particle(eye + DVec3(Double.random(in: -12...12), Double.random(in: -5...5), Double.random(in: -12...12)),
+                                 DVec3(Double.random(in: -0.15...0.15), Double.random(in: 0.25...0.6), Double.random(in: -0.15...0.15)),
+                                 life: 4, size: 0.07, color: SIMD4(1, 1, 1, 0.75))
+                p.emissive = true
+                p.shrink = true
                 emit(p)
             }
         } else if s.dimension == .skylands {
@@ -201,8 +321,9 @@ final class ParticleSystem {
                 ember.shrink = true
                 ember.collide = true
                 emit(ember)
-            } else if id == Blocks.underworldPortal || id == Blocks.skylandsPortal, Int.random(in: 0..<3) == 0 {
-                let tint: SIMD4<Float> = id == Blocks.underworldPortal ? SIMD4(1, 0.35, 0.45, 1) : SIMD4(1, 0.8, 0.35, 1)
+            } else if WorldDimension.forPortal(id) != nil, Int.random(in: 0..<3) == 0 {
+                let tint: SIMD4<Float> = id == Blocks.underworldPortal ? SIMD4(1, 0.35, 0.45, 1)
+                    : (id == Blocks.toonlandPortal ? SIMD4(1, 1, 1, 1) : SIMD4(1, 0.8, 0.35, 1))
                 var spark = Particle(base + DVec3(Double.random(in: 0...1), Double.random(in: 0...1), Double.random(in: 0...1)),
                                      DVec3(Double.random(in: -0.4...0.4), Double.random(in: -0.2...0.6), Double.random(in: -0.4...0.4)),
                                      life: 1.2, size: 0.05, color: tint)
@@ -230,7 +351,7 @@ final class ParticleSystem {
                     if id == Blocks.lava {
                         wanted = world.blockIfLoaded(x, y + 1, z) == Blocks.air
                     } else {
-                        wanted = id == Blocks.torch || Blocks.wallTorch.contains(id) || id == Blocks.underworldPortal || id == Blocks.skylandsPortal
+                        wanted = id == Blocks.torch || Blocks.wallTorch.contains(id) || WorldDimension.forPortal(id) != nil
                             || id == Blocks.glowMushroom || id == Blocks.emberCrystal || id == Blocks.amberLantern
                     }
                     guard wanted else { continue }

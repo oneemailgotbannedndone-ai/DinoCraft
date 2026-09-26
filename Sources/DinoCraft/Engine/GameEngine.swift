@@ -45,6 +45,7 @@ final class GameEngine: NSObject, MTKViewDelegate {
     let updater = GameUpdater(assetName: "DinoCraft-Mac.zip")
     /// F5: first person, behind you, or facing you.
     private(set) var cameraView = CameraView.firstPerson
+    private var lastTrack: String?
     /// You, drawn as a player model in third person.
     private let selfModel = RemotePlayer(id: -1, name: "", position: .zero)
 
@@ -135,7 +136,7 @@ final class GameEngine: NSObject, MTKViewDelegate {
             return WorkerContext(index: index, mesher: mesher)
         }
         audio = AudioSystem()
-        presence = PresenceManager()
+        presence = PresenceManager { DiscordIPCClient(clientID: $0) }
         super.init()
 
         if let url = try? ResourceLocator.url("Art/icon_1024.png") {
@@ -161,7 +162,7 @@ final class GameEngine: NSObject, MTKViewDelegate {
             layer.displaySyncEnabled = settings.vsync
         }
         let screenMax = window.screen?.maximumFramesPerSecond ?? 120
-        view.preferredFramesPerSecond = settings.vsync ? screenMax : (settings.maxFPS == 0 ? 240 : settings.maxFPS)
+        view.preferredFramesPerSecond = settings.vsync ? screenMax : (settings.maxFPS == 0 ? 1000 : settings.maxFPS)
     }
 
     // MARK: Lifecycle
@@ -171,7 +172,7 @@ final class GameEngine: NSObject, MTKViewDelegate {
         started = true
         createMenuWorld()
         screens = [MainMenuScreen()]
-        if options.script == nil && options.autoWorld == nil && options.joinAddress == nil {
+        if options.script == nil && options.autoWorld == nil && options.joinAddress == nil && !options.skipLauncher {
             // The launcher comes first; Play reveals the main menu underneath.
             screens.append(LauncherScreen())
             if settings.checkForUpdates { updater.check() }
@@ -221,6 +222,7 @@ final class GameEngine: NSObject, MTKViewDelegate {
     }
 
     func shutdown() {
+        PlayerStats.shared.save()
         input.setMouseCaptured(false)
         portMapper.unmap()
         server?.stop()
@@ -271,6 +273,9 @@ final class GameEngine: NSObject, MTKViewDelegate {
         s.smelting = smelting
         s.onOpenContainer = { [weak self] pos, kind in self?.openScreen(ContainerScreen(pos: pos, kind: kind)) }
         s.onOpenTrade = { [weak self] mob in self?.openScreen(TradeScreen(mob: mob)) }
+        s.onOpenEnchanting = { [weak self] pos in self?.openScreen(EnchantScreen(pos: pos)) }
+        s.onOpenQuestBook = { [weak self] in self?.openScreen(QuestBookScreen()) }
+        s.onOpenMap = { [weak self] in self?.openScreen(MapScreen()) }
         s.onBlockBroken = { [weak self] pos, id in
             guard let self else { return }
             self.particles.blockBroken(pos, id: id, blocks: self.blocks)
@@ -297,6 +302,7 @@ final class GameEngine: NSObject, MTKViewDelegate {
 
     func saveAndQuitToTitle() {
         guard let s = session else { return }
+        PlayerStats.shared.submitNow()
         input.setMouseCaptured(false)
         portMapper.unmap()
         internetAddress = nil
@@ -322,9 +328,41 @@ final class GameEngine: NSObject, MTKViewDelegate {
 
     func quitGame() { NSApp.terminate(nil) }
 
+    /// DinoCraft Launcher's Play: opens DinoCraft.app (next to the launcher) and closes the launcher.
+    /// Opens DinoCraft.app from the launcher (joining `address` straight away if given) and quits the launcher.
+    func launchGameApp(join address: String? = nil) {
+        let here = Bundle.main.bundleURL
+        let sibling = here.deletingLastPathComponent().appendingPathComponent("DinoCraft.app")
+        // Next to the launcher, or wherever macOS knows DinoCraft is installed.
+        let found = FileManager.default.fileExists(atPath: sibling.path) ? sibling
+            : NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.dinocraft.game")
+        guard let game = found, game.standardizedFileURL != here.standardizedFileURL else {
+            // No separate game app to open: play right here instead.
+            Log.info("DinoCraft.app not found; playing in the launcher window", category: "App")
+            if let address { joinGame(address: address) } else { popScreen() }
+            return
+        }
+        let config = NSWorkspace.OpenConfiguration()
+        config.arguments = ["--skip-launcher"] + (address.map { ["--join", $0] } ?? [])
+        config.createsNewApplicationInstance = true
+        NSWorkspace.shared.openApplication(at: game, configuration: config) { _, error in
+            DispatchQueue.main.async {
+                if let error {
+                    // Couldn't open the game app: play right here instead.
+                    Log.warning("Couldn't open DinoCraft.app (\(error.localizedDescription)); playing in the launcher window", category: "App")
+                    if let address { self.joinGame(address: address) } else { self.popScreen() }
+                } else {
+                    NSApp.terminate(nil)
+                }
+            }
+        }
+    }
+
     // MARK: Advancements
 
     private(set) var advancementToasts: [(def: AdvancementDef, time: Double)] = []
+    /// Where the minimap ends on screen (0 when hidden), so cards in the corner go below it.
+    var minimapBottom: Float = 0
 
     func announceAdvancement(_ def: AdvancementDef) {
         advancementToasts.removeAll { time - $0.time > 10 }
@@ -366,11 +404,21 @@ final class GameEngine: NSObject, MTKViewDelegate {
         let srv = GameServer(session: s, hostName: host)
         srv.onEvent = { [weak self] text in self?.showToast(text) }
         srv.onChat = { [weak self] from, text in self?.addChat(from: from, text: text) }
+        srv.onWhisper = { [weak self] from, text in self?.addChat(from: "", text: "\(from) whispers to you: \(text)") }
+        srv.hostID = settings.playerID
+        srv.hostLook = settings.cosmetics
+        srv.onMet = { [weak self] id, name, look in
+            guard let self else { return }
+            if FriendList.shared.met(id: id, name: name, look: look, address: nil, myID: self.settings.playerID) {
+                self.addChat(from: "", text: "Your friend \(name) is here!")
+            }
+        }
         do {
             try srv.start()
             server = srv
             s.network = srv
             let ip = NetworkInfo.localIPv4() ?? "this Mac's IP address"
+            if let local = NetworkInfo.localIPv4(), let code = InviteCode.encode(ip: local, port: NetConfig.port) { FriendList.shared.myAddress = code }
             showToast("Open to LAN on \(ip):\(NetConfig.port)")
             addChat(from: "", text: "Your world is open! Friends can join at \(ip):\(NetConfig.port)")
         } catch {
@@ -395,6 +443,7 @@ final class GameEngine: NSObject, MTKViewDelegate {
                     self.internetRenewTimer = 45 * 60
                     let code = InviteCode.encode(ip: ip, port: mapping.port)
                     self.inviteCode = code
+                    if let code { FriendList.shared.myAddress = code }
                     self.addChat(from: "", text: "Open to the internet! Invite code \(code ?? "?") (address \(ip):\(mapping.port)). Press Esc to copy it.")
                     self.showToast("Invite code \(code ?? "\(ip):\(mapping.port)")")
                 } else {
@@ -430,30 +479,24 @@ final class GameEngine: NSObject, MTKViewDelegate {
     }
 
     func joinGame(address: String) {
-        if let invite = InviteCode.decode(address) {
-            connect(NetConnection(host: invite.ip, port: invite.port), label: "invite code \(address.uppercased())")
-            return
-        }
-        var host = address.trimmingCharacters(in: .whitespaces)
-        var port = NetConfig.port
-        if let colon = host.lastIndex(of: ":"), let p = UInt16(host[host.index(after: colon)...]) {
-            port = p
-            host = String(host[..<colon])
-        }
-        connect(NetConnection(host: host, port: port), label: "\(host):\(port)")
+        let (host, port) = Wire.parseAddress(address)
+        let label = InviteCode.decode(address) != nil ? "invite code \(address.uppercased())" : "\(host):\(port)"
+        connect(NetConnection(host: host, port: port), label: label, address: address.trimmingCharacters(in: .whitespaces))
     }
 
     func joinGame(lanHost: LANDiscovery.Host) {
         connect(NetConnection(connection: NWConnection(to: lanHost.endpoint, using: .tcp), label: lanHost.name), label: lanHost.name)
     }
 
-    private func connect(_ connection: NetConnection, label: String) {
+    private func connect(_ connection: NetConnection, label: String, address: String? = nil) {
         guard session == nil, client == nil else { return }
         guard Username.validate(settings.username) == nil else {
             pushScreen(UsernameScreen(current: settings.username, firstRun: false))
             return
         }
         let c = GameClient(connection: connection, username: settings.username, label: label)
+        c.playerIdentity = (settings.playerID, settings.cosmetics)
+        c.address = address
         c.onWelcome = { [weak self, weak c] welcome in
             guard let self, let c else { return }
             self.startRemoteSession(welcome, client: c)
@@ -466,8 +509,13 @@ final class GameEngine: NSObject, MTKViewDelegate {
         c.connect()
         DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self, weak c] in
             guard let self, let c, self.client === c, self.session == nil else { return }
+            let waiting = c.connection.lastWaitingReason
             c.connection.close()
-            self.clientDisconnected("Couldn't reach \(label). Check the code or address, make sure the host pressed Open to Internet, and that you both have the latest DinoCraft.")
+            var message = "Couldn't reach \(label). Check the code or address, make sure the host pressed Open to LAN or Open to Internet, and that you both have the latest DinoCraft."
+            if let waiting {
+                message += "\n\nmacOS said: \(waiting)\nIf your friend is on the same Wi-Fi, open System Settings → Privacy & Security → Local Network and turn on DinoCraft, then try again."
+            }
+            self.clientDisconnected(message)
         }
     }
 
@@ -497,10 +545,11 @@ final class GameEngine: NSObject, MTKViewDelegate {
         menuWorld?.shutdown()
         menuWorld = nil
         let now = Date()
-        let meta = WorldMetadata(id: "remote", name: w.worldName, seedText: w.seed, seed: w.seed,
+        let meta = WorldMetadata(formatVersion: w.deep == true ? WorldMetadata.currentFormat : 1, id: "remote", name: w.worldName, seedText: w.seed, seed: w.seed,
                                  gameMode: GameMode(rawValue: w.gameMode) ?? .survival, difficulty: Difficulty(rawValue: w.difficulty) ?? .normal,
                                  createdAt: now, lastPlayed: now, playTimeSeconds: 0, worldTime: w.worldTime,
-                                 spawnX: Int(floor(w.x)), spawnY: Int(floor(w.y)), spawnZ: Int(floor(w.z)))
+                                 spawnX: Int(floor(w.x)), spawnY: Int(floor(w.y)), spawnZ: Int(floor(w.z)),
+                                 hardcore: w.hardcore ? true : nil, hardcoreDead: w.spectator == true ? true : nil)
         let s = GameSession(meta: meta, isNew: false, storage: storage, blocks: blocks, items: items, meshFactory: meshFactory, jobs: jobs,
                             renderDistance: settings.renderDistance, remote: true)
         s.onSound = { [weak self] name, volume, pitch in self?.audio.play(name, volume: volume, pitch: pitch) }
@@ -510,6 +559,9 @@ final class GameEngine: NSObject, MTKViewDelegate {
         s.smelting = smelting
         s.onOpenContainer = { [weak self] pos, kind in self?.openScreen(ContainerScreen(pos: pos, kind: kind)) }
         s.onOpenTrade = { [weak self] mob in self?.openScreen(TradeScreen(mob: mob)) }
+        s.onOpenEnchanting = { [weak self] pos in self?.openScreen(EnchantScreen(pos: pos)) }
+        s.onOpenQuestBook = { [weak self] in self?.openScreen(QuestBookScreen()) }
+        s.onOpenMap = { [weak self] in self?.openScreen(MapScreen()) }
         s.onBlockBroken = { [weak self] pos, id in
             guard let self else { return }
             self.particles.blockBroken(pos, id: id, blocks: self.blocks)
@@ -554,6 +606,18 @@ final class GameEngine: NSObject, MTKViewDelegate {
         } else {
             client?.sendChat(text)
         }
+    }
+
+    func whisper(to name: String, text: String) -> String? {
+        guard !text.isEmpty else { return "Type a message after the name." }
+        if let server {
+            guard server.whisper(from: settings.username, to: name, text: text) else { return "No player called \(name) is here." }
+            addChat(from: "", text: "You whisper to \(name): \(text)")
+            return nil
+        }
+        guard let client else { return "Private messages need other players in the game." }
+        client.sendChat(text, to: name)
+        return nil
     }
 
     func addChat(from: String, text: String) {
@@ -618,6 +682,14 @@ final class GameEngine: NSObject, MTKViewDelegate {
         if input.keyPressed(settings.binding(for: .toggleDebug).code) { showDebug.toggle() }
         if input.keyPressed(settings.binding(for: .toggleHUD).code) { hudHidden.toggle() }
         if session != nil && screens.isEmpty && input.keyPressed(96) { cameraView = cameraView.next }   // F5
+        if session != nil && screens.isEmpty && input.wasPressed(settings.binding(for: .minimap)) {
+            settingsStore.update { $0.minimapMode = ($0.minimapMode + 1) % 3 }
+            showToast(["Map hidden (M to show)", "Map in the corner", "Big map (M to hide)"][settings.minimapMode])
+        }
+        if session != nil && screens.isEmpty && input.keyPressed(5) {   // G: show or hide the guide
+            settingsStore.update { $0.showGuide.toggle() }
+            showToast(settings.showGuide ? "Guide shown (G to hide)" : "Guide hidden (G to show)")
+        }
         if input.keyPressed(settings.binding(for: .screenshot).code) {
             pendingScreenshot = Screenshot.nextURL()
             showToast("Screenshot saved")
@@ -735,9 +807,9 @@ final class GameEngine: NSObject, MTKViewDelegate {
             camera.roll = 0
         }
         var target = settings.fov
-        if p.isSprinting { target *= p.flying ? 1.18 : 1.12 }
+        if p.isSprinting && !s.zooming { target *= p.flying ? 1.18 : 1.12 }
         fovCurrent += (target - fovCurrent) * (1 - exp(-10 * dt))
-        camera.fovY = fovCurrent * .pi / 180
+        camera.fovY = fovCurrent / s.zoomAmount * .pi / 180
     }
 
     private func updateGameAudio(_ s: GameSession, dt: Double) {
@@ -750,7 +822,7 @@ final class GameEngine: NSObject, MTKViewDelegate {
         audio.setLoop("amb_crickets", volume: surface && sky.isNight ? 0.45 : 0)
         audio.setLoop("amb_jungle", volume: surface && s.biome == .fernJungle && !sky.isNight ? 0.5 : 0)
         audio.setLoop("amb_surf", volume: surface && [.beach, .ocean].contains(s.biome) ? 0.55 : 0)
-        let raining = s.dimension == .overworld && WeatherSystem.precipitation(for: s.biome) == .rain
+        let raining = s.dimension == .overworld && s.precipitation == .rain
         audio.setLoop("amb_rain", volume: raining ? s.weather.intensity * (surface ? 0.75 : 0.2) : 0)
 
         ambienceTimer -= dt
@@ -766,12 +838,25 @@ final class GameEngine: NSObject, MTKViewDelegate {
             }
         }
 
+        if s.dimension == .toonland {
+            // Toonland always has its song on (the boss has his own theme).
+            let track = SongLyrics.toonlandTrack(s)
+            if audio.currentTrack != track || !audio.isMusicPlaying { audio.playMusic(track, loop: true, fade: 1.5) }
+            return
+        } else if audio.currentTrack == "sunny_side_up" || audio.currentTrack == "grumble_stomp" {
+            audio.stopMusic(fade: 2)
+            musicTimer = 20
+        }
         musicTimer -= dt
         if !audio.isMusicPlaying && musicTimer <= 0 {
-            let pool = (s.isUnderground || s.dimension == .underworld) ? ["deep_strata"]
-                : (s.dimension == .skylands ? ["fernlight", "menu_theme"] : (sky.isNight ? ["amber_dusk", "deep_strata"] : ["fernlight", "titan_valley", "amber_dusk"]))
-            audio.playMusic(pool.randomElement()!, loop: false, fade: 4)
-            musicTimer = Double.random(in: 120...260)
+            let pool = (s.isUnderground || s.dimension == .underworld) ? ["deep_strata", "amber_dusk"]
+                : (s.dimension == .skylands ? ["fernlight", "menu_theme", "titan_valley"]
+                   : (sky.isNight ? ["amber_dusk", "deep_strata", "menu_theme"] : ["fernlight", "titan_valley", "amber_dusk", "menu_theme"]))
+            // Never the same song twice in a row
+            let track = pool.filter { $0 != lastTrack }.randomElement() ?? pool[0]
+            lastTrack = track
+            audio.playMusic(track, loop: false, fade: 4)
+            musicTimer = Double.random(in: 60...150)
         }
     }
 
@@ -839,6 +924,11 @@ final class GameEngine: NSObject, MTKViewDelegate {
                                       brightness: settings.brightness, underwater: underwater, clouds: settings.clouds,
                                       drawableSize: size, dimension: session?.dimension ?? .overworld)
         lastViewProj = uniforms.viewProj
+        if let s = session {
+            let look = Season.look(worldTime: s.worldTime, dimension: s.dimension)
+            uniforms.season = look.tint
+            uniforms.dimension.w = look.snow
+        }
         if let s = session, s.dimension == .overworld, s.weather.intensity > 0 {
             let rain = s.weather.intensity
             uniforms.fogParams.w = 0.42 + 0.5 * rain
@@ -866,6 +956,7 @@ final class GameEngine: NSObject, MTKViewDelegate {
                         selfModel.sneaking = p.isSneaking
                         selfModel.swing = s.swingProgress
                         selfModel.held = s.inventory.selectedStack.flatMap { items[$0.item]?.name }
+                        selfModel.motion = s.selfMotion
                         shown.append(selfModel)
                     }
                     playerModels.encode(enc, players: shown, world: world, camera: camera, frame: &uniforms, renderer: modelRenderer, items: items)
@@ -884,7 +975,8 @@ final class GameEngine: NSObject, MTKViewDelegate {
         }
 
         let shader = ShaderPack(rawValue: settings.shaderPack) ?? .off
-        if shader != .off, settings.shaderStrength > 0.01, let depth = rpd.depthAttachment.texture,
+        let mono: Float = 0
+        if (shader != .off && settings.shaderStrength > 0.01) || mono > 0, let depth = rpd.depthAttachment.texture,
            let target = postProcessor.sceneTarget(width: Int(size.x), height: Int(size.y)) {
             // Shader pack: scene → offscreen target → graded into the drawable, interface on top.
             let scenePass = MTLRenderPassDescriptor()
@@ -903,7 +995,7 @@ final class GameEngine: NSObject, MTKViewDelegate {
             }
             if let enc = cmd.makeRenderCommandEncoder(descriptor: rpd) {
                 enc.label = "Post + Interface"
-                postProcessor.encode(enc, source: target, pack: shader, strength: Float(settings.shaderStrength), time: Float(time), size: size)
+                postProcessor.encode(enc, source: target, pack: shader, strength: Float(settings.shaderStrength), mono: mono, time: Float(time), size: size)
                 uiRenderer.encode(enc, drawableSize: size)
                 enc.endEncoding()
             }

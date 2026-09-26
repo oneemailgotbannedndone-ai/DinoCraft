@@ -27,7 +27,7 @@ public struct InputBinding: Codable, Hashable, Sendable {
 
 public enum GameAction: String, Codable, CaseIterable, Sendable {
     case forward, backward, left, right, jump, sprint, crouch, inventory, attack, use, pause
-    case drop, pickBlock, toggleDebug, screenshot, toggleHUD, advancements
+    case drop, pickBlock, toggleDebug, screenshot, toggleHUD, advancements, zoom, minimap
 
     public var displayName: String {
         switch self {
@@ -48,6 +48,8 @@ public enum GameAction: String, Codable, CaseIterable, Sendable {
         case .screenshot: return "Screenshot"
         case .toggleHUD: return "Hide HUD"
         case .advancements: return "Advancements"
+        case .zoom: return "Zoom (hold, scroll to adjust)"
+        case .minimap: return "Map (small, big, hidden)"
         }
     }
 
@@ -70,6 +72,8 @@ public enum GameAction: String, Codable, CaseIterable, Sendable {
             .screenshot: .key(120),   // F2
             .toggleHUD: .key(99),     // F3
             .advancements: .key(37),  // L
+            .zoom: .key(6),           // Z
+            .minimap: .key(46),       // M
         ]
     }
 }
@@ -84,9 +88,13 @@ public struct GameSettings: Codable, Equatable, Sendable {
     public var windowWidth = 1600
     public var windowHeight = 900
     public var fullscreen = false
-    public var vsync = true
-    public var maxFPS = 120          // used when VSync is off (0 = unlimited)
+    public var vsync = false
+    public var maxFPS = 0            // used when VSync is off (0 = unlimited)
+    /// Set once VSync has been switched off by default (older settings files had it on).
+    public var vsyncOffByDefault = true
     public var renderDistance = 12   // chunks
+    /// Far view distances need a lot of memory: 64 chunks is about 2 GB of world.
+    public static let maxRenderDistance = 64
     public var graphicsQuality: GraphicsQuality = .fancy
     public var fov: Double = 75
     public var brightness: Double = 0.5
@@ -95,9 +103,15 @@ public struct GameSettings: Codable, Equatable, Sendable {
     public var guiScale: Double = 1.0
     public var clouds = true
     public var showFPS = false
+    /// The step-by-step guide to beating DinoCraft, shown in the corner (G toggles it).
+    public var showGuide = true
+    /// The minimap: 0 hidden, 1 in the corner, 2 big (M cycles it).
+    public var minimapMode = 1
 
     // Profile & multiplayer
     public var username = ""
+    /// This player's one-of-a-kind ID (see `PlayerIdentity`), made on first launch.
+    public var playerID = PlayerIdentity.newID()
     public var lastServerAddress = ""
     public var texturePack = "dino"
     /// How your explorer looks to friends (see `PlayerLook` in DinoCraftGame); empty means the default look.
@@ -144,6 +158,13 @@ public struct GameSettings: Codable, Equatable, Sendable {
         fullscreen = v(.fullscreen, fullscreen)
         vsync = v(.vsync, vsync)
         maxFPS = v(.maxFPS, maxFPS)
+        vsyncOffByDefault = v(.vsyncOffByDefault, false)
+        if !vsyncOffByDefault {
+            // DinoCraft now runs with VSync off and no frame cap unless you turn it back on.
+            vsync = false
+            maxFPS = 0
+            vsyncOffByDefault = true
+        }
         renderDistance = v(.renderDistance, renderDistance)
         graphicsQuality = v(.graphicsQuality, graphicsQuality)
         fov = v(.fov, fov)
@@ -153,7 +174,10 @@ public struct GameSettings: Codable, Equatable, Sendable {
         guiScale = v(.guiScale, guiScale)
         clouds = v(.clouds, clouds)
         showFPS = v(.showFPS, showFPS)
+        showGuide = v(.showGuide, showGuide)
+        minimapMode = v(.minimapMode, minimapMode)
         username = v(.username, username)
+        playerID = v(.playerID, playerID)
         lastServerAddress = v(.lastServerAddress, lastServerAddress)
         texturePack = v(.texturePack, texturePack)
         cosmetics = v(.cosmetics, cosmetics)
@@ -174,11 +198,13 @@ public struct GameSettings: Codable, Equatable, Sendable {
     }
 
     public mutating func sanitize() {
+        if !PlayerIdentity.isValid(playerID) { playerID = PlayerIdentity.newID() }
         windowWidth = max(960, min(7680, windowWidth))
         windowHeight = max(540, min(4320, windowHeight))
-        renderDistance = max(2, min(32, renderDistance))
+        renderDistance = max(2, min(GameSettings.maxRenderDistance, renderDistance))
         maxFPS = max(0, min(500, maxFPS))
         fov = max(50, min(110, fov))
+        minimapMode = max(0, min(2, minimapMode))
         brightness = max(0, min(1, brightness))
         renderScale = max(0.5, min(1, renderScale))
         guiScale = max(0.75, min(1.5, guiScale))
@@ -200,6 +226,8 @@ public final class SettingsStore {
             do {
                 settings = try JSONDecoder().decode(GameSettings.self, from: data)
                 Log.info("Loaded settings from \(url.path)", category: "Settings")
+                // Settings from before player IDs: keep the new ID so this player stays the same person.
+                if !(String(data: data, encoding: .utf8) ?? "").contains("\"playerID\"") { save() }
             } catch {
                 Log.error("Settings file is unreadable (\(error)); using defaults and backing up the old file", category: "Settings")
                 try? FileManager.default.moveItem(at: url, to: url.appendingPathExtension("corrupt-\(Int(Date().timeIntervalSince1970))"))
@@ -208,6 +236,7 @@ public final class SettingsStore {
         } else {
             settings = GameSettings()
             Log.info("No settings file yet; using defaults", category: "Settings")
+            save()
         }
     }
 

@@ -14,10 +14,15 @@ enum NewTextures {
 
     static func add(to t: inout [String: Canvas]) {
         t["lava"] = lava()
+        ToonTextures.add(to: &t)
+        OceanTextures.add(to: &t)
         MoreTextures.add(to: &t)
         BiomeTextures.add(to: &t)
         ArmorTextures.add(to: &t)
         CropTextures.add(to: &t)
+        MagicTextures.add(to: &t)
+        DigTextures.add(to: &t)
+        GadgetTextures.add(to: &t)
         t["basalt_side"] = basaltSide()
         t["basalt_top"] = basaltTop()
         t["ash"] = T.paintSand(75, palette: ash)
@@ -179,6 +184,13 @@ enum NewTextures {
 
     static func item(_ name: String) -> Canvas? {
         if let egg = EggTextures.item(name) { return egg }
+        if let toon = ToonTextures.item(name) { return toon }
+        if let ocean = OceanTextures.item(name) { return ocean }
+        if let pet = PetTextures.item(name) { return pet }
+        if let magic = MagicTextures.item(name) { return magic }
+        if let dig = DigTextures.item(name) { return dig }
+        if let gadget = GadgetTextures.item(name) { return gadget }
+        if let sea = SeaTextures.item(name) { return sea }
         if let more = MoreTextures.item(name) { return more }
         let c = Canvas(S)
         switch name {

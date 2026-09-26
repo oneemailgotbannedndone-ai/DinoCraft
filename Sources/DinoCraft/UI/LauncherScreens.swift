@@ -9,6 +9,15 @@ import DinoCraftCore
 /// cosmetics, settings and Play (which goes on to the main menu underneath).
 final class LauncherScreen: Screen {
     private var installError: String?
+    /// How the last update went (shown once, the next time the launcher opens).
+    private var updateNote: (message: String, ok: Bool)?
+    /// Shows the guide to beating DinoCraft instead of the news.
+    private var showingGuide = false
+    /// Reviews and friends' games are checked once, when the launcher first shows.
+    private var primed = false
+    /// Set when DinoCraft crashed last time, so the player can send the report.
+    private var crash: CrashReport?
+    private var crashNote: String?
 
     override var scene: GameActivityState.Scene { .mainMenu }
     override func back(_ engine: GameEngine) {}
@@ -18,12 +27,21 @@ final class LauncherScreen: Screen {
         let d = ui.draw
         let W = ui.size.x, H = ui.size.y
         let intro = appear(0, duration: 0.6)
+        if !primed {
+            primed = true
+            GameLinks.reviews.load()
+            FriendList.shared.refreshStatuses()
+            crash = CrashReport.fromLastRun()
+            updateNote = UpdateResult.take()
+            PlayerStats.shared.submitNow()
+        }
         d.opacity = intro
+        defer { if let report = crash { drawCrashReport(ui, e, report) } }
 
         let titleY = max(30, H * 0.06)
         d.outlinedText(Brand.title, x: W / 2, y: titleY, size: Brand.title.count > 9 ? 70 : 80, fill: Color(hex: Brand.top),
-                       fillBottom: Color(hex: Brand.bottom), outline: Color(hex: 0x2A1740), outlineWidth: 6, tracking: 0.005)
-        d.text("LAUNCHER", x: W / 2, y: titleY + 96, size: 14, color: Theme.text.alpha(0.85), face: .display, align: .center,
+                       fillBottom: Color(hex: Brand.bottom), outline: Color(hex: 0x3A2414), outlineWidth: 6, tracking: 0.005)
+        d.text(e.options.launcherOnly ? "DINOCRAFT LAUNCHER" : "LAUNCHER", x: W / 2, y: titleY + 96, size: 14, color: Theme.text.alpha(0.85), face: .display, align: .center,
                tracking: 0.2, shadow: Color(linear: 0, 0, 0, 0.7))
 
         // News
@@ -52,14 +70,22 @@ final class LauncherScreen: Screen {
             }
             if !current.isEmpty { line(current, size, color) }
         }
-        if let release = e.updater.latestRelease, release.build > BuildInfo.current.build {
+        if showingGuide {
+            line("How to beat DinoCraft", 26, Theme.amber, face: .display)
+            y += 4
+            for (i, step) in GameGuide.steps.enumerated() {
+                line("\(i + 1). \(step.title)", 16, Theme.text, face: .display)
+                wrapped(step.hint, 14, Theme.textMuted)
+                y += 4
+            }
+            wrapped("In game, press G to show or hide your next goal.", 14, Theme.jungle)
+        } else if let release = e.updater.latestRelease, release.build > BuildInfo.current.build {
             line("New in the update", 26, Theme.amber, face: .display)
             y += 4
             line(release.title + (release.published.isEmpty ? "" : "  ·  \(release.published)"), 16, Theme.text)
             y += 6
             for raw in release.notes.split(separator: "\n", omittingEmptySubsequences: false) {
                 let text = raw.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "**", with: "")
-                if text.hasPrefix("Co-Authored-By") || text.hasPrefix("Claude-Session") { continue }
                 if text.isEmpty { y += 8; continue }
                 wrapped(text, 15, Theme.textMuted)
             }
@@ -87,7 +113,7 @@ final class LauncherScreen: Screen {
         let bx = panel.maxX + 40, bw = min(400, W - bx - 30), bh: Float = 56, gap: Float = 14
         var by = top
         if ui.button("launcher.play", "Play", Rect(bx, by, bw, bh + 8), style: .primary) {
-            e.popScreen()
+            if e.options.launcherOnly { e.launchGameApp() } else { e.popScreen() }
             return
         }
         by += bh + 8 + gap
@@ -133,15 +159,42 @@ final class LauncherScreen: Screen {
             label = "Try Again"
             status = reason
         }
-        if ui.button("launcher.update", label, Rect(bx, by, bw, bh), style: style, enabled: enabled), let action { action() }
+        if ui.button("launcher.update", label, Rect(bx, by, bw, bh), style: style, enabled: enabled), let action {
+            updateNote = nil
+            action()
+        }
         by += bh + 12
-        d.text(installError ?? status, x: bx, y: by, size: 13.5, color: installError != nil ? Theme.danger : Theme.textMuted, maxWidth: bw)
+        if let note = updateNote, installError == nil, !(note.ok && e.updater.latestRelease.map { $0.build > BuildInfo.current.build } == true) {
+            // The last update's outcome (a failure stays until the next try).
+            d.text(note.message, x: bx, y: by, size: 13.5, color: note.ok ? Theme.amber : Theme.danger, maxWidth: bw)
+        } else {
+            d.text(installError ?? status, x: bx, y: by, size: 13.5, color: installError != nil ? Theme.danger : Theme.textMuted, maxWidth: bw)
+        }
         by += 30
         if ui.button("launcher.cosmetics", "Cosmetics", Rect(bx, by, bw, bh), style: .secondary) { e.pushScreen(CosmeticsScreen()) }
         by += bh + gap
         if ui.button("launcher.skin", "Skin Creator", Rect(bx, by, bw, bh), style: .secondary) { e.pushScreen(SkinCreatorScreen()) }
         by += bh + gap
         if ui.button("launcher.settings", "Settings", Rect(bx, by, bw, bh), style: .secondary) { e.pushScreen(SettingsScreen()) }
+        by += bh + gap
+        let guideW = (bw - gap) / 2
+        if ui.button("launcher.guide", showingGuide ? "What's New" : "Guide", Rect(bx, by, guideW, bh), style: .secondary) {
+            showingGuide.toggle()
+        }
+        if ui.button("launcher.leaderboard", "Leaderboard", Rect(bx + guideW + gap, by, guideW, bh), style: .secondary) {
+            GameLinks.leaderboard.load()
+            e.pushScreen(LeaderboardScreen())
+        }
+        by += bh + gap
+        let halfW = (bw - gap) / 2
+        if ui.button("launcher.friends", FriendList.shared.buttonLabel, Rect(bx, by, halfW, bh), style: .secondary) {
+            FriendList.shared.refreshStatuses()
+            e.pushScreen(FriendsScreen())
+        }
+        if ui.button("launcher.reviews", GameLinks.reviews.buttonLabel, Rect(bx + halfW + gap, by, halfW, bh), style: .secondary) {
+            GameLinks.reviews.load()
+            e.pushScreen(ReviewsScreen())
+        }
         by += bh + gap
         if ui.button("launcher.quit", "Quit", Rect(bx, by, bw, bh), style: .secondary) { e.quitGame() }
 
@@ -155,13 +208,321 @@ final class LauncherScreen: Screen {
         if ui.button("launcher.folder", "Open Game Folder", Rect(W - 222, H - 50, 200, 36), style: .ghost, fontSize: 14) {
             NSWorkspace.shared.open(GamePaths.root)
         }
+        if let donate = GameLinks.donate,
+           ui.button("launcher.donate", GameLinks.donateLabel, Rect(W - 444, H - 50, 210, 36), style: .primary, fontSize: 14) {
+            NSWorkspace.shared.open(donate)
+        }
         d.opacity = 1
+    }
+}
+
+extension LauncherScreen {
+    /// "DinoCraft closed unexpectedly": send the report on GitHub, copy it, or dismiss it.
+    fileprivate func drawCrashReport(_ ui: UIContext, _ e: GameEngine, _ report: CrashReport) {
+        let d = ui.draw
+        d.opacity = 1
+        ui.dim(0.6)
+        let W = ui.size.x, H = ui.size.y
+        let panel = Rect(W / 2 - 330, H / 2 - 150, 660, 300)
+        ui.panel(panel, title: "Sorry, DinoCraft crashed")
+        d.text("DinoCraft closed unexpectedly last time. Sending the crash report helps get it fixed.",
+               x: panel.x + 36, y: panel.y + 84, size: 15, color: Theme.text, maxWidth: panel.w - 72)
+        if let crashNote { d.text(crashNote, x: panel.x + 36, y: panel.y + 150, size: 14, color: Theme.amber, maxWidth: panel.w - 72) }
+        let bw: Float = 186, by = panel.maxY - 76
+        if ui.button("crash.send", "Send Report", Rect(panel.x + 36, by, bw, 48), style: .primary, fontSize: 16),
+           let url = report.issueURL(repository: GameLinks.reviewsRepo, build: BuildInfo.current.displayName, platform: "Mac") {
+            NSWorkspace.shared.open(url)
+            report.dismiss()
+            crash = nil
+        }
+        if ui.button("crash.copy", "Copy Report", Rect(panel.midX - bw / 2, by, bw, 48), style: .secondary, fontSize: 16) {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(report.text, forType: .string)
+            crashNote = "Copied! Paste it into a message."
+        }
+        if ui.button("crash.close", "Not Now", Rect(panel.maxX - 36 - bw, by, bw, 48), style: .secondary, fontSize: 16) {
+            report.dismiss()
+            crash = nil
+        }
     }
 }
 
 // MARK: - Cosmetics
 
 /// Choose a hat, outfit colours and something to wear on your back. Friends see it in multiplayer.
+/// Everyone's lifetime stats, sortable by category, with your own stats beside them.
+final class LeaderboardScreen: Screen {
+    private var category = Leaderboard.Category.playtime
+    private var scroll = 0
+
+    override var scene: GameActivityState.Scene { .mainMenu }
+
+    override func draw(_ ui: UIContext, _ e: GameEngine) {
+        MenuBackdrop.draw(ui)
+        let d = ui.draw
+        let W = ui.size.x, H = ui.size.y
+        let panel = Rect(max(30, W / 2 - 600), max(24, H / 2 - 360), min(1200, W - 60), min(720, H - 48))
+        ui.panel(panel, title: "Leaderboard")
+        d.text("Everyone who plays DinoCraft. Your stats are shared every few minutes while you play.", x: panel.midX, y: panel.y + 70,
+               size: 14, color: Theme.textMuted, align: .center)
+        let categories = Leaderboard.Category.allCases
+        let tabW = min(128, (panel.w - 60) / Float(categories.count) - 6)
+        let tabsX = panel.midX - (Float(categories.count) * (tabW + 6) - 6) / 2
+        for (i, c) in categories.enumerated() {
+            if ui.button("lb.tab.\(c.rawValue)", c.tab, Rect(tabsX + Float(i) * (tabW + 6), panel.y + 98, tabW, 36),
+                         style: c == category ? .primary : .secondary, fontSize: 14) {
+                category = c
+                scroll = 0
+            }
+        }
+        let me = Leaderboard.entryName(name: e.settings.username, playerID: e.settings.playerID)
+        let mine = PlayerStats.shared.values
+        let top = panel.y + 150, bottom = panel.maxY - 84
+        let sideW: Float = 300
+        let table = Rect(panel.x + 30, top, panel.w - 60 - sideW - 20, bottom - top)
+        d.fill(table, Color(linear: 0, 0, 0, 0.25), radius: 10)
+        var y = table.y + 14
+        let rowH: Float = 30
+        switch GameLinks.leaderboard.state {
+        case .idle, .loading:
+            d.text("Loading the leaderboard…", x: table.midX, y: y + 40, size: 16, color: Theme.textMuted, align: .center)
+        case .failed(let reason):
+            d.text(reason, x: table.midX, y: y + 40, size: 15, color: Theme.danger, align: .center, maxWidth: table.w - 40)
+        case .loaded(let entries):
+            let ranked = Leaderboard.ranked(entries, by: category)
+            if ranked.isEmpty {
+                d.text("Nobody's on the board yet. Play for a minute and you'll be first!", x: table.midX, y: y + 40, size: 15,
+                       color: Theme.textMuted, align: .center)
+            }
+            let visible = max(1, Int((table.h - 50) / rowH))
+            if table.contains(ui.mouse) && ui.input.scroll != 0 { scroll -= Int(ui.input.scroll.rounded()) }
+            scroll = max(0, min(max(0, ranked.count - visible), scroll))
+            d.text("#", x: table.x + 18, y: y, size: 14, color: Theme.amber, face: .display)
+            d.text("Player", x: table.x + 64, y: y, size: 14, color: Theme.amber, face: .display)
+            d.text(category.title, x: table.maxX - 18, y: y, size: 14, color: Theme.amber, face: .display, align: .right)
+            y += rowH + 2
+            for (index, entry) in ranked.enumerated().dropFirst(scroll).prefix(visible) {
+                let isMe = entry.name + "_" + entry.tag == me
+                if isMe { d.fill(Rect(table.x + 8, y - 4, table.w - 16, rowH - 2), Theme.amber.alpha(0.25), radius: 6) }
+                let medal = index == 0 ? Color(hex: 0xFFD04A) : index == 1 ? Color(hex: 0xD8DCE4) : index == 2 ? Color(hex: 0xD88A4A) : Theme.text
+                d.text("\(index + 1)", x: table.x + 18, y: y, size: 16, color: medal, face: .display)
+                d.text(entry.display + (isMe ? "  (you)" : ""), x: table.x + 64, y: y, size: 16, color: Theme.text)
+                d.text(category.format(entry.stats), x: table.maxX - 18, y: y, size: 16, color: Theme.text, face: .display, align: .right)
+                y += rowH
+            }
+        }
+        let side = Rect(table.maxX + 20, top, sideW, bottom - top)
+        d.fill(side, Color(linear: 0, 0, 0, 0.25), radius: 10)
+        var sy = side.y + 16
+        d.text("Your Stats", x: side.x + 18, y: sy, size: 18, color: Theme.amber, face: .display)
+        sy += 30
+        d.text(PlayerIdentity.display(name: e.settings.username, id: e.settings.playerID), x: side.x + 18, y: sy, size: 15, color: Theme.text)
+        sy += 34
+        for c in categories {
+            d.text(c.title, x: side.x + 18, y: sy, size: 15, color: Theme.textMuted)
+            d.text(c.format(mine), x: side.maxX - 18, y: sy, size: 15, color: Theme.text, face: .display, align: .right)
+            sy += 28
+        }
+        if ui.button("lb.refresh", "Refresh", Rect(panel.midX - 250, panel.maxY - 66, 240, 46), style: .secondary) {
+            PlayerStats.shared.submitNow()
+            GameLinks.leaderboard.load()
+        }
+        if ui.button("lb.back", "Back", Rect(panel.midX + 10, panel.maxY - 66, 240, 46), style: .secondary) { e.popScreen() }
+    }
+}
+
+/// Your one-of-a-kind player card, your friends (and whether they're hosting right now) and the
+/// players you've recently been in a game with.
+final class FriendsScreen: Screen {
+    private var note: String?
+    private var scroll = 0
+
+    override var scene: GameActivityState.Scene { .mainMenu }
+
+    override func draw(_ ui: UIContext, _ e: GameEngine) {
+        MenuBackdrop.draw(ui)
+        let d = ui.draw
+        let W = ui.size.x, H = ui.size.y
+        let friends = FriendList.shared
+        let me = e.settings
+        let panel = Rect(max(30, W / 2 - 560), max(30, H / 2 - 350), min(1120, W - 60), min(700, H - 60))
+        ui.panel(panel, title: "Friends")
+        d.text("Add friends with their friend code. Play together once and they show up here too.", x: panel.midX, y: panel.y + 66,
+               size: 14, color: Theme.textMuted, align: .center)
+
+        // Your card
+        let card = Rect(panel.x + 30, panel.y + 100, 300, panel.h - 190)
+        d.fill(card, Color(linear: 0, 0, 0, 0.25), radius: 18)
+        let look = PlayerLook(encoded: me.cosmetics) ?? PlayerLook.oneOfOne(id: me.playerID)
+        CosmeticsScreen.drawFront(d, look, in: Rect(card.x + 60, card.y + 10, card.w - 120, card.h * 0.45))
+        var y = card.y + card.h * 0.47
+        d.text(PlayerIdentity.display(name: me.username, id: me.playerID), x: card.midX, y: y, size: 22, color: Theme.amber, align: .center)
+        y += 34
+        d.text("1 of 1", x: card.midX, y: y, size: 20, color: Theme.jungle, align: .center)
+        y += 28
+        d.text("Nobody else has your tag", x: card.midX, y: y, size: 13.5, color: Theme.textMuted, align: .center)
+        y += 30
+        if ui.button("friends.copy", "Copy My Friend Code", Rect(card.x + 16, y, card.w - 32, 44), style: .primary, fontSize: 15) {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(friends.myCode(name: me.username, id: me.playerID), forType: .string)
+            note = "Friend code copied! Send it to a friend."
+        }
+        y += 54
+        if ui.button("friends.add", "Add Friend (Paste Code)", Rect(card.x + 16, y, card.w - 32, 44), style: .secondary, fontSize: 15) {
+            if let text = NSPasteboard.general.string(forType: .string) {
+                note = friends.add(code: text, myID: me.playerID)
+                friends.refreshStatuses()
+            } else {
+                note = "Copy your friend's code first, then press this."
+            }
+        }
+        y += 56
+        if let note { d.text(note, x: card.x + 16, y: y, size: 13.5, color: Theme.amber, maxWidth: card.w - 32) }
+
+        // Friends and recent players
+        let list = Rect(card.maxX + 24, card.y, panel.maxX - 30 - card.maxX - 24, card.h)
+        d.fill(list, Color(linear: 0, 0, 0, 0.25), radius: 18)
+        let rowH: Float = 62
+        let rows = friends.friends.map { ($0, true) } + friends.recent.map { ($0, false) }
+        let visible = max(1, Int((list.h - 70) / rowH))
+        if list.contains(ui.mouse) && ui.input.scroll != 0 { scroll -= Int(ui.input.scroll.rounded()) }
+        scroll = max(0, min(max(0, rows.count - visible), scroll))
+        y = list.y + 16
+        if rows.isEmpty {
+            d.text("No friends yet.", x: list.midX, y: y + 60, size: 20, color: Theme.text, align: .center)
+            d.text("Copy your friend code and send it to someone, or join a friend's game.", x: list.midX, y: y + 92, size: 14,
+                   color: Theme.textMuted, align: .center)
+        }
+        d.text("Friends (\(friends.friends.count))", x: list.x + 18, y: y, size: 15, color: Theme.amber)
+        y += 26
+        var shownRecent = false
+        for (person, isFriend) in rows.dropFirst(scroll).prefix(visible) {
+            if !isFriend && !shownRecent {
+                shownRecent = true
+                d.text("Played with recently", x: list.x + 18, y: y, size: 15, color: Theme.amber)
+                y += 26
+            }
+            guard y + rowH < list.maxY else { break }
+            let face = Rect(list.x + 18, y, 40, rowH - 10)
+            d.fill(face, Color(linear: 0, 0, 0, 0.3), radius: 6)
+            CosmeticsScreen.drawFront(d, PlayerLook.resolve(person.look, name: person.name), in: face)
+            d.text(person.display, x: face.maxX + 14, y: y + 4, size: 16, color: Theme.text)
+            let status = friends.status(person.id)
+            var line: String
+            var lineColor = Theme.textMuted
+            switch status {
+            case .hosting(let world, let players):
+                line = "Playing \(world) · \(players) player\(players == 1 ? "" : "s") · you can join!"
+                lineColor = Theme.jungle
+            case .checking: line = "Checking…"
+            case .offline: line = "Not hosting right now"
+            case .unknown: line = person.address == nil ? "Hasn't shared where they host yet" : "Press Refresh to check"
+            }
+            if !isFriend { line = person.lastPlayed.map { "Played together " + FriendsScreen.relative($0) } ?? "Played together" }
+            d.text(line, x: face.maxX + 14, y: y + 28, size: 13.5, color: lineColor)
+            let bw: Float = 120, bh: Float = 38, by = y + (rowH - 10 - bh) / 2
+            if isFriend {
+                var canJoin = false
+                if case .hosting = status { canJoin = person.address != nil }
+                if ui.button("friends.join.\(person.id)", "Join", Rect(list.maxX - 2 * bw - 28, by, bw, bh), style: .primary,
+                             enabled: canJoin, fontSize: 15), let address = person.address {
+                    if e.options.launcherOnly { e.launchGameApp(join: address) } else { e.joinGame(address: address) }
+                }
+                if ui.button("friends.remove.\(person.id)", "Remove", Rect(list.maxX - bw - 18, by, bw, bh), style: .secondary, fontSize: 15) {
+                    friends.remove(person.id)
+                    note = "Removed \(person.display)."
+                }
+            } else if ui.button("friends.befriend.\(person.id)", "Add Friend", Rect(list.maxX - bw - 18, by, bw, bh), style: .primary, fontSize: 15) {
+                friends.befriend(person.id)
+                friends.refreshStatuses()
+                note = "\(person.display) is now your friend!"
+            }
+            y += rowH
+        }
+
+        if ui.button("friends.refresh", "Refresh", Rect(panel.midX - 250, panel.maxY - 64, 240, 46), style: .secondary) { friends.refreshStatuses() }
+        if ui.button("friends.back", "Back", Rect(panel.midX + 10, panel.maxY - 64, 240, 46), style: .secondary) { e.popScreen() }
+    }
+
+    /// "today", "yesterday" or "3 days ago".
+    static func relative(_ date: Date) -> String {
+        let days = Int(Date().timeIntervalSince(date) / 86_400)
+        return days <= 0 ? "today" : days == 1 ? "yesterday" : "\(days) days ago"
+    }
+}
+
+/// Everyone's reviews (read from GitHub), the average rating, and a star picker that opens a
+/// pre-filled page for writing your own.
+final class ReviewsScreen: Screen {
+    private var stars = 5
+    private var words = ""
+    private var note: String?
+
+    override var scene: GameActivityState.Scene { .mainMenu }
+
+    override func draw(_ ui: UIContext, _ e: GameEngine) {
+        MenuBackdrop.draw(ui)
+        let d = ui.draw
+        let W = ui.size.x, H = ui.size.y
+        let panel = Rect(max(30, W / 2 - 480), max(30, H / 2 - 340), min(960, W - 60), min(680, H - 60))
+        ui.panel(panel, title: "Player Reviews")
+        let board = GameLinks.reviews
+        let gold = Color(hex: 0xFFCC40), dimStar = Color(hex: 0x806A50)
+        func starRow(_ n: Int, x: Float, y: Float, size: Float) {
+            for k in 0..<5 { d.text("\u{2605}", x: x + Float(k) * size * 1.05, y: y, size: size, color: k < n ? gold : dimStar, face: .display) }
+        }
+        var y = panel.y + 76
+        let left = panel.x + 34, textW = panel.w - 68
+        let listBottom = panel.maxY - 200
+        switch board.state {
+        case .idle, .loading:
+            d.text("Loading reviews…", x: panel.midX, y: y + 30, size: 16, color: Theme.textMuted, align: .center)
+        case .failed(let reason):
+            d.text(reason, x: panel.midX, y: y + 30, size: 16, color: Theme.danger, align: .center, maxWidth: textW)
+        case .loaded(let list):
+            if list.isEmpty {
+                d.text("No reviews yet. Be the first!", x: panel.midX, y: y + 30, size: 16, color: Theme.textMuted, align: .center)
+            } else {
+                starRow(Int(board.average.rounded()), x: left, y: y, size: 26)
+                d.text(String(format: "%.1f out of 5 from %d review%@", board.average, list.count, list.count == 1 ? "" : "s"),
+                       x: left + 150, y: y + 4, size: 17, color: Theme.text)
+                y += 44
+                for review in list {
+                    guard y < listBottom - 40 else { break }
+                    starRow(review.stars, x: left, y: y, size: 15)
+                    d.text("\(review.author)  ·  \(review.date)", x: left + 92, y: y, size: 14, color: Theme.amber)
+                    y += 22
+                    d.text(review.text, x: left, y: y, size: 14, color: Theme.textMuted, maxWidth: textW)
+                    y += 30
+                }
+            }
+        }
+        // Your review: stars and a few words, posted on GitHub (anyone with a free account can post)
+        let rowY = panel.maxY - 184
+        d.text("Your rating", x: left, y: rowY + 10, size: 16, color: Theme.text, face: .display)
+        for k in 1...5 {
+            if ui.button("reviews.star\(k)", "\u{2605}", Rect(left + 130 + Float(k - 1) * 50, rowY, 44, 40), style: k <= stars ? .primary : .secondary) {
+                stars = k
+            }
+        }
+        let submitted = ui.textField("reviews.words", Rect(left, rowY + 50, textW - 280, 44), &words,
+                                     placeholder: "Type your review here…", maxLength: 240)
+        if ui.button("reviews.post", "Post Review", Rect(panel.maxX - 294, rowY + 50, 260, 44), style: .primary) || submitted,
+           let url = board.writeURL(stars: stars, username: e.settings.username, words: words) {
+            if NSWorkspace.shared.open(url) {
+                words = ""
+                note = nil
+            } else {
+                note = "Couldn't open your browser. Go to github.com/\(board.repository)/issues/new to post."
+            }
+        }
+        d.text(note ?? "Opens GitHub with your review filled in: sign in (free) and press Create to post it.",
+               x: left, y: rowY + 104, size: 13, color: Theme.textMuted, maxWidth: textW)
+        if ui.button("reviews.refresh", "Refresh", Rect(panel.midX - 250, panel.maxY - 58, 240, 44), style: .secondary) { board.load() }
+        if ui.button("reviews.back", "Back", Rect(panel.midX + 10, panel.maxY - 58, 240, 44), style: .secondary) { e.popScreen() }
+    }
+}
+
 final class CosmeticsScreen: Screen {
     override var scene: GameActivityState.Scene { .mainMenu }
 
@@ -174,7 +535,7 @@ final class CosmeticsScreen: Screen {
         d.text("Friends see your look in multiplayer, on Mac and Windows.", x: panel.midX, y: panel.y + 66, size: 14,
                color: Theme.textMuted, align: .center)
 
-        var look = PlayerLook(encoded: e.settings.cosmetics) ?? PlayerLook.defaultLook(for: e.settings.username)
+        var look = PlayerLook(encoded: e.settings.cosmetics) ?? PlayerLook.oneOfOne(id: e.settings.playerID)
         let before = look
 
         // Front view of the explorer, drawn from the same boxes the 3D model uses.
@@ -222,26 +583,34 @@ final class CosmeticsScreen: Screen {
             look.accent = Int.random(in: 0..<PlayerLook.accentColors.count)
         }
         if ui.button("cos.reset", "Reset", Rect(x + half + 12, y + 6, half, 50), style: .secondary) {
-            look = PlayerLook.defaultLook(for: e.settings.username)
+            look = PlayerLook.oneOfOne(id: e.settings.playerID)
         }
         if look != before { e.settingsStore.update { $0.cosmetics = look.encoded } }
         if ui.button("cos.done", "Done", Rect(panel.midX - 160, panel.maxY - 74, 320, 52), style: .primary) { back(e) }
     }
 
-    /// Draws the explorer from the front: every box of the model as a flat rectangle, back to front.
-    static func drawFront(_ d: UIRenderer, _ look: PlayerLook, in r: Rect) {
-        var boxes: [(z: Float, rect: Rect, color: Color)] = []
+    /// Draws the explorer from one side: every box of the model as a flat rectangle, back to front.
+    static func drawFront(_ d: UIRenderer, _ look: PlayerLook, side: SkinRegion.Side = .front, in r: Rect) {
+        var boxes: [(depth: Float, rect: Rect, color: Color)] = []
         let scale = min(r.w / 1.4, r.h / 2.5)
         let cx = r.midX, feet = r.maxY - 20
         for part in PlayerAvatar.parts(look) {
             for box in part.boxes {
                 let lo = part.pivot + box.0, hi = part.pivot + box.1
-                // Seen from the front, the explorer's +x side is on the viewer's left.
-                let rect = Rect(cx - hi.x * scale, feet - hi.y * scale, (hi.x - lo.x) * scale, (hi.y - lo.y) * scale)
-                boxes.append((lo.z, rect, Color(linear: box.2.x, box.2.y, box.2.z, 1)))
+                // Across the screen, and how far the nearest face is from the viewer. The front faces -z,
+                // so from the front the explorer's +x side is on the viewer's left.
+                let x0: Float, x1: Float, depth: Float
+                switch side {
+                case .front, .top: (x0, x1, depth) = (-hi.x, -lo.x, lo.z)
+                case .back: (x0, x1, depth) = (lo.x, hi.x, -hi.z)
+                case .left: (x0, x1, depth) = (lo.z, hi.z, lo.x)
+                case .right: (x0, x1, depth) = (-hi.z, -lo.z, -hi.x)
+                }
+                let rect = Rect(cx + x0 * scale, feet - hi.y * scale, (x1 - x0) * scale, (hi.y - lo.y) * scale)
+                boxes.append((depth, rect, Color(linear: box.2.x, box.2.y, box.2.z, 1)))
             }
         }
-        for b in boxes.sorted(by: { $0.z > $1.z }) { d.fill(b.rect, b.color) }
+        for b in boxes.sorted(by: { $0.depth > $1.depth }) { d.fill(b.rect, b.color) }
     }
 }
 
@@ -253,7 +622,9 @@ final class CosmeticsScreen: Screen {
 enum MacUpdater {
     /// Returns an error message, or nil when DinoCraft should now quit to finish the update.
     static func install(zip: URL) -> String? {
-        let app = Bundle.main.bundleURL
+        let running = Bundle.main.bundleURL
+        // DinoCraft Launcher updates the game next to it (and itself).
+        let app = running.lastPathComponent.contains("Launcher") ? running.deletingLastPathComponent().appendingPathComponent("DinoCraft.app") : running
         guard app.pathExtension == "app" else { return "Updates install into DinoCraft.app; this copy isn't running from an app." }
         let fm = FileManager.default
         let unpacked = zip.deletingLastPathComponent().appendingPathComponent("files", isDirectory: true)
@@ -276,13 +647,41 @@ enum MacUpdater {
         }
         func quote(_ s: String) -> String { "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" }
         let pid = ProcessInfo.processInfo.processIdentifier
+        let newLauncher = unpacked.appendingPathComponent("DinoCraft Launcher.app")
+        let launcher = app.deletingLastPathComponent().appendingPathComponent("DinoCraft Launcher.app")
+        let build = BuildInfo.current.build
+        let newBuild = (try? Data(contentsOf: newApp.appendingPathComponent("Contents/Resources/Data/build.json")))
+            .flatMap { try? JSONDecoder().decode(BuildInfo.self, from: $0) }?.build ?? build + 1
+        let launcherStep = fm.fileExists(atPath: newLauncher.path) ? "replace \(quote(newLauncher.path)) \(quote(launcher.path)) || ok=0" : ""
+        // Each app is moved aside, the new one copied in, and the old one put back if anything fails, so a
+        // blocked update never leaves a half-copied app. macOS may block changing apps in Applications
+        // ("App Management"): then the new apps' folder opens so they can be dragged in by hand.
         let script = """
         #!/bin/sh
         while kill -0 \(pid) 2>/dev/null; do sleep 0.5; done
-        rm -rf \(quote(app.path))
-        /usr/bin/ditto \(quote(newApp.path)) \(quote(app.path))
-        /usr/bin/xattr -dr com.apple.quarantine \(quote(app.path)) 2>/dev/null
-        /usr/bin/open \(quote(app.path))
+        replace() {
+          rm -rf "$2.updating-old" 2>/dev/null
+          if [ -e "$2" ]; then mv "$2" "$2.updating-old" 2>/dev/null || return 1; fi
+          if /usr/bin/ditto "$1" "$2" 2>/dev/null && [ -n "$(ls "$2/Contents/MacOS" 2>/dev/null)" ]; then
+            rm -rf "$2.updating-old"
+            /usr/bin/xattr -dr com.apple.quarantine "$2" 2>/dev/null
+            return 0
+          fi
+          rm -rf "$2" 2>/dev/null
+          mv "$2.updating-old" "$2" 2>/dev/null
+          return 1
+        }
+        ok=1
+        replace \(quote(newApp.path)) \(quote(app.path)) || ok=0
+        \(launcherStep)
+        if [ "$ok" = 1 ]; then
+          echo "ok \(newBuild)" > \(quote(UpdateResult.file.path))
+        else
+          echo "blocked \(newBuild)" > \(quote(UpdateResult.file.path))
+          /usr/bin/open \(quote(unpacked.path))
+          /usr/bin/open "x-apple.systempreferences:com.apple.preference.security?Privacy_AppBundles"
+        fi
+        /usr/bin/open \(quote(running.path))
 
         """
         let scriptURL = zip.deletingLastPathComponent().appendingPathComponent("update.sh")
@@ -302,11 +701,11 @@ enum MacUpdater {
 
 // MARK: - Skin creator
 
-/// Paint your own face and shirt, pixel by pixel. Friends see it in multiplayer, and skins can be
+/// Paint your whole explorer, every side of every body part, pixel by pixel. Friends see it in multiplayer, and skins can be
 /// shared as codes (DINOSKIN:…) through the clipboard.
 final class SkinCreatorScreen: Screen {
     private var draft: PlayerLook?
-    private var tab = 0
+    private var regionID = "hf"
     private var colorIndex: UInt8 = 1
     private var mirror = true
     private var fillMode = false
@@ -325,27 +724,39 @@ final class SkinCreatorScreen: Screen {
         d.text("Left-click paints, right-click rubs out. Friends see your skin in multiplayer.", x: panel.midX, y: panel.y + 66,
                size: 14, color: Theme.textMuted, align: .center)
 
-        var look = draft ?? PlayerLook(encoded: e.settings.cosmetics) ?? PlayerLook.defaultLook(for: e.settings.username)
-        if look.face.count != 64 { look.face = Array(repeating: 0, count: 64) }
-        if look.chest.count != 80 { look.chest = Array(repeating: 0, count: 80) }
+        var look = draft ?? PlayerLook(encoded: e.settings.cosmetics) ?? PlayerLook.oneOfOne(id: e.settings.playerID)
+        let region = SkinRegion.byID[regionID] ?? SkinRegion.all[0]
+        let isFace = region.id == "hf", isShirt = region.id == "bf"
 
-        // Preview
+        // Preview, turned to show the side you're painting
         let preview = Rect(panel.x + 30, panel.y + 110, 260, panel.h - 210)
         d.fill(preview, Color(linear: 0, 0, 0, 0.25), radius: 18)
-        CosmeticsScreen.drawFront(d, look, in: preview)
+        CosmeticsScreen.drawFront(d, look, side: region.side, in: preview)
 
-        // Tabs and canvas
-        let isFace = tab == 0
-        let cols = isFace ? PlayerLook.faceWidth : PlayerLook.chestWidth, rows = isFace ? PlayerLook.faceHeight : PlayerLook.chestHeight
-        let cell = min(40, (panel.h - 250) / Float(rows))
-        let canvas = Rect(preview.maxX + 40, panel.y + 160, cell * Float(cols), cell * Float(rows))
-        let tabW = (canvas.w - 10) / 2
-        if ui.button("skin.tab.face", "Face", Rect(canvas.x, canvas.y - 52, tabW, 40), style: isFace ? .primary : .secondary, fontSize: 16) { tab = 0 }
-        if ui.button("skin.tab.shirt", "Shirt", Rect(canvas.x + tabW + 10, canvas.y - 52, tabW, 40), style: isFace ? .secondary : .primary,
-                     fontSize: 16) { tab = 1 }
-        let baseHex = isFace ? PlayerLook.skinTones[look.skin] : PlayerLook.shirtColors[look.shirt]
-        d.fill(Rect(canvas.x - 4, canvas.y - 4, canvas.w + 8, canvas.h + 8), Color(hex: 0x0B0716), radius: 6)
-        var pixels = isFace ? look.face : look.chest
+        // Which part and which side
+        let partW: Float = 128, partH: Float = 34
+        let pickX = preview.maxX + 40, pickY = panel.y + 92
+        for (i, part) in SkinRegion.parts.enumerated() {
+            let r = Rect(pickX + Float(i % 3) * (partW + 8), pickY + Float(i / 3) * (partH + 8), partW, partH)
+            if ui.button("skin.part.\(part)", part, r, style: region.part == part ? .primary : .secondary, fontSize: 14) {
+                let sides = SkinRegion.regions(part: part)
+                regionID = (sides.first { $0.side == region.side } ?? sides[0]).id
+            }
+        }
+        for (i, side) in SkinRegion.regions(part: region.part).enumerated() {
+            let r = Rect(pickX + Float(i) * (100 + 8), pickY + 2 * (partH + 8) + 6, 100, partH)
+            if ui.button("skin.side.\(side.id)", side.side.rawValue.capitalized, r, style: side.id == region.id ? .primary : .secondary,
+                         fontSize: 14) { regionID = side.id }
+        }
+
+        // Canvas
+        let cols = region.width, rows = region.height
+        let canvasTop = pickY + 3 * (partH + 8) + 30
+        let cell = min(34, (panel.maxY - 90 - canvasTop) / Float(rows))
+        let canvas = Rect(pickX, canvasTop, cell * Float(cols), cell * Float(rows))
+        let baseHex = region.baseColor(look)
+        d.fill(Rect(canvas.x - 4, canvas.y - 4, canvas.w + 8, canvas.h + 8), Color(hex: 0x160C04), radius: 6)
+        var pixels = look.pixels(region)
         for r in 0..<rows {
             for c in 0..<cols {
                 let v = pixels[r * cols + c]
@@ -369,8 +780,8 @@ final class SkinCreatorScreen: Screen {
             }
         }
 
-        // Palette
-        let px = canvas.maxX + 40, swatch: Float = 44
+        // Palette (it stays put while the canvas changes shape between parts)
+        let px = canvas.x + max(canvas.w, 8 * min(34, (panel.maxY - 90 - canvasTop) / 8)) + 40, swatch: Float = 44
         var py = canvas.y
         d.text("Colours", x: px, y: py - 26, size: 15, color: Theme.textMuted)
         for i in 0..<16 {
@@ -390,11 +801,15 @@ final class SkinCreatorScreen: Screen {
         if tool("skin.fill", fillMode ? "Fill" : "Brush", 0, primary: fillMode) { fillMode.toggle() }
         if tool("skin.mirror", mirror ? "Mirror On" : "Mirror Off", 1, primary: mirror) { mirror.toggle() }
         py += th + 10
-        let presets = isFace ? PlayerLook.facePresets : PlayerLook.chestPresets
-        let presetIndex = isFace ? facePreset : chestPreset
-        if tool("skin.preset", "Idea: \(presets[presetIndex].name)", 0) {
-            pixels = PlayerLook.presetPixels(presets[presetIndex].pixels, count: cols * rows)
-            if isFace { facePreset = (facePreset + 1) % presets.count } else { chestPreset = (chestPreset + 1) % presets.count }
+        if isFace || isShirt {
+            let presets = isFace ? PlayerLook.facePresets : PlayerLook.chestPresets
+            let presetIndex = isFace ? facePreset : chestPreset
+            if tool("skin.preset", "Idea: \(presets[presetIndex].name)", 0) {
+                pixels = PlayerLook.presetPixels(presets[presetIndex].pixels, count: cols * rows)
+                if isFace { facePreset = (facePreset + 1) % presets.count } else { chestPreset = (chestPreset + 1) % presets.count }
+            }
+        } else if let twin = region.twin, tool("skin.twin", region.copyTwinLabel, 0) {
+            pixels = look.pixels(twin)
         }
         if tool("skin.clear", "Clear", 1) { pixels = Array(repeating: 0, count: cols * rows) }
         py += th + 10
@@ -406,9 +821,7 @@ final class SkinCreatorScreen: Screen {
         if tool("skin.paste", "Paste Code", 1) {
             if let text = NSPasteboard.general.string(forType: .string), let pasted = PlayerLook(shareCode: text) {
                 look = pasted
-                if look.face.count != 64 { look.face = Array(repeating: 0, count: 64) }
-                if look.chest.count != 80 { look.chest = Array(repeating: 0, count: 80) }
-                pixels = isFace ? look.face : look.chest
+                pixels = look.pixels(region)
                 message = "Skin pasted!"
             } else {
                 message = "The clipboard doesn't hold a DinoCraft skin code."
@@ -417,7 +830,7 @@ final class SkinCreatorScreen: Screen {
         py += th + 14
         if let message { d.text(message, x: px, y: py, size: 14, color: Theme.textMuted, maxWidth: panel.maxX - px - 20) }
 
-        if isFace { look.face = pixels } else { look.chest = pixels }
+        look.setPixels(pixels, for: region)
         draft = look
 
         if ui.button("skin.play", "Save & Play", Rect(panel.midX - 370, panel.maxY - 70, 230, 50), style: .primary) {

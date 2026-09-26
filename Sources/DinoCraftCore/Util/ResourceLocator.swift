@@ -6,7 +6,8 @@ import Foundation
 /// 1. `DINOCRAFT_RESOURCES` environment variable (tests / development override)
 /// 2. The app bundle's `Contents/Resources`
 /// 3. A `Resources` directory found by walking up from the executable (for
-///    `swift run` during development)
+///    `swift run` during development, and DinoCraft Launcher on Windows), or the
+///    resources of a `DinoCraft.app` next to DinoCraft Launcher.app
 public enum ResourceLocator {
     private static let marker = "Data/blocks.json"
 
@@ -25,6 +26,9 @@ public enum ResourceLocator {
         for _ in 0..<8 {
             let candidate = dir.appendingPathComponent("Resources", isDirectory: true)
             if fm.fileExists(atPath: candidate.appendingPathComponent(marker).path) { return candidate }
+            // DinoCraft Launcher.app shares the resources of DinoCraft.app next to it.
+            let sibling = dir.appendingPathComponent("DinoCraft.app/Contents/Resources", isDirectory: true)
+            if fm.fileExists(atPath: sibling.appendingPathComponent(marker).path) { return sibling }
             dir.deleteLastPathComponent()
         }
         let cwd = URL(fileURLWithPath: fm.currentDirectoryPath).appendingPathComponent("Resources", isDirectory: true)

@@ -26,6 +26,9 @@ final class RemotePlayer {
     var dead = false
     var hurtTimer: Double = 0
     var lastUpdate = 0.0
+    /// Body turn, sprint lean and jump pose for drawing them (your own model in F5 uses the session's).
+    var motion = AvatarMotion()
+    private var lastY: Double?
 
     init(id: Int, name: String, position: DVec3) {
         self.id = id
@@ -55,6 +58,9 @@ final class RemotePlayer {
         position += (targetPosition - position) * min(1, dt * 14)
         yaw = MobManager.lerpAngle(yaw, targetYaw, min(1, dt * 14))
         walkPhase += moving * dt * 7
+        let rising = lastY.map { abs(position.y - $0) / max(dt, 0.001) > 1.5 } ?? false
+        lastY = position.y
+        motion.update(dt: dt, yaw: yaw, moving: moving, airborne: rising, sprinting: false)
         swing = max(0, swing - dt * 3.5)
         hurtTimer = max(0, hurtTimer - dt)
     }

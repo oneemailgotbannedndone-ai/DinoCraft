@@ -9,6 +9,7 @@ import DinoCraftCore
 struct PlayerLook: Equatable {
     enum Hat: String, CaseIterable {
         case explorer, none, cap, crown, tophat, dinohood, flowers
+        case wizard, viking, headphones, halo, pirate, beanie, bunny, party
 
         var displayName: String {
             switch self {
@@ -19,12 +20,20 @@ struct PlayerLook: Equatable {
             case .tophat: return "Top Hat"
             case .dinohood: return "Dino Hood"
             case .flowers: return "Flower Crown"
+            case .wizard: return "Wizard Hat"
+            case .viking: return "Viking Helmet"
+            case .headphones: return "Headphones"
+            case .halo: return "Halo"
+            case .pirate: return "Pirate Hat"
+            case .beanie: return "Beanie"
+            case .bunny: return "Bunny Ears"
+            case .party: return "Party Hat"
             }
         }
     }
 
     enum Back: String, CaseIterable {
-        case none, cape, tail, backpack
+        case none, cape, tail, backpack, wings, dragonwings, jetpack, sword
 
         var displayName: String {
             switch self {
@@ -32,20 +41,26 @@ struct PlayerLook: Equatable {
             case .cape: return "Cape"
             case .tail: return "Dino Tail"
             case .backpack: return "Backpack"
+            case .wings: return "Angel Wings"
+            case .dragonwings: return "Dragon Wings"
+            case .jetpack: return "Jetpack"
+            case .sword: return "Sword"
             }
         }
     }
 
     /// The first eight are the colours players had before cosmetics, picked from their name.
     static let shirtColors: [UInt32] = [0x3A7BD5, 0xD5563A, 0x3AA66A, 0x9A4AD5, 0xD5A33A, 0x2FB5B0, 0xD54A8A, 0x6A7A3A,
-                                        0xE8E4DA, 0x2A2A30, 0xE07A2A, 0x8FD0E8]
-    static let shirtNames = ["Blue", "Red", "Green", "Purple", "Gold", "Teal", "Pink", "Olive", "White", "Black", "Orange", "Sky"]
-    static let pantsColors: [UInt32] = [0x5A4632, 0x2E3A5A, 0x3A3A3A, 0x4E5A34, 0x8A6A44, 0x6A2E2E]
-    static let pantsNames = ["Brown", "Navy", "Charcoal", "Moss", "Sand", "Maroon"]
-    static let skinTones: [UInt32] = [0xD9A77E, 0xF1C9A5, 0xC08A5C, 0x8D5A3A, 0x5E3A24]
-    static let skinNames = ["Tan", "Light", "Warm", "Brown", "Deep"]
-    static let accentColors: [UInt32] = [0xC8323C, 0x3A6ED8, 0x3AA65A, 0xE8B83A, 0x8A4AD5, 0x2A2A30, 0xF08AC0, 0xF2F0EA]
-    static let accentNames = ["Red", "Blue", "Green", "Gold", "Purple", "Black", "Pink", "White"]
+                                        0xE8E4DA, 0x2A2A30, 0xE07A2A, 0x8FD0E8, 0x9AE05A, 0xF2E24A, 0x7A1E24, 0xC8A0F0]
+    static let shirtNames = ["Blue", "Red", "Green", "Purple", "Gold", "Teal", "Pink", "Olive", "White", "Black", "Orange", "Sky",
+                             "Lime", "Yellow", "Wine", "Lavender"]
+    static let pantsColors: [UInt32] = [0x5A4632, 0x2E3A5A, 0x3A3A3A, 0x4E5A34, 0x8A6A44, 0x6A2E2E, 0x3A6ED8, 0xE8E4DA, 0x1A1A1E, 0x7A4AA0]
+    static let pantsNames = ["Brown", "Navy", "Charcoal", "Moss", "Sand", "Maroon", "Denim", "White", "Black", "Purple"]
+    static let skinTones: [UInt32] = [0xD9A77E, 0xF1C9A5, 0xC08A5C, 0x8D5A3A, 0x5E3A24, 0x7AB84E, 0x6A8AD0, 0xB0B0B8]
+    static let skinNames = ["Tan", "Light", "Warm", "Brown", "Deep", "Dino Green", "Alien Blue", "Robot Grey"]
+    static let accentColors: [UInt32] = [0xC8323C, 0x3A6ED8, 0x3AA65A, 0xE8B83A, 0x8A4AD5, 0x2A2A30, 0xF08AC0, 0xF2F0EA,
+                                         0xE07A2A, 0x2FB5B0, 0x8FD0E8, 0x7A5230]
+    static let accentNames = ["Red", "Blue", "Green", "Gold", "Purple", "Black", "Pink", "White", "Orange", "Teal", "Sky", "Leather"]
 
     var hat = Hat.explorer
     var shirt = 0
@@ -66,8 +81,31 @@ struct PlayerLook: Equatable {
     /// Shirt-front pixels, the same way (empty = a plain shirt).
     var chest: [UInt8] = []
 
+    /// Every other painted side of the explorer (see `SkinRegion`), keyed by region id.
+    var paint: [String: [UInt8]] = [:]
+
     var hasFace: Bool { face.contains { $0 != 0 } }
     var hasChest: Bool { chest.contains { $0 != 0 } }
+
+    /// The pixels of any paintable side (all zeros when it hasn't been painted).
+    func pixels(_ region: SkinRegion) -> [UInt8] {
+        let stored: [UInt8]
+        switch region.id {
+        case "hf": stored = face
+        case "bf": stored = chest
+        default: stored = paint[region.id] ?? []
+        }
+        return stored.count == region.count ? stored : Array(repeating: 0, count: region.count)
+    }
+
+    mutating func setPixels(_ pixels: [UInt8], for region: SkinRegion) {
+        let clean = pixels.count == region.count && pixels.contains { $0 != 0 } ? pixels : []
+        switch region.id {
+        case "hf": face = clean
+        case "bf": chest = clean
+        default: paint[region.id] = clean.isEmpty ? nil : clean
+        }
+    }
 
     private static func hex(_ pixels: [UInt8]) -> String {
         String(pixels.map { Character(String($0 & 15, radix: 16)) })
@@ -85,6 +123,26 @@ struct PlayerLook: Equatable {
         return look
     }
 
+    /// A one-of-a-kind starting look made from a player's ID: hat, colours and back item all come
+    /// from it, so no two players start out the same.
+    static func oneOfOne(id: String) -> PlayerLook {
+        var rng = SplitMix64(seed: Hashing.seed(from: "look-" + id))
+        var look = PlayerLook()
+        look.hat = Hat.allCases[rng.nextInt(Hat.allCases.count)]
+        look.shirt = rng.nextInt(shirtColors.count)
+        look.pants = rng.nextInt(pantsColors.count)
+        look.skin = rng.nextInt(skinTones.count)
+        look.back = Back.allCases[rng.nextInt(Back.allCases.count)]
+        look.accent = rng.nextInt(accentColors.count)
+        return look
+    }
+
+    /// Gives a player who hasn't picked a look yet their one-of-a-kind one (call at startup).
+    static func settle(_ store: SettingsStore) {
+        guard PlayerLook(encoded: store.settings.cosmetics) == nil else { return }
+        store.update { $0.cosmetics = PlayerLook.oneOfOne(id: $0.playerID).encoded }
+    }
+
     /// The look a player sent, or their default one.
     static func resolve(_ encoded: String?, name: String) -> PlayerLook {
         encoded.flatMap(PlayerLook.init(encoded:)) ?? defaultLook(for: name)
@@ -95,6 +153,9 @@ struct PlayerLook: Equatable {
         var text = "hat=\(hat.rawValue);shirt=\(shirt);pants=\(pants);skin=\(skin);back=\(back.rawValue);accent=\(accent)"
         if hasFace { text += ";face=" + PlayerLook.hex(face) }
         if hasChest { text += ";chest=" + PlayerLook.hex(chest) }
+        for region in SkinRegion.all where region.id != "hf" && region.id != "bf" {
+            if let pixels = paint[region.id], pixels.contains(where: { $0 != 0 }) { text += ";p.\(region.id)=" + PlayerLook.hex(pixels) }
+        }
         return text
     }
 
@@ -145,8 +206,76 @@ struct PlayerLook: Equatable {
             case "accent": accent = index(PlayerLook.accentColors.count)
             case "face": face = PlayerLook.pixels(kv[1], count: PlayerLook.faceWidth * PlayerLook.faceHeight)
             case "chest": chest = PlayerLook.pixels(kv[1], count: PlayerLook.chestWidth * PlayerLook.chestHeight)
-            default: break
+            default:
+                if kv[0].hasPrefix("p."), let region = SkinRegion.byID[String(kv[0].dropFirst(2))] {
+                    let pixels = PlayerLook.pixels(kv[1], count: region.count)
+                    if !pixels.isEmpty { paint[region.id] = pixels }
+                }
             }
+        }
+    }
+}
+
+/// One paintable side of the explorer in the skin creator: a grid of pixels laid over a face of a
+/// body part. Columns run left to right as you look straight at that side.
+struct SkinRegion {
+    enum Side: String { case front, back, left, right, top }
+
+    let id: String
+    let part: String
+    let side: Side
+    /// `PlayerAvatar.Part.kind` of the body part it's on.
+    let kind: Int
+    let width: Int, height: Int
+    /// The box it covers, in the part's own space.
+    let lo: SIMD3<Float>, hi: SIMD3<Float>
+
+    var count: Int { width * height }
+    var name: String { "\(part) - \(side.rawValue.capitalized)" }
+
+    /// Parts in the order the skin creator lists them.
+    static let parts = ["Head", "Body", "Left Arm", "Right Arm", "Left Leg", "Right Leg"]
+
+    static let all: [SkinRegion] = {
+        var list: [SkinRegion] = []
+        func add(_ prefix: String, _ part: String, kind: Int, _ sides: [(Side, Int, Int)], lo: SIMD3<Float>, hi: SIMD3<Float>) {
+            for (side, w, h) in sides {
+                let key = prefix + String(side.rawValue.first!)
+                list.append(SkinRegion(id: key, part: part, side: side, kind: kind, width: w, height: h, lo: lo, hi: hi))
+            }
+        }
+        add("h", "Head", kind: 1, [(.front, 8, 8), (.back, 8, 8), (.left, 8, 8), (.right, 8, 8), (.top, 8, 8)],
+            lo: SIMD3(-0.22, 0, -0.22), hi: SIMD3(0.22, 0.42, 0.22))
+        add("b", "Body", kind: 0, [(.front, 8, 10), (.back, 8, 10), (.left, 4, 10), (.right, 4, 10)],
+            lo: SIMD3(-0.25, 0.07, -0.13), hi: SIMD3(0.25, 0.72, 0.13))
+        let limbSides: [(Side, Int, Int)] = [(.front, 4, 12), (.back, 4, 12), (.left, 4, 12), (.right, 4, 12)]
+        add("la", "Left Arm", kind: 2, limbSides, lo: SIMD3(-0.12, -0.72, -0.12), hi: SIMD3(0.12, 0.04, 0.12))
+        add("ra", "Right Arm", kind: 3, limbSides, lo: SIMD3(-0.12, -0.72, -0.12), hi: SIMD3(0.12, 0.04, 0.12))
+        add("ll", "Left Leg", kind: 4, limbSides, lo: SIMD3(-0.125, -0.75, -0.14), hi: SIMD3(0.125, 0, 0.13))
+        add("rl", "Right Leg", kind: 5, limbSides, lo: SIMD3(-0.125, -0.75, -0.14), hi: SIMD3(0.125, 0, 0.13))
+        return list
+    }()
+
+    static let byID: [String: SkinRegion] = Dictionary(uniqueKeysWithValues: all.map { ($0.id, $0) })
+
+    static func regions(part: String) -> [SkinRegion] { all.filter { $0.part == part } }
+
+    /// The matching side of the other arm or leg, for copying one to the other.
+    var twin: SkinRegion? {
+        let swap = ["la": "ra", "ra": "la", "ll": "rl", "rl": "ll"]
+        guard let other = swap[String(id.prefix(2))] else { return nil }
+        return SkinRegion.byID[other + String(id.dropFirst(2))]
+    }
+
+    /// "Copy Other Arm" or "Copy Other Leg" for a limb.
+    var copyTwinLabel: String { id.dropFirst().hasPrefix("a") ? "Copy Other Arm" : "Copy Other Leg" }
+
+    /// The colour a side shows where it isn't painted.
+    func baseColor(_ look: PlayerLook) -> UInt32 {
+        switch kind {
+        case 1: return PlayerLook.skinTones[look.skin]
+        case 4, 5: return PlayerLook.pantsColors[look.pants]
+        default: return PlayerLook.shirtColors[look.shirt]
         }
     }
 }
@@ -178,23 +307,34 @@ enum PlayerAvatar {
             (SIMD3(x0, y0, z0), SIMD3(x1, y1, z1), c)
         }
 
-        var body: [Box] = [b(-0.25, 0, -0.13, 0.25, 0.72, 0.13, shirt), b(-0.26, 0, -0.14, 0.26, 0.07, 0.14, belt)]
-        if look.hasChest {
-            body += painted(look.chest, width: PlayerLook.chestWidth, height: PlayerLook.chestHeight, left: 0.25, right: -0.25,
-                            top: 0.72, bottom: 0.07, z: -0.13)
-        }
+        func shade(_ c: SIMD4<Float>, _ f: Float) -> SIMD4<Float> { SIMD4(c.x * f, c.y * f, c.z * f, 1) }
+        let shirtDark = shade(shirt, 0.72), skinDark = shade(skin, 0.8), buckle = color(0xD8B048)
+        var body: [Box] = [b(-0.25, 0, -0.13, 0.25, 0.72, 0.13, shirt), b(-0.26, 0, -0.14, 0.26, 0.07, 0.14, belt),
+                           b(-0.05, 0.008, -0.148, 0.05, 0.062, -0.139, buckle),
+                           // Collar with a little skin showing at the neck, a button strip and shoulder seams.
+                           b(-0.2, 0.66, -0.137, 0.2, 0.72, 0.137, shirtDark), b(-0.07, 0.6, -0.139, 0.07, 0.72, -0.136, skin),
+                           b(-0.016, 0.1, -0.135, 0.016, 0.6, -0.13, shirtDark),
+                           b(-0.06, 0.48, -0.136, -0.03, 0.51, -0.131, belt), b(-0.06, 0.3, -0.136, -0.03, 0.33, -0.131, belt)]
+        body += paintedRegions(look, kind: 0)
         if look.back == .backpack {
             let leather = color(0x7A5230)
             body += [b(-0.19, 0.12, 0.13, 0.19, 0.62, 0.32, leather), b(-0.2, 0.44, 0.13, 0.2, 0.64, 0.34, accent),
                      b(-0.23, 0.14, -0.14, -0.17, 0.72, 0.14, leather), b(0.17, 0.14, -0.14, 0.23, 0.72, 0.14, leather)]
         }
 
-        var head: [Box] = [b(-0.22, 0, -0.22, 0.22, 0.42, 0.22, skin)]
-        if look.hasFace {
-            head += painted(look.face, width: PlayerLook.faceWidth, height: PlayerLook.faceHeight, left: 0.22, right: -0.22,
-                            top: 0.42, bottom: 0, z: -0.22)
-        } else {
-            head += [b(-0.13, 0.22, -0.23, -0.06, 0.28, -0.22, eye), b(0.06, 0.22, -0.23, 0.13, 0.28, -0.22, eye)]
+        // Ears on the sides of the head.
+        var head: [Box] = [b(-0.22, 0, -0.22, 0.22, 0.42, 0.22, skin),
+                           b(-0.25, 0.13, -0.03, -0.215, 0.27, 0.06, skinDark), b(0.215, 0.13, -0.03, 0.25, 0.27, 0.06, skinDark)]
+        head += paintedRegions(look, kind: 1)
+        if !look.hasFace {
+            // Eyes with whites and pupils looking ahead, brows, a nose and a mouth.
+            let white = color(0xF4F0E8), brow = color(0x4A3322), mouth = color(0x8A3E34)
+            head += [b(-0.155, 0.2, -0.226, -0.045, 0.29, -0.219, white), b(0.045, 0.2, -0.226, 0.155, 0.29, -0.219, white),
+                     b(-0.11, 0.205, -0.231, -0.05, 0.28, -0.224, eye), b(0.05, 0.205, -0.231, 0.11, 0.28, -0.224, eye),
+                     b(-0.1, 0.255, -0.234, -0.075, 0.275, -0.229, white), b(0.06, 0.255, -0.234, 0.085, 0.275, -0.229, white),
+                     b(-0.165, 0.31, -0.228, -0.04, 0.34, -0.219, brow), b(0.04, 0.31, -0.228, 0.165, 0.34, -0.219, brow),
+                     b(-0.03, 0.13, -0.255, 0.03, 0.2, -0.219, skinDark),
+                     b(-0.075, 0.07, -0.226, 0.075, 0.095, -0.219, mouth)]
         }
         switch look.hat {
         case .explorer:
@@ -229,17 +369,77 @@ enum PlayerAvatar {
             let petals: [(Float, Float, UInt32)] = [(-0.2, -0.2, 0xF08AC0), (0.2, -0.2, 0xF2E24A), (0, -0.23, 0xF2F0EA),
                                                    (-0.23, 0.05, 0xC8323C), (0.23, 0.05, 0x8FD0E8), (0, 0.23, 0xF08AC0)]
             for (x, z, hex) in petals { head.append(b(x - 0.045, 0.42, z - 0.045, x + 0.045, 0.5, z + 0.045, color(hex))) }
+        case .wizard:
+            let star = color(0xF2E24A)
+            head += [b(-0.33, 0.4, -0.33, 0.33, 0.44, 0.33, accent), b(-0.22, 0.44, -0.22, 0.22, 0.58, 0.22, accent),
+                     b(-0.15, 0.58, -0.15, 0.15, 0.72, 0.15, accent), b(-0.08, 0.72, -0.06, 0.08, 0.84, 0.1, accent),
+                     b(-0.03, 0.84, 0.04, 0.03, 0.92, 0.12, accent),
+                     b(-0.06, 0.5, -0.225, 0.02, 0.56, -0.215, star), b(0.08, 0.62, -0.155, 0.12, 0.66, -0.145, star)]
+        case .viking:
+            let steel = color(0x9A9AA6), horn = color(0xF2EBD6)
+            head += [b(-0.24, 0.3, -0.24, 0.24, 0.52, 0.24, steel), b(-0.245, 0.3, -0.245, 0.245, 0.34, 0.245, color(0x7A5230)),
+                     b(-0.03, 0.08, -0.26, 0.03, 0.34, -0.23, steel),
+                     b(-0.34, 0.4, -0.05, -0.24, 0.48, 0.05, horn), b(-0.4, 0.46, -0.04, -0.32, 0.62, 0.04, horn),
+                     b(0.24, 0.4, -0.05, 0.34, 0.48, 0.05, horn), b(0.32, 0.46, -0.04, 0.4, 0.62, 0.04, horn)]
+        case .headphones:
+            let dark = color(0x2A2A30)
+            head += [b(-0.25, 0.14, -0.08, -0.21, 0.3, 0.08, accent), b(0.21, 0.14, -0.08, 0.25, 0.3, 0.08, accent),
+                     b(-0.24, 0.3, -0.03, -0.2, 0.46, 0.03, dark), b(0.2, 0.3, -0.03, 0.24, 0.46, 0.03, dark),
+                     b(-0.22, 0.44, -0.03, 0.22, 0.48, 0.03, dark)]
+        case .halo:
+            let gold = color(0xF2E24A)
+            head += [b(-0.2, 0.58, -0.2, 0.2, 0.61, -0.14, gold), b(-0.2, 0.58, 0.14, 0.2, 0.61, 0.2, gold),
+                     b(-0.2, 0.58, -0.14, -0.14, 0.61, 0.14, gold), b(0.14, 0.58, -0.14, 0.2, 0.61, 0.14, gold)]
+        case .pirate:
+            let black = color(0x1E1E24), skull = color(0xF2F0EA)
+            head += [b(-0.3, 0.4, -0.2, 0.3, 0.48, 0.2, black), b(-0.24, 0.48, -0.16, 0.24, 0.58, 0.16, black),
+                     b(-0.3, 0.44, -0.24, -0.18, 0.56, -0.18, black), b(0.18, 0.44, -0.24, 0.3, 0.56, -0.18, black),
+                     b(-0.04, 0.5, -0.17, 0.04, 0.56, -0.16, skull)]
+        case .beanie:
+            head += [b(-0.23, 0.3, -0.23, 0.23, 0.52, 0.23, accent), b(-0.235, 0.3, -0.235, 0.235, 0.36, 0.235, color(0xF2F0EA)),
+                     b(-0.06, 0.52, -0.06, 0.06, 0.6, 0.06, color(0xF2F0EA))]
+        case .bunny:
+            let fur = color(0xF2F0EA), pink = color(0xF08AC0)
+            head += [b(-0.15, 0.42, -0.04, -0.07, 0.8, 0.04, fur), b(0.07, 0.42, -0.04, 0.15, 0.8, 0.04, fur),
+                     b(-0.13, 0.48, -0.045, -0.09, 0.76, -0.04, pink), b(0.09, 0.48, -0.045, 0.13, 0.76, -0.04, pink)]
+        case .party:
+            let stripe = color(0xF2E24A)
+            head += [b(-0.13, 0.42, -0.13, 0.13, 0.52, 0.13, accent), b(-0.09, 0.52, -0.09, 0.09, 0.62, 0.09, stripe),
+                     b(-0.05, 0.62, -0.05, 0.05, 0.72, 0.05, accent), b(-0.04, 0.72, -0.04, 0.04, 0.78, 0.04, color(0xF2F0EA))]
         }
 
-        let arm: [Box] = [b(-0.12, -0.66, -0.12, 0.12, 0.04, 0.12, shirt), b(-0.115, -0.72, -0.115, 0.115, -0.5, 0.115, skin)]
-        let leg: [Box] = [b(-0.12, -0.75, -0.12, 0.12, 0, 0.12, pants), b(-0.125, -0.75, -0.14, 0.125, -0.58, 0.13, boots)]
+        switch look.back {
+        case .wings, .dragonwings:
+            let dragon = look.back == .dragonwings
+            let main = dragon ? color(0x4E9A3A) : color(0xF2F0EA), tip = dragon ? accent : color(0xDADAE6)
+            body += [b(-0.62, 0.3, 0.14, -0.06, 0.62, 0.18, main), b(-0.8, 0.46, 0.14, -0.6, 0.78, 0.18, main), b(-0.7, 0.18, 0.14, -0.3, 0.3, 0.18, tip),
+                     b(0.06, 0.3, 0.14, 0.62, 0.62, 0.18, main), b(0.6, 0.46, 0.14, 0.8, 0.78, 0.18, main), b(0.3, 0.18, 0.14, 0.7, 0.3, 0.18, tip)]
+        case .jetpack:
+            let metal = color(0x9A9AA6), flame = color(0xF28A2A)
+            body += [b(-0.2, 0.14, 0.13, -0.02, 0.62, 0.3, metal), b(0.02, 0.14, 0.13, 0.2, 0.62, 0.3, metal),
+                     b(-0.22, 0.56, 0.13, 0.22, 0.64, 0.32, accent), b(-0.17, 0.02, 0.17, -0.05, 0.14, 0.27, flame),
+                     b(0.05, 0.02, 0.17, 0.17, 0.14, 0.27, flame)]
+        case .sword:
+            let steel = color(0xC8CCD6), hilt = color(0x7A5230)
+            body += [b(-0.3, 0.02, 0.14, -0.24, 0.9, 0.18, steel)]
+            body += [b(-0.36, 0.64, 0.13, -0.18, 0.68, 0.19, accent), b(-0.3, 0.68, 0.14, -0.24, 0.86, 0.18, hilt)]
+        default:
+            break
+        }
+        // Sleeves with cuffs, hands with a thumb; trousers with a turn-up and boots with soles and laces.
+        let arm: [Box] = [b(-0.12, -0.66, -0.12, 0.12, 0.04, 0.12, shirt), b(-0.115, -0.72, -0.115, 0.115, -0.5, 0.115, skin),
+                          b(-0.126, -0.66, -0.126, 0.126, -0.6, 0.126, shirtDark), b(-0.06, -0.7, -0.14, 0.03, -0.62, -0.11, skinDark)]
+        let sole = color(0x1E1610), lace = color(0xC8B48A)
+        let leg: [Box] = [b(-0.12, -0.75, -0.12, 0.12, 0, 0.12, pants), b(-0.125, -0.75, -0.14, 0.125, -0.58, 0.13, boots),
+                          b(-0.13, -0.75, -0.155, 0.13, -0.715, 0.135, sole), b(-0.132, -0.61, -0.145, 0.132, -0.57, 0.137, shade(boots, 1.35)),
+                          b(-0.04, -0.69, -0.146, 0.04, -0.675, -0.139, lace), b(-0.04, -0.655, -0.146, 0.04, -0.64, -0.139, lace)]
         var parts = [
             Part(kind: 0, pivot: SIMD3(0, 0.75, 0), boxes: body),
             Part(kind: 1, pivot: SIMD3(0, 1.47, 0), boxes: head),
-            Part(kind: 2, pivot: SIMD3(-0.37, 1.4, 0), boxes: arm),
-            Part(kind: 3, pivot: SIMD3(0.37, 1.4, 0), boxes: arm),
-            Part(kind: 4, pivot: SIMD3(-0.13, 0.75, 0), boxes: leg),
-            Part(kind: 5, pivot: SIMD3(0.13, 0.75, 0), boxes: leg),
+            Part(kind: 2, pivot: SIMD3(-0.37, 1.4, 0), boxes: arm + paintedRegions(look, kind: 2)),
+            Part(kind: 3, pivot: SIMD3(0.37, 1.4, 0), boxes: arm + paintedRegions(look, kind: 3)),
+            Part(kind: 4, pivot: SIMD3(-0.13, 0.75, 0), boxes: leg + paintedRegions(look, kind: 4)),
+            Part(kind: 5, pivot: SIMD3(0.13, 0.75, 0), boxes: leg + paintedRegions(look, kind: 5)),
         ]
         switch look.back {
         case .cape:
@@ -251,50 +451,113 @@ enum PlayerAvatar {
                               boxes: [b(-0.1, -0.1, 0, 0.1, 0.1, 0.25, green), b(-0.07, -0.09, 0.25, 0.07, 0.05, 0.5, green),
                                       b(-0.04, -0.08, 0.5, 0.04, 0.0, 0.72, green),
                                       b(-0.02, 0.1, 0.06, 0.02, 0.16, 0.16, spike), b(-0.02, 0.05, 0.3, 0.02, 0.1, 0.4, spike)]))
-        case .none, .backpack:
+        case .none, .backpack, .wings, .dragonwings, .jetpack, .sword:
             break
         }
         return parts
     }
 
-    /// Thin boxes for painted pixels on a front face (at depth `z`, facing -Z), merging runs in each row.
-    /// `left` is the x of the first column as you look at the explorer.
-    private static func painted(_ pixels: [UInt8], width: Int, height: Int, left: Float, right: Float,
-                                top: Float, bottom: Float, z: Float) -> [Box] {
+    /// Where the whole model stands: at its feet, facing the body's way, leaning a touch into a sprint.
+    static func base(at rel: SIMD3<Float>, bodyYaw: Float, sneaking: Bool, sprint: Float) -> Mat4 {
+        MathUtil.translation(rel - SIMD3(0, sneaking ? 0.25 : 0, 0)) * MathUtil.rotationY(bodyYaw) * MathUtil.rotationX(-0.12 * sprint)
+    }
+
+    /// Thin boxes for every painted pixel on a body part's sides, merging runs in each row.
+    private static func paintedRegions(_ look: PlayerLook, kind: Int) -> [Box] {
         var boxes: [Box] = []
-        let cw = (right - left) / Float(width), ch = (top - bottom) / Float(height)
-        for row in 0..<height {
-            var col = 0
-            while col < width {
-                let value = pixels[row * width + col]
-                guard value != 0 else { col += 1; continue }
-                var run = 1
-                while col + run < width && pixels[row * width + col + run] == value { run += 1 }
-                let x0 = left + Float(col) * cw, x1 = left + Float(col + run) * cw
-                let y1 = top - Float(row) * ch, y0 = y1 - ch
-                boxes.append((SIMD3(min(x0, x1), y0, z - 0.008), SIMD3(max(x0, x1), y1, z + 0.001),
-                              color(PlayerLook.paintColors[Int(value) & 15])))
-                col += run
+        for region in SkinRegion.all where region.kind == kind {
+            let pixels = look.pixels(region)
+            guard pixels.contains(where: { $0 != 0 }) else { continue }
+            let lo = region.lo, hi = region.hi, t: Float = 0.008, w = region.width, h = region.height
+            for row in 0..<h {
+                var col = 0
+                while col < w {
+                    let value = pixels[row * w + col]
+                    guard value != 0 else { col += 1; continue }
+                    var run = 1
+                    while col + run < w && pixels[row * w + col + run] == value { run += 1 }
+                    // Fractions across the side: u runs left to right as you look at it, v top to bottom.
+                    let u0 = Float(col) / Float(w), u1 = Float(col + run) / Float(w)
+                    let v0 = Float(row) / Float(h), v1 = Float(row + 1) / Float(h)
+                    func lerp(_ a: Float, _ b: Float, _ f: Float) -> Float { a + (b - a) * f }
+                    let yTop = lerp(hi.y, lo.y, v0), yBottom = lerp(hi.y, lo.y, v1)
+                    var a = SIMD3<Float>(0, 0, 0), c = SIMD3<Float>(0, 0, 0)
+                    switch region.side {
+                    case .front:
+                        a = SIMD3(lerp(hi.x, lo.x, u1), yBottom, lo.z - t); c = SIMD3(lerp(hi.x, lo.x, u0), yTop, lo.z + 0.001)
+                    case .back:
+                        a = SIMD3(lerp(lo.x, hi.x, u0), yBottom, hi.z - 0.001); c = SIMD3(lerp(lo.x, hi.x, u1), yTop, hi.z + t)
+                    case .left:
+                        a = SIMD3(lo.x - t, yBottom, lerp(lo.z, hi.z, u0)); c = SIMD3(lo.x + 0.001, yTop, lerp(lo.z, hi.z, u1))
+                    case .right:
+                        a = SIMD3(hi.x - 0.001, yBottom, lerp(hi.z, lo.z, u1)); c = SIMD3(hi.x + t, yTop, lerp(hi.z, lo.z, u0))
+                    case .top:
+                        a = SIMD3(lerp(hi.x, lo.x, u1), hi.y - 0.001, lerp(hi.z, lo.z, v1)); c = SIMD3(lerp(hi.x, lo.x, u0), hi.y + t, lerp(hi.z, lo.z, v0))
+                    }
+                    boxes.append((simd_min(a, c), simd_max(a, c), color(PlayerLook.paintColors[Int(value) & 15])))
+                    col += run
+                }
             }
         }
         return boxes
     }
 
     /// The joint rotation for a part (the same animation on Mac and Windows).
-    static func pose(kind: Int, pitch: Float, walk: Float, moving: Float, sneaking: Bool, swing: Float) -> Mat4 {
-        let swingLeg = sin(walk) * 0.8 * min(1, moving)
+    /// `idle` is a running clock for the gentle breathing sway of the arms and head when standing still.
+    /// `headYaw` turns the head relative to the body, `air` (0…1) blends into a jumping pose with arms out and
+    /// legs apart, and `sprint` (0…1) makes the stride and arm swing bigger.
+    static func pose(kind: Int, pitch: Float, walk: Float, moving: Float, sneaking: Bool, swing: Float, idle: Float = 0,
+                     headYaw: Float = 0, air: Float = 0, sprint: Float = 0) -> Mat4 {
+        let ground = 1 - air
+        let stride = sin(walk) * (0.75 + sprint * 0.35) * min(1, moving) * ground
         let armSwing = sin(swing * .pi)
+        let still = max(0, 1 - min(1, moving) * 2) * ground
+        let breathe = sin(idle * 1.7) * still
+        let spread = 0.05 * still + air * 0.4
         switch kind {
         case 0: return sneaking ? MathUtil.rotationX(-0.4) : matrix_identity_float4x4
-        case 1: return MathUtil.rotationX(pitch * 0.8)
-        case 2: return MathUtil.rotationX(swingLeg)
-        case 3: return MathUtil.rotationX(-swingLeg - armSwing * 1.6)
-        case 4: return MathUtil.rotationX(-swingLeg)
-        case 5: return MathUtil.rotationX(swingLeg)
+        case 1: return MathUtil.rotationY(max(-1.2, min(1.2, headYaw))) * MathUtil.rotationX(pitch * 0.8 + breathe * 0.025)
+        case 2: return MathUtil.rotationZ(-(spread + breathe * 0.03)) * MathUtil.rotationX(stride * 0.9 + breathe * 0.03 - air * 0.35)
+        case 3: return MathUtil.rotationZ(spread + breathe * 0.03) * MathUtil.rotationX(-stride * 0.9 - armSwing * 1.6 - breathe * 0.03 - air * 0.35)
+        case 4: return MathUtil.rotationX(-stride - air * 0.35)
+        case 5: return MathUtil.rotationX(stride + air * 0.3)
         case 6: return MathUtil.rotationX(-(0.08 + min(1, moving) * 0.55 + abs(sin(walk)) * 0.08 * moving + (sneaking ? 0.4 : 0)))
         default: return MathUtil.rotationY(sin(walk * 0.5) * 0.35 * max(0.3, moving)) * MathUtil.rotationX(-0.15)
         }
     }
+}
+
+/// Smoothed body motion for a player model: the body turns lazily behind where the head looks (and
+/// swings round to follow when walking), a lean into sprints, and a blend into a jumping or falling pose.
+final class AvatarMotion {
+    private(set) var bodyYaw: Double?
+    private(set) var air = 0.0
+    private(set) var sprint = 0.0
+
+    static func wrap(_ a: Double) -> Double {
+        var d = a.truncatingRemainder(dividingBy: 2 * .pi)
+        if d > .pi { d -= 2 * .pi }
+        if d < -.pi { d += 2 * .pi }
+        return d
+    }
+
+    func update(dt: Double, yaw: Double, moving: Double, airborne: Bool, sprinting: Bool) {
+        guard var body = bodyYaw else { bodyYaw = yaw; return }
+        // Walking turns the body to face where you're heading; standing, it only follows once the head
+        // has turned well past the shoulders (then settles slowly).
+        let rate = moving > 0.1 ? 9.0 : 1.2
+        body += AvatarMotion.wrap(yaw - body) * min(1, dt * rate)
+        let limit = 0.9, diff = AvatarMotion.wrap(yaw - body)
+        if diff > limit { body = yaw - limit } else if diff < -limit { body = yaw + limit }
+        bodyYaw = AvatarMotion.wrap(body)
+        air += ((airborne ? 1 : 0) - air) * min(1, dt * 7)
+        sprint += ((sprinting && moving > 0.3 ? 1 : 0) - sprint) * min(1, dt * 6)
+    }
+
+    /// The body's facing (falls back to the look direction before the first update).
+    func body(_ yaw: Double) -> Double { bodyYaw ?? yaw }
+    /// How far the head is turned from the body.
+    func headYaw(_ yaw: Double) -> Double { AvatarMotion.wrap(yaw - body(yaw)) }
 }
 
 /// The camera modes F5 cycles through.

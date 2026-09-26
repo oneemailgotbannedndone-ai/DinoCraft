@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(AVFAudio)
 import AVFAudio
+#endif
 import DinoCraftCore
 
 let SR = 44100.0
@@ -138,6 +140,7 @@ enum AudioIO {
         try data.write(to: url, options: .atomic)
     }
 
+    #if canImport(AVFAudio)
     /// Stereo AAC (.m4a) via AVAudioFile.
     static func writeM4A(left: [Float], right: [Float], to url: URL) throws {
         try? FileManager.default.removeItem(at: url)
@@ -161,4 +164,5 @@ enum AudioIO {
             offset += n
         }
     }
+    #endif
 }

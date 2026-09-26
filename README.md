@@ -2,6 +2,13 @@
 
 An original prehistoric voxel sandbox built from scratch as a **native macOS app for Apple Silicon**. It uses Swift, AppKit, and Metal, with no Electron, no web views, and no engine middleware.
 
+## Download
+
+- [**Download for Windows**](https://github.com/oneemailgotbannedndone-ai/DinoCraft/releases/latest/download/DinoCraft-Windows.zip): right-click the zip → **Extract All**, then open **DinoCraft Launcher.exe**.
+- [**Download for Mac**](https://github.com/oneemailgotbannedndone-ai/DinoCraft/releases/latest/download/DinoCraft-Mac.zip) (Apple Silicon): double-click the zip, drag **DinoCraft.app** and **DinoCraft Launcher.app** to Applications and open the launcher (the first time: System Settings → Privacy & Security → **Open Anyway**).
+
+These links always point at the newest build on the [Releases page](https://github.com/oneemailgotbannedndone-ai/DinoCraft/releases).
+
 ## What's new
 
 The launcher update, for Mac and Windows (the full list is in `Resources/Data/whatsnew.txt`, which the launcher shows):
@@ -97,19 +104,13 @@ swift build -c release --product DinoCraft && .build/release/DinoCraft
 
 DinoCraft opens on a **launcher** (Mac and Windows) with **Play**, **Update**, **Cosmetics**, **Skin Creator**, **Settings** and **Quit**, a "What's new" panel with the notes of the newest build, your stats (worlds and time played) and **Open Game Folder**.
 
-- **Updates.** The launcher checks the public **DinoCraft-Releases** repository. When a newer build is there, **Update to Build N** downloads it and **Restart to Update** swaps it in and reopens the game. Worlds and settings are kept. Copies you built yourself are "development builds" and never replace themselves.
+- **Updates.** The launcher checks this repository's **Releases** page. When a newer build is there, **Update to Build N** downloads it and **Restart to Update** swaps it in and reopens the game. Worlds and settings are kept. Copies you built yourself are "development builds" and never replace themselves.
 - **Skin Creator.** Paint your own face (8×8) and shirt front (8×10) with 16 colours: brush or fill, mirror painting, and ideas to start from (smile, sunglasses, dino, beard; stripes, heart, star, dino, tuxedo). **Copy Code** puts a `DINOSKIN:…` code on the clipboard for a friend to **Paste Code**. Friends see your skin in multiplayer, and **F5** in game lets you see yourself.
 - **Cosmetics.** Pick a hat (Explorer Hat, Cap, Crown, Top Hat, Dino Hood, Flower Crown or none), shirt, trousers and skin colours, and something for your back (Cape, Dino Tail or Backpack) with an accent colour. Friends see your look in multiplayer on both Mac and Windows. Older versions just see the default explorer.
 
-### Publishing updates (one-time setup)
+### Publishing updates
 
-The game's code stays private; each build is published to a separate public repository that the launcher can read.
-
-1. On GitHub, create a **public** repository named `DinoCraft-Releases` under the same account (it can be empty).
-2. Create a token that can publish there: GitHub → Settings → Developer settings → **Fine-grained tokens** → Generate new token. Under *Repository access* choose *Only select repositories* → `DinoCraft-Releases`, and under *Permissions* set **Contents** to *Read and write*.
-3. In **this** repository: Settings → Secrets and variables → Actions → **New repository secret**, name `RELEASES_TOKEN`, paste the token.
-
-From then on every push to `main` builds Windows and Mac and publishes them as `build-N`. You can also publish from the Actions tab: run the **Windows** workflow with *Publish* ticked. Without the secret the workflow still builds and just skips publishing.
+Every push to `main` builds Windows and Mac and publishes them on this repository's Releases page as `build-N`. You can also publish from the Actions tab: run the **Windows** workflow with *Publish* ticked. The launcher's **Update** button and **Player Reviews** (issues titled "Review: ★★★★★") read from this repository.
 
 ## Playing with a friend
 

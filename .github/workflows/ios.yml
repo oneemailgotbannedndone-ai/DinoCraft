@@ -1,0 +1,146 @@
+name: iOS
+
+# Builds DinoCraft Mobile, the offline iPhone/iPad edition, as an unsigned .ipa for sideloading with
+# AltStore or SideStore. It checks the app in the iPhone simulator first. On pushes (or when "publish" is
+# ticked) the .ipa goes on the "mobile" release, which is never marked latest, so the Windows and Mac downloads
+# and the launcher's updater are unaffected.
+
+on:
+  push:
+    branches: [main, claude/dinocraft-windows-mac-parity-7z6ud1]
+    paths:
+      - "Sources/DinoCraftMobile/**"
+      - "Sources/DinoCraftCore/**"
+      - "Sources/DinoCraftGame/**"
+      - "Resources/**"
+      - "Package.swift"
+      - "Scripts/build_ios.sh"
+      - ".github/workflows/ios.yml"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the .ipa on the "mobile" release
+        type: boolean
+        default: false
+
+jobs:
+  ios:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Swift and Xcode versions
+        run: |
+          swift --version
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+
+      - name: Stamp build number
+        run: |
+          echo "{\"build\": ${{ github.run_number }}, \"commit\": \"${GITHUB_SHA::7}\", \"date\": \"$(date +%F)\"}" > Resources/Data/build.json
+
+      - name: Compile the Metal shaders for iOS
+        run: |
+          cat Resources/Shaders/*.metal > "$RUNNER_TEMP/all.metal"
+          set +e
+          out=$(xcrun -sdk iphoneos metal -std=metal3.0 -c "$RUNNER_TEMP/all.metal" -o "$RUNNER_TEMP/all.air" 2>&1)
+          code=$?
+          set -e
+          echo "$out"
+          if [ $code -ne 0 ]; then
+            if echo "$out" | grep -qi "toolchain\|unable to find utility\|not a developer tool"; then
+              echo "::warning::Metal compiler not available on this runner; shader check skipped"
+            else
+              echo "::error::Metal shaders failed to compile for iOS"
+              exit 1
+            fi
+          fi
+
+      - name: Build for the simulator
+        run: DINOCRAFT_BUILD=${{ github.run_number }} zsh Scripts/build_ios.sh simulator
+
+      - name: Run in the iPhone simulator
+        run: |
+          set +e
+          mkdir -p ios-check
+          udid=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          phones = [d for runtime, ds in devices.items() if "iOS" in runtime for d in ds if d["name"].startswith("iPhone")]
+          print(phones[-1]["udid"] if phones else "")')
+          if [ -z "$udid" ]; then echo "::error::No iPhone simulator available"; exit 1; fi
+          echo "Simulator: $udid"
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl install "$udid" dist/ios-simulator/DinoCraft.app || { echo "::error::Install failed"; exit 1; }
+          fail=0
+          shoot() {
+            xcrun simctl io "$udid" screenshot "ios-check/$1.png" >/dev/null 2>&1
+            sips -r 270 "ios-check/$1.png" >/dev/null 2>&1 || true
+          }
+          alive() { pgrep -f "DinoCraft.app/DinoCraft" >/dev/null; }
+
+          # 1. The main menu.
+          xcrun simctl launch "$udid" com.dinocraft.mobile
+          sleep 15
+          if alive; then shoot menu; else echo "::error::The app quit or crashed on the main menu"; fail=1; fi
+          xcrun simctl terminate "$udid" com.dinocraft.mobile
+
+          # 2. Straight into a new world.
+          xcrun simctl launch "$udid" com.dinocraft.mobile --world ci --seed 42
+          sleep 40
+          if alive; then shoot game; else echo "::error::The app quit or crashed in a world"; fail=1; fi
+          xcrun simctl terminate "$udid" com.dinocraft.mobile
+
+          data=$(xcrun simctl get_app_container "$udid" com.dinocraft.mobile data)
+          for f in "$data"/Library/Application\ Support/DinoCraft/logs/*; do
+            [ -f "$f" ] || continue
+            echo "--- $(basename "$f")"; tail -80 "$f"; cp "$f" ios-check/
+            if grep -q "FATAL\|crashed: fatal signal" "$f"; then fail=1; fi
+          done
+          ls ~/Library/Logs/DiagnosticReports 2>/dev/null | grep -i dinocraft && cp ~/Library/Logs/DiagnosticReports/*DinoCraft* ios-check/ 2>/dev/null
+          ls -la ios-check
+          exit $fail
+
+      - name: Upload simulator check
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-check
+          path: ios-check
+
+      - name: Build the .ipa
+        run: DINOCRAFT_BUILD=${{ github.run_number }} zsh Scripts/build_ios.sh device
+
+      - name: Upload the .ipa
+        uses: actions/upload-artifact@v4
+        with:
+          name: DinoCraft-Mobile
+          path: dist/DinoCraft-Mobile.ipa
+
+      - name: Publish on the "mobile" release
+        if: github.event_name == 'push' || inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "## DinoCraft Mobile (offline edition) · build ${{ github.run_number }}"
+            echo ""
+            echo "For iPhone and iPad (iOS 16 or newer). Singleplayer only."
+            echo ""
+            echo "1. Install [AltStore](https://altstore.io) or [SideStore](https://sidestore.io) on your device."
+            echo "2. Download **DinoCraft-Mobile.ipa** below on your iPhone or iPad."
+            echo "3. Open AltStore/SideStore → **My Apps** → **+**, and pick the file."
+            echo ""
+            echo "Controls: left thumb moves (push all the way to sprint), drag with your right thumb to look,"
+            echo "tap to use or hit, hold to break. In menus, tap to click and hold for a right-click."
+          } > notes.txt
+          gh release delete mobile --repo "${{ github.repository }}" --cleanup-tag --yes 2>/dev/null || true
+          gh release create mobile dist/DinoCraft-Mobile.ipa \
+            --repo "${{ github.repository }}" \
+            --target "${{ github.sha }}" \
+            --title "DinoCraft Mobile (iPhone & iPad)" \
+            --notes-file notes.txt \
+            --latest=false
