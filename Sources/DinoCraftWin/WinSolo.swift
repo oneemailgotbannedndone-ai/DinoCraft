@@ -743,7 +743,8 @@ final class WinSolo: CommandHost {
             CreatureModels.appendCreature(&v, kind: m.species.kind.rawValue, at: r, yaw: Float(m.yaw), walk: Float(m.walkPhase),
                                           amount: Float(m.moveAmount), lunge: Float(m.lunge), hurt: Float(m.hurtTimer),
                                           dying: m.isDying ? Float(max(0.001, m.deathTimer)) : 0, variant: m.variant,
-                                          seed: Double(m.id % 997) * 0.61, time: time, scale: Float(m.scale))
+                                          seed: Double(m.id % 997) * 0.61, time: time, scale: Float(m.scale),
+                                          headYaw: Float(m.headYaw), headPitch: Float(m.headPitch), tailSwing: Float(m.tailSwing), breath: Float(m.breath))
         }
         let none = SIMD4<Float>(0, 0, 0, 0)
         for p in s.mobs.projectiles where !p.removed {
@@ -1304,19 +1305,39 @@ final class WinSolo: CommandHost {
             }
             return
         }
-        if options.demoScreen == "dinos" || options.demoScreen == "villagers" {
+        if options.demoScreen == "explorer" {
+            // Automated check: your own explorer from the front, to show the model's detail.
+            s.player.setFlying(true)
+            s.player.position.y += 14
+            s.player.yaw += .pi / 2
+            cameraView = .front
+            s.player.pitch = 0.2
+            return
+        }
+        if options.demoScreen == "dinos" || options.demoScreen == "villagers" || options.demoScreen == "newdinos" {
             // Automated check: the newer dinosaurs (or one villager of each profession) lined up in front of you.
+            if options.demoScreen == "newdinos", let grass = blocks.id(named: "grass") {
+                // A grassy stage up in the air so hills and trees don't get in the way.
+                let top = Int(s.player.position.y) + 24, cx = Int(floor(s.player.position.x)), cz = Int(floor(s.player.position.z))
+                for dx in -16...16 { for dz in -16...16 { _ = s.world.setBlock(BlockPos(cx + dx, top, cz + dz), grass)
+                    for up in 1...8 { _ = s.world.setBlock(BlockPos(cx + dx, top + up, cz + dz), Blocks.air) } } }
+                s.player.position = DVec3(Double(cx) + 0.5, Double(top + 1), Double(cz) + 0.5)
+                s.player.pitch = -0.1
+            }
             let look = s.player.lookDirection
             let forward = simd_normalize(DVec3(look.x, 0, look.z)), right = DVec3(-forward.z, 0, forward.x)
-            let dinos = options.demoScreen == "dinos"
-            let lineup: [(MobKind, Int)] = dinos
+            let dinos = options.demoScreen != "villagers"
+            let lineup: [(MobKind, Int)] = options.demoScreen == "newdinos"
+                ? [(.protoceratops, 0), (.styracosaurus, 0), (.dilophosaurus, 0), (.corythosaurus, 0), (.quetzalcoatlus, 0)]
+                : dinos
                 ? [(.gallimimus, 0), (.pachy, 0), (.iguanodon, 0), (.therizino, 0), (.oviraptor, 0), (.microraptor, 0)]
                 : (0..<VillagerProfession.all.count).map { (.villager, $0) }
             for (i, entry) in lineup.enumerated() {
                 let across = (Double(i) - Double(lineup.count - 1) / 2) * (dinos ? 3.2 : 1.4)
                 let spot = s.player.position + forward * (dinos ? 7 : 4) + right * across
-                let y = s.world.findStandingY(Int(floor(spot.x)), Int(floor(spot.z)), near: Int(s.player.position.y)) ?? Int(s.player.position.y)
-                let mob = s.mobs.spawn(entry.0, at: DVec3(spot.x, Double(y) + (entry.0 == .microraptor ? 2.5 : 0), spot.z))
+                let y = options.demoScreen == "newdinos" ? Int(s.player.position.y)
+                    : s.world.findStandingY(Int(floor(spot.x)), Int(floor(spot.z)), near: Int(s.player.position.y)) ?? Int(s.player.position.y)
+                let mob = s.mobs.spawn(entry.0, at: DVec3(spot.x, Double(y) + (entry.0 == .microraptor || entry.0 == .quetzalcoatlus ? 2.5 : 0), spot.z))
                 mob.variant = entry.1
                 mob.yaw = atan2(forward.x, forward.z) + (dinos ? 0.6 : 0)
             }

@@ -409,24 +409,26 @@ extension ModelRenderer {
             let tint: SIMD4<Float> = m.hurtTimer > 0 ? SIMD4(0.9, 0.1, 0.1, Float(m.hurtTimer / 0.35) * 0.6)
                 : (m.isDying ? SIMD4(0.9, 0.1, 0.1, 0.45) : (m.species.kind == .sheep && m.variant == 1 ? SIMD4(0.08, 0.08, 0.1, 0.8) : .zero))
             let tip = m.isDying ? Float(min(1, m.deathTimer / 0.4)) * (.pi / 2) : 0
-            var base = MathUtil.translation(rel) * MathUtil.rotationY(Float(m.yaw)) * MathUtil.rotationZ(tip)
-            if m.scale != 1 { base = base * MathUtil.scale(SIMD3(repeating: Float(m.scale))) }
             let walk = Float(m.walkPhase), amount = Float(m.moveAmount), lunge = Float(m.lunge)
+            let headYaw = Float(m.headYaw), headPitch = Float(m.headPitch), tailSwing = Float(m.tailSwing), breath = Float(m.breath)
+            // A little side-to-side roll with each step.
+            var base = MathUtil.translation(rel) * MathUtil.rotationY(Float(m.yaw)) * MathUtil.rotationZ(tip + sin(walk) * 0.035 * amount)
+            if m.scale != 1 { base = base * MathUtil.scale(SIMD3(repeating: Float(m.scale))) }
             let seed = Double(m.id)
             for part in library.parts(m.species.kind, variant: m.variant) {
                 let local: Mat4
                 switch part.role {
                 case .body:
-                    local = MathUtil.translation(part.pivot + SIMD3(0, abs(sin(walk)) * 0.03 * amount, -lunge * 0.12))
+                    local = MathUtil.translation(part.pivot + SIMD3(0, abs(sin(walk)) * 0.03 * amount + breath * 0.012, -lunge * 0.12))
                 case .head:
-                    local = MathUtil.translation(part.pivot + SIMD3(0, 0, -lunge * 0.2))
-                        * MathUtil.rotationX(Float(sin(time * 1.3 + seed)) * 0.06 + lunge * 0.35 - amount * 0.05)
+                    local = MathUtil.translation(part.pivot + SIMD3(0, breath * 0.01, -lunge * 0.2)) * MathUtil.rotationY(headYaw)
+                        * MathUtil.rotationX(Float(sin(time * 1.3 + seed)) * 0.06 + lunge * 0.35 - amount * 0.05 + headPitch)
                 case .leg(let phase):
                     local = MathUtil.translation(part.pivot) * MathUtil.rotationX(sin(walk + phase) * 0.7 * amount)
                 case .tail:
-                    local = MathUtil.translation(part.pivot) * MathUtil.rotationY(Float(sin(time * 2.2 + seed)) * 0.25 + sin(walk) * 0.15 * amount)
+                    local = MathUtil.translation(part.pivot) * MathUtil.rotationY(Float(sin(time * 2.2 + seed)) * 0.25 + sin(walk) * 0.15 * amount + tailSwing)
                 case .segment(let i):
-                    let sway = Float(sin(time * 7 + Double(i) * 0.9 + seed)) * 0.05 * (0.3 + amount)
+                    let sway = Float(sin(time * 7 + Double(i) * 0.9 + seed)) * 0.05 * (0.3 + amount) + tailSwing * 0.12 * Float(i + 1)
                     local = MathUtil.translation(part.pivot + SIMD3(sway, 0, 0))
                 case .wing(let side):
                     let flap = Float(sin(time * 7 + seed)) * 0.55 + 0.1

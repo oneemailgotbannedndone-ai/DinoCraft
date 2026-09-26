@@ -42,6 +42,11 @@ enum CreatureShapes {
         case .armorStand: return armorStand(Decorations.armor(variant))
         case .mosasaurus: return mosasaurus()
         case .crab: return crab()
+        case .protoceratops: return protoceratops()
+        case .styracosaurus: return styracosaurus()
+        case .dilophosaurus: return dilophosaurus()
+        case .corythosaurus: return corythosaurus()
+        case .quetzalcoatlus: return quetzalcoatlus()
         default: return nil
         }
     }
@@ -375,6 +380,112 @@ enum CreatureShapes {
             let phase = Float(i) * 2.1
             m.add(.leg(phase), SIMD3(-0.3, 0.16, z), [b(-0.2, -0.16, -0.02, 0, 0.02, 0.02, dark)])
             m.add(.leg(phase + .pi), SIMD3(0.3, 0.16, z), [b(0, -0.16, -0.02, 0.2, 0.02, 0.02, dark)])
+        }
+        return m.parts
+    }
+
+    // MARK: More dinosaurs
+
+    /// A four-legged plant-eater's legs: thigh, shin and a darker foot, walking in diagonal pairs.
+    private static func quadLegs(_ m: inout Model, x: Float, zFront: Float, zBack: Float, hip: Float, thick: Float, skin: UInt32, foot: UInt32) {
+        for (sx, z, phase) in [(-x, zFront, Float(0)), (x, zFront, Float.pi), (-x, zBack, Float.pi), (x, zBack, Float(0))] {
+            m.add(.leg(phase), SIMD3(sx, hip, z), [
+                b(-thick, -hip * 0.55, -thick, thick, 0, thick, skin),
+                b(-thick * 0.85, -hip, -thick * 0.85, thick * 0.85, -hip * 0.5, thick * 0.85, skin),
+                b(-thick, -hip, -thick * 1.2, thick, -hip + 0.07, thick, foot),
+            ])
+        }
+    }
+
+    /// Protoceratops: a small, stocky horn-less ceratopsian with a bony frill and a parrot beak.
+    static func protoceratops() -> [ShapePart] {
+        var m = Model()
+        let skin: UInt32 = 0xC8A06A, back: UInt32 = 0x9A7644, belly: UInt32 = 0xE8D0A0, frill: UInt32 = 0xB86A3A, beak: UInt32 = 0x4A3A2A
+        m.add(.body, .zero, [b(-0.26, 0.3, -0.35, 0.26, 0.66, 0.32, skin), b(-0.22, 0.62, -0.3, 0.22, 0.7, 0.26, back),
+                             b(-0.22, 0.28, -0.3, 0.22, 0.34, 0.26, belly)])
+        var head = [b(-0.16, -0.12, -0.3, 0.16, 0.14, 0, skin), b(-0.07, -0.12, -0.4, 0.07, 0.06, -0.28, beak),
+                    b(-0.26, 0.0, 0.0, 0.26, 0.36, 0.06, frill), b(-0.22, 0.04, -0.01, 0.22, 0.32, 0.0, back)]
+        head += eyes(x: 0.16, y: 0.02, z: -0.22, size: 0.05)
+        m.add(.head, SIMD3(0, 0.56, -0.35), head)
+        m.add(.tail, SIMD3(0, 0.52, 0.32), [b(-0.12, -0.12, 0, 0.12, 0.1, 0.35, skin), b(-0.07, -0.08, 0.35, 0.07, 0.05, 0.65, back)])
+        quadLegs(&m, x: 0.18, zFront: -0.22, zBack: 0.2, hip: 0.34, thick: 0.07, skin: skin, foot: beak)
+        return m.parts
+    }
+
+    /// Styracosaurus: a big ceratopsian with a long nose horn and a crown of spikes around its frill.
+    static func styracosaurus() -> [ShapePart] {
+        var m = Model()
+        let skin: UInt32 = 0x8A7A5A, back: UInt32 = 0x6A5A3E, belly: UInt32 = 0xC8B890, horn: UInt32 = 0xE8DCC0, frill: UInt32 = 0xA85A3A
+        m.add(.body, .zero, [b(-0.55, 0.6, -0.8, 0.55, 1.35, 0.7, skin), b(-0.48, 1.3, -0.7, 0.48, 1.42, 0.6, back),
+                             b(-0.5, 0.56, -0.7, 0.5, 0.66, 0.6, belly)])
+        var head = [b(-0.34, -0.3, -0.62, 0.34, 0.3, 0, skin), b(-0.14, -0.3, -0.8, 0.14, 0.02, -0.58, back),
+                    b(-0.06, 0.02, -0.72, 0.06, 0.4, -0.62, horn),                               // nose horn
+                    b(-0.58, -0.05, -0.02, 0.58, 0.6, 0.1, frill)]
+        for k in 0..<6 {
+            let x = -0.5 + Float(k) * 0.2
+            head.append(b(x - 0.04, 0.58, 0.02, x + 0.04, 0.92 - abs(x) * 0.3, 0.1, horn))       // frill spikes
+        }
+        head += eyes(x: 0.34, y: 0.06, z: -0.4, size: 0.08)
+        m.add(.head, SIMD3(0, 1.0, -0.8), head)
+        m.add(.tail, SIMD3(0, 1.0, 0.7), [b(-0.22, -0.22, 0, 0.22, 0.2, 0.6, skin), b(-0.12, -0.14, 0.6, 0.12, 0.1, 1.1, back)])
+        quadLegs(&m, x: 0.38, zFront: -0.52, zBack: 0.46, hip: 0.66, thick: 0.14, skin: skin, foot: back)
+        return m.parts
+    }
+
+    /// Dilophosaurus: a lean two-legged hunter with twin head crests and a frill that flares when it spits.
+    static func dilophosaurus() -> [ShapePart] {
+        var m = Model()
+        let skin: UInt32 = 0x5A8A4A, stripe: UInt32 = 0x3A5A2E, belly: UInt32 = 0xD8D0A0, crest: UInt32 = 0xD84A2A, frill: UInt32 = 0xE8B83A
+        m.add(.body, .zero, [b(-0.2, 0.85, -0.45, 0.2, 1.25, 0.35, skin), b(-0.16, 1.22, -0.4, 0.16, 1.3, 0.3, stripe),
+                             b(-0.17, 0.82, -0.4, 0.17, 0.9, 0.3, belly)])
+        var head = [b(-0.12, -0.1, -0.42, 0.12, 0.14, 0, skin), b(-0.1, -0.16, -0.4, 0.1, -0.08, -0.04, belly),
+                    b(-0.09, 0.14, -0.36, -0.03, 0.3, -0.04, crest), b(0.03, 0.14, -0.36, 0.09, 0.3, -0.04, crest),
+                    b(-0.3, -0.18, 0.0, 0.3, 0.2, 0.03, frill)]
+        head += eyes(x: 0.12, y: 0.03, z: -0.24, size: 0.05)
+        m.add(.head, SIMD3(0, 1.5, -0.5), head + [b(-0.08, -0.4, -0.1, 0.08, 0, 0.08, skin)])   // neck
+        m.add(.tail, SIMD3(0, 1.1, 0.35), [b(-0.12, -0.12, 0, 0.12, 0.12, 0.6, skin), b(-0.07, -0.07, 0.6, 0.07, 0.07, 1.2, stripe)])
+        for (sx, phase) in [(Float(-0.15), Float(0)), (0.15, .pi)] {
+            m.add(.leg(phase), SIMD3(sx, 0.9, 0), [b(-0.08, -0.45, -0.1, 0.08, 0, 0.1, skin), b(-0.06, -0.9, -0.05, 0.06, -0.4, 0.07, skin),
+                                                    b(-0.08, -0.9, -0.18, 0.08, -0.84, 0.06, stripe)])
+        }
+        m.add(.leg(.pi / 2), SIMD3(-0.18, 1.05, -0.35), [b(-0.03, -0.25, -0.03, 0.03, 0, 0.03, skin)])
+        m.add(.leg(-.pi / 2), SIMD3(0.18, 1.05, -0.35), [b(-0.03, -0.25, -0.03, 0.03, 0, 0.03, skin)])
+        return m.parts
+    }
+
+    /// Corythosaurus: a duck-billed dinosaur with a tall round crest like a helmet.
+    static func corythosaurus() -> [ShapePart] {
+        var m = Model()
+        let skin: UInt32 = 0x6A8AAA, back: UInt32 = 0x4A6A8A, belly: UInt32 = 0xD8D8C0, crest: UInt32 = 0xC84A4A, bill: UInt32 = 0xC8B070
+        m.add(.body, .zero, [b(-0.34, 0.9, -0.6, 0.34, 1.5, 0.55, skin), b(-0.28, 1.46, -0.5, 0.28, 1.56, 0.45, back),
+                             b(-0.3, 0.86, -0.5, 0.3, 0.96, 0.45, belly)])
+        var head = [b(-0.15, -0.12, -0.36, 0.15, 0.16, 0, skin), b(-0.12, -0.12, -0.52, 0.12, 0.02, -0.34, bill),
+                    b(-0.08, 0.16, -0.24, 0.08, 0.46, 0.04, crest), b(-0.08, 0.3, -0.34, 0.08, 0.44, -0.22, crest)]
+        head += eyes(x: 0.15, y: 0.04, z: -0.2, size: 0.05)
+        m.add(.head, SIMD3(0, 1.9, -0.7), head + [b(-0.1, -0.5, -0.06, 0.1, 0, 0.12, skin)])
+        m.add(.tail, SIMD3(0, 1.25, 0.55), [b(-0.18, -0.18, 0, 0.18, 0.18, 0.7, skin), b(-0.1, -0.1, 0.7, 0.1, 0.1, 1.4, back)])
+        for (sx, phase) in [(Float(-0.22), Float(0)), (0.22, .pi)] {
+            m.add(.leg(phase), SIMD3(sx, 1.0, 0.15), [b(-0.12, -0.5, -0.14, 0.12, 0, 0.14, skin), b(-0.09, -1.0, -0.08, 0.09, -0.45, 0.1, skin),
+                                                      b(-0.11, -1.0, -0.22, 0.11, -0.93, 0.1, back)])
+        }
+        m.add(.leg(.pi / 2), SIMD3(-0.28, 1.2, -0.45), [b(-0.05, -0.55, -0.05, 0.05, 0, 0.05, skin)])
+        m.add(.leg(-.pi / 2), SIMD3(0.28, 1.2, -0.45), [b(-0.05, -0.55, -0.05, 0.05, 0, 0.05, skin)])
+        return m.parts
+    }
+
+    /// Quetzalcoatlus: a giant pterosaur with a long stiff beak, a tall crest and a huge wingspan.
+    static func quetzalcoatlus() -> [ShapePart] {
+        var m = Model()
+        let skin: UInt32 = 0xD8D0C0, wing: UInt32 = 0xB88A6A, tip: UInt32 = 0x7A4A3A, beak: UInt32 = 0xE8C050, crest: UInt32 = 0xC83A2A
+        m.add(.body, .zero, [b(-0.2, 0.7, -0.3, 0.2, 1.05, 0.35, skin)])
+        var head = [b(-0.1, -0.1, -0.2, 0.1, 0.12, 0.05, skin), b(-0.05, -0.08, -0.9, 0.05, 0.04, -0.18, beak),
+                    b(-0.02, 0.1, -0.1, 0.02, 0.45, 0.12, crest)]
+        head += eyes(x: 0.1, y: 0.02, z: -0.12, size: 0.04)
+        m.add(.head, SIMD3(0, 1.45, -0.45), head + [b(-0.06, -0.5, -0.04, 0.06, 0, 0.06, skin)])
+        m.add(.wing(-1), SIMD3(-0.2, 1.0, -0.1), [b(-2.2, -0.03, -0.25, 0, 0.03, 0.35, wing), b(-2.6, -0.02, -0.15, -2.2, 0.02, 0.2, tip)])
+        m.add(.wing(1), SIMD3(0.2, 1.0, -0.1), [b(0, -0.03, -0.25, 2.2, 0.03, 0.35, wing), b(2.2, -0.02, -0.15, 2.6, 0.02, 0.2, tip)])
+        for (sx, phase) in [(Float(-0.12), Float(0)), (0.12, .pi)] {
+            m.add(.leg(phase), SIMD3(sx, 0.72, 0.2), [b(-0.04, -0.72, -0.04, 0.04, 0, 0.04, skin), b(-0.06, -0.72, -0.12, 0.06, -0.67, 0.04, tip)])
         }
         return m.parts
     }

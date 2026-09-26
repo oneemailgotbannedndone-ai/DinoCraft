@@ -36,19 +36,20 @@ final class PlayerModelLibrary {
             let light = world.light(at: p.position + DVec3(0, 1.5, 0))
             let tint: SIMD4<Float> = p.hurtTimer > 0 ? SIMD4(0.9, 0.1, 0.1, Float(p.hurtTimer / 0.35) * 0.6) : .zero
             let base = MathUtil.translation(rel - SIMD3(0, p.sneaking ? 0.25 : 0, 0)) * MathUtil.rotationY(Float(p.yaw))
-            let swingLeg = Float(sin(p.walkPhase)) * 0.8 * Float(min(1, p.moving))
-            let armSwing = Float(sin(p.swing * .pi))
+            let idle = Float(Date().timeIntervalSince1970.truncatingRemainder(dividingBy: 3600)) + Float(p.name.hashValue & 63)
             for part in parts(PlayerLook.resolve(p.look, name: p.name)) {
                 let local = MathUtil.translation(part.pivot)
                     * PlayerAvatar.pose(kind: part.kind, pitch: Float(p.pitch), walk: Float(p.walkPhase), moving: Float(p.moving),
-                                        sneaking: p.sneaking, swing: Float(p.swing))
+                                        sneaking: p.sneaking, swing: Float(p.swing), idle: idle)
                 let model = base * local
                 var u = ModelUniforms(mvp: frame.viewProj * model, model: model, light: SIMD4(light.sky, light.block, 0, 0),
                                       tint: tint, viewPos: SIMD4(rel, 1))
                 renderer.draw(enc, part.mesh, uniforms: &u)
             }
             if let heldName = p.held, let info = items.info(named: heldName), let mesh = renderer.mesh(for: info) {
-                let hand = base * MathUtil.translation(SIMD3(0.37, 1.4, 0)) * MathUtil.rotationX(-swingLeg - armSwing * 1.6)
+                let hand = base * MathUtil.translation(SIMD3(0.37, 1.4, 0))
+                    * PlayerAvatar.pose(kind: 3, pitch: 0, walk: Float(p.walkPhase), moving: Float(p.moving), sneaking: p.sneaking,
+                                        swing: Float(p.swing), idle: idle)
                     * MathUtil.translation(SIMD3(0, -0.72, -0.18)) * MathUtil.rotationX(-.pi / 2)
                     * MathUtil.scale(SIMD3(repeating: renderer.isCube(info) ? 0.25 : 0.45))
                 var u = ModelUniforms(mvp: frame.viewProj * hand, model: hand, light: SIMD4(light.sky, light.block, 0, 0),

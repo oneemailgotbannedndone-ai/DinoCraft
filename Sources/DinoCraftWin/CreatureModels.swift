@@ -10,7 +10,8 @@ enum CreatureKind: String, CaseIterable {
     case trikey, dodo, longneck, raptor, spitter, crawler, magmaRaptor, villager, stego, ankylo, rex, compy, ptero, parasaur,
          sailback, boneWalker, scorpion, pig, cow, sheep, chicken, pookpook, carnotaurus, allosaurus, baryonyx, troodon, spinosaurus,
          grumblesaurus, grinasaurus, cod, salmon, clownfish, blueTang,
-         pachy, iguanodon, therizino, gallimimus, oviraptor, microraptor, boat, egg, armorStand, mosasaurus, crab
+         pachy, iguanodon, therizino, gallimimus, oviraptor, microraptor, boat, egg, armorStand, mosasaurus, crab,
+         protoceratops, styracosaurus, dilophosaurus, corythosaurus, quetzalcoatlus
 }
 
 enum PartRole {
@@ -417,27 +418,29 @@ enum CreatureModels {
 
     /// A creature at camera-relative position `rel`, animated like the Mac renderer.
     static func appendCreature(_ v: inout [Float], kind name: String, at rel: SIMD3<Float>, yaw: Float, walk: Float, amount: Float,
-                               lunge: Float, hurt: Float, dying: Float, variant: Int, seed: Double, time: Double, scale: Float = 1) {
+                               lunge: Float, hurt: Float, dying: Float, variant: Int, seed: Double, time: Double, scale: Float = 1,
+                               headYaw: Float = 0, headPitch: Float = 0, tailSwing: Float = 0, breath: Float = 0) {
         guard let kind = CreatureKind(rawValue: name) else { return }
         let tint: SIMD4<Float> = hurt > 0 ? SIMD4(0.9, 0.1, 0.1, min(1, hurt / 0.35) * 0.6)
             : (dying > 0 ? SIMD4(0.9, 0.1, 0.1, 0.45) : (kind == .sheep && variant == 1 ? SIMD4(0.08, 0.08, 0.1, 0.8) : SIMD4(0, 0, 0, 0)))
         let tip: Float = dying > 0 ? min(1, dying / 0.4) * (.pi / 2) : 0
-        var base = MathUtil.translation(rel) * MathUtil.rotationY(yaw) * MathUtil.rotationZ(tip)
+        // A little side-to-side roll with each step.
+        var base = MathUtil.translation(rel) * MathUtil.rotationY(yaw) * MathUtil.rotationZ(tip + sin(walk) * 0.035 * amount)
         if scale != 1 { base = base * MathUtil.scale(SIMD3(repeating: scale)) }
         for part in parts(kind, variant: variant) {
             let local: Mat4
             switch part.role {
             case .body:
-                local = MathUtil.translation(part.pivot + SIMD3(0, abs(sin(walk)) * 0.03 * amount, -lunge * 0.12))
+                local = MathUtil.translation(part.pivot + SIMD3(0, abs(sin(walk)) * 0.03 * amount + breath * 0.012, -lunge * 0.12))
             case .head:
-                local = MathUtil.translation(part.pivot + SIMD3(0, 0, -lunge * 0.2))
-                    * MathUtil.rotationX(Float(sin(time * 1.3 + seed)) * 0.06 + lunge * 0.35 - amount * 0.05)
+                local = MathUtil.translation(part.pivot + SIMD3(0, breath * 0.01, -lunge * 0.2)) * MathUtil.rotationY(headYaw)
+                    * MathUtil.rotationX(Float(sin(time * 1.3 + seed)) * 0.06 + lunge * 0.35 - amount * 0.05 + headPitch)
             case .leg(let phase):
                 local = MathUtil.translation(part.pivot) * MathUtil.rotationX(sin(walk + phase) * 0.7 * amount)
             case .tail:
-                local = MathUtil.translation(part.pivot) * MathUtil.rotationY(Float(sin(time * 2.2 + seed)) * 0.25 + sin(walk) * 0.15 * amount)
+                local = MathUtil.translation(part.pivot) * MathUtil.rotationY(Float(sin(time * 2.2 + seed)) * 0.25 + sin(walk) * 0.15 * amount + tailSwing)
             case .segment(let i):
-                let sway = Float(sin(time * 7 + Double(i) * 0.9 + seed)) * 0.05 * (0.3 + amount)
+                let sway = Float(sin(time * 7 + Double(i) * 0.9 + seed)) * 0.05 * (0.3 + amount) + tailSwing * 0.12 * Float(i + 1)
                 local = MathUtil.translation(part.pivot + SIMD3(sway, 0, 0))
             case .wing(let side):
                 let flap = Float(sin(time * 7 + seed)) * 0.55 + 0.1
@@ -453,9 +456,10 @@ enum CreatureModels {
                              moving: Float, sneaking: Bool, swing: Float, hurt: Float) {
         let tint: SIMD4<Float> = hurt > 0 ? SIMD4(0.9, 0.1, 0.1, min(1, hurt / 0.35) * 0.6) : SIMD4(0, 0, 0, 0)
         let base = MathUtil.translation(rel - SIMD3(0, sneaking ? 0.25 : 0, 0)) * MathUtil.rotationY(yaw)
+        let idle = Float(Date().timeIntervalSince1970.truncatingRemainder(dividingBy: 3600)) + Float(name.hashValue & 63)
         for part in PlayerAvatar.parts(PlayerLook.resolve(look, name: name)) {
             let model = base * MathUtil.translation(part.pivot)
-                * PlayerAvatar.pose(kind: part.kind, pitch: pitch, walk: walk, moving: moving, sneaking: sneaking, swing: swing)
+                * PlayerAvatar.pose(kind: part.kind, pitch: pitch, walk: walk, moving: moving, sneaking: sneaking, swing: swing, idle: idle)
             for box in part.boxes { appendBox(&v, model, box.0, box.1, box.2, glow: false, tint: tint) }
         }
     }

@@ -1,5 +1,16 @@
 DinoCraft - the Toonland update
 
+Five new dinosaurs, livelier creatures and a more detailed explorer
+- Protoceratops graze in plains, savanna and deserts. Styracosaurus roam the plains with a spiky frill and
+  charge if you hit them. Corythosaurus, with their tall crests, wander the forests. Quetzalcoatlus soar over
+  the mountains, and Dilophosaurus come out at night in swamps and jungles, spitting at anyone nearby.
+- Styracosaurus and Corythosaurus can be tamed and ridden. A tamed Quetzalcoatlus can be ridden through the air.
+- Creatures move more naturally: they turn their heads to look at you, their tails swing as they turn, they
+  breathe when standing still, plant-eaters put their heads down to graze, and they rock from side to side as
+  they walk.
+- Your explorer has more detail: eyes that look ahead, brows, a nose and mouth, ears, a collar with buttons,
+  a belt buckle, sleeve cuffs, and boots with soles and laces. Standing still, you breathe and your arms sway.
+
 Shipwrecks, crabs and buried treasure
 - Shipwrecks lie in shallow seas near the coast: broken wooden hulls with a snapped mast, a captain's chest
   and a supply chest. Crabs scuttle about their decks, and on sandy beaches. They nip if you get close,

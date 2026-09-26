@@ -449,6 +449,7 @@ final class GameSession {
         collectArrows()
         updateFishing(dt)
         updateOrbs(dt)
+        mobs.animateAll(dt: dt, session: self)
         updateHazards(dt)
         updateFire(dt)
         if !isRemote { circuits.update(dt: dt, session: self) }

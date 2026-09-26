@@ -307,7 +307,14 @@ enum PlayerAvatar {
             (SIMD3(x0, y0, z0), SIMD3(x1, y1, z1), c)
         }
 
-        var body: [Box] = [b(-0.25, 0, -0.13, 0.25, 0.72, 0.13, shirt), b(-0.26, 0, -0.14, 0.26, 0.07, 0.14, belt)]
+        func shade(_ c: SIMD4<Float>, _ f: Float) -> SIMD4<Float> { SIMD4(c.x * f, c.y * f, c.z * f, 1) }
+        let shirtDark = shade(shirt, 0.72), skinDark = shade(skin, 0.8), buckle = color(0xD8B048)
+        var body: [Box] = [b(-0.25, 0, -0.13, 0.25, 0.72, 0.13, shirt), b(-0.26, 0, -0.14, 0.26, 0.07, 0.14, belt),
+                           b(-0.05, 0.008, -0.148, 0.05, 0.062, -0.139, buckle),
+                           // Collar with a little skin showing at the neck, a button strip and shoulder seams.
+                           b(-0.2, 0.66, -0.137, 0.2, 0.72, 0.137, shirtDark), b(-0.07, 0.6, -0.139, 0.07, 0.72, -0.136, skin),
+                           b(-0.016, 0.1, -0.135, 0.016, 0.6, -0.13, shirtDark),
+                           b(-0.06, 0.48, -0.136, -0.03, 0.51, -0.131, belt), b(-0.06, 0.3, -0.136, -0.03, 0.33, -0.131, belt)]
         body += paintedRegions(look, kind: 0)
         if look.back == .backpack {
             let leather = color(0x7A5230)
@@ -315,10 +322,19 @@ enum PlayerAvatar {
                      b(-0.23, 0.14, -0.14, -0.17, 0.72, 0.14, leather), b(0.17, 0.14, -0.14, 0.23, 0.72, 0.14, leather)]
         }
 
-        var head: [Box] = [b(-0.22, 0, -0.22, 0.22, 0.42, 0.22, skin)]
+        // Ears on the sides of the head.
+        var head: [Box] = [b(-0.22, 0, -0.22, 0.22, 0.42, 0.22, skin),
+                           b(-0.25, 0.13, -0.03, -0.215, 0.27, 0.06, skinDark), b(0.215, 0.13, -0.03, 0.25, 0.27, 0.06, skinDark)]
         head += paintedRegions(look, kind: 1)
         if !look.hasFace {
-            head += [b(-0.13, 0.22, -0.23, -0.06, 0.28, -0.22, eye), b(0.06, 0.22, -0.23, 0.13, 0.28, -0.22, eye)]
+            // Eyes with whites and pupils looking ahead, brows, a nose and a mouth.
+            let white = color(0xF4F0E8), brow = color(0x4A3322), mouth = color(0x8A3E34)
+            head += [b(-0.155, 0.2, -0.226, -0.045, 0.29, -0.219, white), b(0.045, 0.2, -0.226, 0.155, 0.29, -0.219, white),
+                     b(-0.11, 0.205, -0.231, -0.05, 0.28, -0.224, eye), b(0.05, 0.205, -0.231, 0.11, 0.28, -0.224, eye),
+                     b(-0.1, 0.255, -0.234, -0.075, 0.275, -0.229, white), b(0.06, 0.255, -0.234, 0.085, 0.275, -0.229, white),
+                     b(-0.165, 0.31, -0.228, -0.04, 0.34, -0.219, brow), b(0.04, 0.31, -0.228, 0.165, 0.34, -0.219, brow),
+                     b(-0.03, 0.13, -0.255, 0.03, 0.2, -0.219, skinDark),
+                     b(-0.075, 0.07, -0.226, 0.075, 0.095, -0.219, mouth)]
         }
         switch look.hat {
         case .explorer:
@@ -410,8 +426,13 @@ enum PlayerAvatar {
         default:
             break
         }
-        let arm: [Box] = [b(-0.12, -0.66, -0.12, 0.12, 0.04, 0.12, shirt), b(-0.115, -0.72, -0.115, 0.115, -0.5, 0.115, skin)]
-        let leg: [Box] = [b(-0.12, -0.75, -0.12, 0.12, 0, 0.12, pants), b(-0.125, -0.75, -0.14, 0.125, -0.58, 0.13, boots)]
+        // Sleeves with cuffs, hands with a thumb; trousers with a turn-up and boots with soles and laces.
+        let arm: [Box] = [b(-0.12, -0.66, -0.12, 0.12, 0.04, 0.12, shirt), b(-0.115, -0.72, -0.115, 0.115, -0.5, 0.115, skin),
+                          b(-0.126, -0.66, -0.126, 0.126, -0.6, 0.126, shirtDark), b(-0.06, -0.7, -0.14, 0.03, -0.62, -0.11, skinDark)]
+        let sole = color(0x1E1610), lace = color(0xC8B48A)
+        let leg: [Box] = [b(-0.12, -0.75, -0.12, 0.12, 0, 0.12, pants), b(-0.125, -0.75, -0.14, 0.125, -0.58, 0.13, boots),
+                          b(-0.13, -0.75, -0.155, 0.13, -0.715, 0.135, sole), b(-0.132, -0.61, -0.145, 0.132, -0.57, 0.137, shade(boots, 1.35)),
+                          b(-0.04, -0.69, -0.146, 0.04, -0.675, -0.139, lace), b(-0.04, -0.655, -0.146, 0.04, -0.64, -0.139, lace)]
         var parts = [
             Part(kind: 0, pivot: SIMD3(0, 0.75, 0), boxes: body),
             Part(kind: 1, pivot: SIMD3(0, 1.47, 0), boxes: head),
@@ -477,14 +498,17 @@ enum PlayerAvatar {
     }
 
     /// The joint rotation for a part (the same animation on Mac and Windows).
-    static func pose(kind: Int, pitch: Float, walk: Float, moving: Float, sneaking: Bool, swing: Float) -> Mat4 {
+    /// `idle` is a running clock for the gentle breathing sway of the arms and head when standing still.
+    static func pose(kind: Int, pitch: Float, walk: Float, moving: Float, sneaking: Bool, swing: Float, idle: Float = 0) -> Mat4 {
         let swingLeg = sin(walk) * 0.8 * min(1, moving)
         let armSwing = sin(swing * .pi)
+        let still = max(0, 1 - min(1, moving) * 2)
+        let breathe = sin(idle * 1.7) * still
         switch kind {
         case 0: return sneaking ? MathUtil.rotationX(-0.4) : matrix_identity_float4x4
-        case 1: return MathUtil.rotationX(pitch * 0.8)
-        case 2: return MathUtil.rotationX(swingLeg)
-        case 3: return MathUtil.rotationX(-swingLeg - armSwing * 1.6)
+        case 1: return MathUtil.rotationX(pitch * 0.8 + breathe * 0.025)
+        case 2: return MathUtil.rotationZ(-(0.05 + breathe * 0.03) * still) * MathUtil.rotationX(swingLeg + breathe * 0.03)
+        case 3: return MathUtil.rotationZ((0.05 + breathe * 0.03) * still) * MathUtil.rotationX(-swingLeg - armSwing * 1.6 - breathe * 0.03)
         case 4: return MathUtil.rotationX(-swingLeg)
         case 5: return MathUtil.rotationX(swingLeg)
         case 6: return MathUtil.rotationX(-(0.08 + min(1, moving) * 0.55 + abs(sin(walk)) * 0.08 * moving + (sneaking ? 0.4 : 0)))

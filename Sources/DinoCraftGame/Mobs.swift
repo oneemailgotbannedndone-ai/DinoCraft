@@ -10,7 +10,8 @@ enum MobKind: String, CaseIterable, Codable {
          grumblesaurus, grinasaurus,
          cod, salmon, clownfish, blueTang,
          pachy, iguanodon, therizino, gallimimus, oviraptor, microraptor,
-         boat, egg, armorStand, mosasaurus, crab
+         boat, egg, armorStand, mosasaurus, crab,
+         protoceratops, styracosaurus, dilophosaurus, corythosaurus, quetzalcoatlus
 }
 
 /// Kinds of particle burst the game can ask for.
@@ -205,6 +206,26 @@ struct MobSpecies {
         .boat: MobSpecies(kind: .boat, displayName: "Boat", hostile: false, maxHealth: 4, width: 1.2, height: 0.6,
                    walkSpeed: 0, runSpeed: 7.5, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: false,
                    detectRange: 0, drops: [], callPitch: 1, deepCall: false),
+        .protoceratops: MobSpecies(kind: .protoceratops, displayName: "Protoceratops", hostile: false, maxHealth: 14, width: 0.8, height: 0.8,
+                   walkSpeed: 1.2, runSpeed: 3.6, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: false,
+                   detectRange: 0, drops: [MobDrop(item: "raw_dino_meat", min: 1, max: 2, chance: 1), MobDrop(item: "dino_hide", min: 0, max: 1, chance: 1)],
+                   callPitch: 1.5, deepCall: false),
+        .styracosaurus: MobSpecies(kind: .styracosaurus, displayName: "Styracosaurus", hostile: false, maxHealth: 44, width: 1.5, height: 1.6,
+                   walkSpeed: 0.9, runSpeed: 3.2, damage: 7, attackReach: 1.8, attackCooldown: 1.6, ranged: false, fireproof: false,
+                   detectRange: 0, drops: [MobDrop(item: "raw_dino_meat", min: 2, max: 5, chance: 1), MobDrop(item: "dino_hide", min: 1, max: 3, chance: 1)],
+                   callPitch: 0.7, deepCall: true),
+        .dilophosaurus: MobSpecies(kind: .dilophosaurus, displayName: "Dilophosaurus", hostile: true, maxHealth: 22, width: 0.8, height: 1.7,
+                   walkSpeed: 1.6, runSpeed: 4.4, damage: 4, attackReach: 11, attackCooldown: 2.2, ranged: true, fireproof: false,
+                   detectRange: 18, drops: [MobDrop(item: "raw_dino_meat", min: 1, max: 3, chance: 1), MobDrop(item: "dino_bone", min: 0, max: 2, chance: 1)],
+                   callPitch: 1.2, deepCall: false),
+        .corythosaurus: MobSpecies(kind: .corythosaurus, displayName: "Corythosaurus", hostile: false, maxHealth: 32, width: 1.1, height: 2.3,
+                   walkSpeed: 1.1, runSpeed: 3.4, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: false,
+                   detectRange: 0, drops: [MobDrop(item: "raw_dino_meat", min: 2, max: 4, chance: 1), MobDrop(item: "dino_hide", min: 1, max: 2, chance: 1)],
+                   callPitch: 0.9, deepCall: true),
+        .quetzalcoatlus: MobSpecies(kind: .quetzalcoatlus, displayName: "Quetzalcoatlus", hostile: false, maxHealth: 30, width: 1.4, height: 1.6,
+                   walkSpeed: 3.0, runSpeed: 7.0, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: false,
+                   detectRange: 0, drops: [MobDrop(item: "feather", min: 2, max: 5, chance: 1), MobDrop(item: "raw_dino_meat", min: 1, max: 3, chance: 1)],
+                   callPitch: 1.1, deepCall: false),
         .crab: MobSpecies(kind: .crab, displayName: "Crab", hostile: true, maxHealth: 8, width: 0.7, height: 0.45,
                    walkSpeed: 1.3, runSpeed: 2.8, damage: 2, attackReach: 0.6, attackCooldown: 1.0, ranged: false, fireproof: false,
                    detectRange: 7, drops: [MobDrop(item: "crab_claw", min: 1, max: 2, chance: 0.9)], callPitch: 1.8, deepCall: false),
@@ -228,7 +249,7 @@ struct MobSpecies {
 
     static func of(_ kind: MobKind) -> MobSpecies { table[kind]! }
 
-    var flying: Bool { kind == .ptero || kind == .microraptor }
+    var flying: Bool { kind == .ptero || kind == .microraptor || kind == .quetzalcoatlus }
 
     /// Fish: they swim anywhere in the water and flop about on land.
     var aquatic: Bool { [.cod, .salmon, .clownfish, .blueTang, .mosasaurus].contains(kind) }
@@ -240,7 +261,7 @@ struct MobSpecies {
     var isVehicle: Bool { kind == .boat }
 
     /// Neutral creatures leave you alone until you hit them, then fight back.
-    var neutral: Bool { [.trikey, .longneck, .stego, .ankylo, .parasaur, .pookpook, .pachy, .iguanodon, .therizino].contains(kind) }
+    var neutral: Bool { [.trikey, .longneck, .stego, .ankylo, .parasaur, .pookpook, .pachy, .iguanodon, .therizino, .styracosaurus].contains(kind) }
 
     var callSound: String {
         switch kind {
@@ -312,6 +333,9 @@ final class Mob {
     var mateTarget: DVec3?
     /// Experience already handed out for defeating it.
     var rewarded = false
+    /// Animation (see `Animation`): head turn and dip, tail swing, breathing.
+    var headYaw = 0.0, headPitch = 0.0, tailSwing = 0.0, breath = 0.0
+    var lastAnimYaw = 0.0, grazeTimer = Double.random(in: 4...16), grazeLeft = 0.0
 
     init(species: MobSpecies, position: DVec3) {
         id = Mob.nextID
@@ -1085,7 +1109,8 @@ final class MobManager {
             if allowHostile && (biome == .mountains || biome == .snowyPeaks) && light.sky > 0.6 && roll < 0.12 { return .ptero }
             if allowHostile && (dark || nightSurface) {
                 if dark && y < s.world.generator.seaLevel { return roll < 0.45 ? .crawler : (roll < 0.75 ? .boneWalker : .raptor) }
-                if (biome == .swamp || biome == .fernJungle) && roll < 0.35 { return .spitter }
+                if (biome == .swamp || biome == .fernJungle) && roll < 0.2 { return .dilophosaurus }
+                if (biome == .swamp || biome == .fernJungle) && roll < 0.4 { return .spitter }
                 if biome == .desert && roll < 0.5 { return .scorpion }
                 if (biome == .forest || biome == .fernJungle) && roll < 0.55 { return .troodon }
                 if nightSurface && roll > 0.94 { return .rex }
@@ -1108,24 +1133,30 @@ final class MobManager {
             }
             guard allowFriendly, !s.isNight, light.sky > 0.7, goodGround else { return nil }
             if ground == Blocks.sand && biome == .beach && roll < 0.4 { return .crab }
-            if ground == Blocks.sand { return roll < 0.6 ? .dodo : .pookpook }
+            if ground == Blocks.sand && biome != .desert && biome != .redMesa { return roll < 0.6 ? .dodo : .pookpook }
             if (biome == .swamp || biome == .fernJungle) && roll < 0.35 { return .sailback }
             // The newer dinosaurs, each at home in its own kind of country.
             let roll2 = Double.random(in: 0..<1)
             switch biome {
             case .plains, .savanna, .flowerMeadow:
-                if roll2 < 0.2 { return .gallimimus }
+                if roll2 < 0.14 { return .protoceratops }
+                if roll2 < 0.22 && biome == .savanna { return .styracosaurus }
+                if roll2 < 0.3 { return .gallimimus }
                 if roll2 < 0.32 { return .pachy }
             case .forest, .blossomGrove, .silverForest:
-                if roll2 < 0.16 { return .iguanodon }
+                if roll2 < 0.1 { return .corythosaurus }
+                if roll2 < 0.22 { return .iguanodon }
                 if roll2 < 0.28 { return .oviraptor }
                 if roll2 < 0.36 { return .microraptor }
+            case .desert, .redMesa:
+                if roll2 < 0.3 { return .protoceratops }
             case .fernJungle:
                 if roll2 < 0.16 { return .therizino }
                 if roll2 < 0.28 { return .microraptor }
                 if roll2 < 0.38 { return .oviraptor }
-            case .mountains:
-                if roll2 < 0.25 { return .pachy }
+            case .mountains, .snowyPeaks:
+                if roll2 < 0.12 { return .quetzalcoatlus }
+                if roll2 < 0.3 { return .pachy }
             default: break
             }
             if biome == .snowyTundra || biome == .redwoodTaiga {

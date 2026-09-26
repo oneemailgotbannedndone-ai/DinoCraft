@@ -35,6 +35,10 @@ enum Taming {
         .oviraptor: TameRule(foods: ["berries", "raw_poultry"], rideable: false, seat: 0, guardian: false),
         .pookpook: TameRule(foods: ["wheat_seeds"], rideable: false, seat: 0, guardian: false),
         // Fish-eaters of the sky: saddle one and fly.
+        .protoceratops: TameRule(foods: ["berries", "wheat"], rideable: false, seat: 0, guardian: false),
+        .styracosaurus: TameRule(foods: ["wheat", "carrot"], rideable: true, seat: 1.45, guardian: true),
+        .corythosaurus: TameRule(foods: ["berries", "wheat"], rideable: true, seat: 1.6, guardian: false),
+        .quetzalcoatlus: TameRule(foods: ["raw_fish", "cooked_fish", "tropical_fish"], rideable: true, seat: 1.25, guardian: false),
         .ptero: TameRule(foods: ["raw_fish", "tropical_fish", "cooked_fish"], rideable: true, seat: 0.45, guardian: false),
     ]
 
