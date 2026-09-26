@@ -21,7 +21,7 @@
     background: radial-gradient(ellipse 120% 900px at top, #3b5a2a 0%, #20301a 40%, var(--bg) 100%) no-repeat, var(--bg);
     min-height: 100vh; line-height: 1.5;
   }
-  main { max-width: 860px; margin: 0 auto; padding: 48px 16px 64px; }
+  main { max-width: 980px; margin: 0 auto; padding: 48px 16px 64px; }
   header { text-align: center; }
   header img { width: 128px; height: 128px; image-rendering: pixelated; border-radius: 24px; box-shadow: 0 8px 30px #0008; }
   h1 {
@@ -31,12 +31,13 @@
   }
   .tag { color: var(--dim); font-size: 18px; margin: 0 0 8px; }
   .version { color: var(--dim); font-size: 14px; min-height: 1.5em; }
-  .downloads { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin: 32px 0; }
+  .downloads { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin: 32px 0; }
   .card {
     background: var(--panel); border: 3px solid var(--panel-edge); border-radius: 14px; padding: 20px;
     box-shadow: inset 0 3px 0 #ffffff14, 0 6px 18px #0006;
   }
   .card h2 { margin: 0 0 4px; font-size: 22px; }
+  .card a:not(.btn) { color: var(--accent-2); }
   .card .size { color: var(--dim); font-size: 14px; margin-bottom: 14px; min-height: 1.5em; }
   .btn {
     display: block; text-align: center; text-decoration: none; font-weight: 700; font-size: 18px; color: #2a1606;
@@ -62,14 +63,14 @@
     <img src="icon.png" alt="DinoCraft icon">
     <h1>DinoCraft</h1>
     <p class="tag">A blocky prehistoric adventure. Tame, ride and battle dinosaurs.</p>
-    <p class="version" id="version">Free for Windows and Mac</p>
+    <p class="version" id="version">Free for Windows, Mac and iPhone</p>
   </header>
 
   <div class="downloads">
     <div class="card">
       <h2>Windows</h2>
       <div class="size" id="win-size">Windows 10 or 11 (64-bit)</div>
-      <a class="btn" id="win-link" href="https://github.com/oneemailgotbannedndone-ai/DinoCraft/releases/latest/download/DinoCraft-Windows.zip">Download for Windows</a>
+      <a class="btn" id="win-link" href="https://github.com/oneemailgotbannedndone-ai/DinoCraft/releases/latest/download/DinoCraft-Windows.zip">Download</a>
       <ol>
         <li>Right-click the zip and choose <b>Extract All</b>.</li>
         <li>Open <b>DinoCraft Launcher.exe</b>.</li>
@@ -79,12 +80,22 @@
     <div class="card">
       <h2>Mac</h2>
       <div class="size" id="mac-size">Apple Silicon (M1 or newer), macOS 14+</div>
-      <a class="btn" id="mac-link" href="https://github.com/oneemailgotbannedndone-ai/DinoCraft/releases/latest/download/DinoCraft-Mac.zip">Download for Mac</a>
+      <a class="btn" id="mac-link" href="https://github.com/oneemailgotbannedndone-ai/DinoCraft/releases/latest/download/DinoCraft-Mac.zip">Download</a>
       <ol>
         <li>Double-click the zip, then drag <b>DinoCraft</b> and <b>DinoCraft Launcher</b> into Applications.</li>
         <li>Open <b>DinoCraft Launcher</b>.</li>
         <li>If macOS blocks it: System Settings → Privacy &amp; Security → <b>Open Anyway</b>.
           Or run <code>xattr -cr "/Applications/DinoCraft Launcher.app" /Applications/DinoCraft.app</code> in Terminal.</li>
+      </ol>
+    </div>
+    <div class="card">
+      <h2>iPhone &amp; iPad</h2>
+      <div class="size" id="ios-size">Offline edition · iOS 16+ · sideload</div>
+      <a class="btn" id="ios-link" href="https://github.com/oneemailgotbannedndone-ai/DinoCraft/releases/download/mobile/DinoCraft-Mobile.ipa">Download .ipa</a>
+      <ol>
+        <li>Install <a href="https://altstore.io">AltStore</a> or <a href="https://sidestore.io">SideStore</a> on your device.</li>
+        <li>Download the .ipa on your iPhone or iPad.</li>
+        <li>In AltStore/SideStore, go to <b>My Apps</b>, tap <b>+</b> and pick the file.</li>
       </ol>
     </div>
   </div>
@@ -124,6 +135,13 @@
           document.getElementById("mac-size").textContent = "Apple Silicon, macOS 14+ · " + mb(asset.size);
         }
       }
+    })
+    .catch(() => {});
+  fetch("https://api.github.com/repos/oneemailgotbannedndone-ai/DinoCraft/releases/tags/mobile")
+    .then(r => r.ok ? r.json() : Promise.reject(r.status))
+    .then(release => {
+      const ipa = (release.assets || []).find(a => a.name === "DinoCraft-Mobile.ipa");
+      if (ipa) document.getElementById("ios-size").textContent = "Offline edition · iOS 16+ · " + Math.round(ipa.size / 1048576) + " MB";
     })
     .catch(() => {});
 </script>

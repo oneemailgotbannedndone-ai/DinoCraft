@@ -100,6 +100,13 @@ printf 'APPL????' > "$APP/PkgInfo"
 echo "▸ Signing (ad-hoc)"
 codesign --force --sign - --timestamp=none "$APP"
 echo "  architectures: $(lipo -archs "$APP/DinoCraft")"
+# The binary must be marked for iPhone (or the iPhone simulator), or iOS refuses to install it.
+BUILT_FOR="$(vtool -show-build "$APP/DinoCraft" | awk '/platform/ {print $2; exit}')"
+echo "  built for: $BUILT_FOR"
+if [[ "$KIND" == device && "$BUILT_FOR" != IOS ]] || [[ "$KIND" == simulator && "$BUILT_FOR" != IOSSIMULATOR ]]; then
+  echo "  ✗ expected an iOS binary, got '$BUILT_FOR'" >&2
+  exit 1
+fi
 du -sh "$APP" | awk '{print "  app size: " $1}'
 
 if [[ "$KIND" == device ]]; then
