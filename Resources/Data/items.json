@@ -152,6 +152,9 @@
     {"name": "painting", "displayName": "Painting"},
     {"name": "armor_stand", "displayName": "Armour Stand", "maxStack": 16},
     {"name": "mosasaurus_tooth", "displayName": "Mosasaurus Tooth", "maxStack": 16},
+    {"name": "treasure_map", "displayName": "Treasure Map", "maxStack": 1},
+    {"name": "crab_claw", "displayName": "Crab Claw", "food": {"hunger": 2, "saturation": 0.4}},
+    {"name": "cooked_crab_claw", "displayName": "Cooked Crab Claw", "food": {"hunger": 6, "saturation": 1.0}},
     {"name": "shield", "displayName": "Shield", "tool": {"kind": "shield", "level": 1, "speed": 1.0, "durability": 336, "damage": 1}}
   ]
 }

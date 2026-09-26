@@ -10,7 +10,7 @@ enum MobKind: String, CaseIterable, Codable {
          grumblesaurus, grinasaurus,
          cod, salmon, clownfish, blueTang,
          pachy, iguanodon, therizino, gallimimus, oviraptor, microraptor,
-         boat, egg, armorStand, mosasaurus
+         boat, egg, armorStand, mosasaurus, crab
 }
 
 /// Kinds of particle burst the game can ask for.
@@ -205,6 +205,9 @@ struct MobSpecies {
         .boat: MobSpecies(kind: .boat, displayName: "Boat", hostile: false, maxHealth: 4, width: 1.2, height: 0.6,
                    walkSpeed: 0, runSpeed: 7.5, damage: 0, attackReach: 0, attackCooldown: 0, ranged: false, fireproof: false,
                    detectRange: 0, drops: [], callPitch: 1, deepCall: false),
+        .crab: MobSpecies(kind: .crab, displayName: "Crab", hostile: true, maxHealth: 8, width: 0.7, height: 0.45,
+                   walkSpeed: 1.3, runSpeed: 2.8, damage: 2, attackReach: 0.6, attackCooldown: 1.0, ranged: false, fireproof: false,
+                   detectRange: 7, drops: [MobDrop(item: "crab_claw", min: 1, max: 2, chance: 0.9)], callPitch: 1.8, deepCall: false),
         .mosasaurus: MobSpecies(kind: .mosasaurus, displayName: "Mosasaurus", hostile: true, maxHealth: 140, width: 1.8, height: 1.3,
                    walkSpeed: 3.2, runSpeed: 7.5, damage: 9, attackReach: 2.4, attackCooldown: 1.3, ranged: false, fireproof: false,
                    detectRange: 30, drops: [MobDrop(item: "mosasaurus_tooth", min: 1, max: 1, chance: 1),
@@ -415,6 +418,7 @@ final class MobManager {
             guardTimer = 15
             spawnDungeonGuards(s)
             spawnTempleGuardian(s)
+            spawnWreckCrabs(s)
         }
         stageTimer -= dt
         if stageTimer <= 0 {
@@ -1103,6 +1107,7 @@ final class MobManager {
                 }
             }
             guard allowFriendly, !s.isNight, light.sky > 0.7, goodGround else { return nil }
+            if ground == Blocks.sand && biome == .beach && roll < 0.4 { return .crab }
             if ground == Blocks.sand { return roll < 0.6 ? .dodo : .pookpook }
             if (biome == .swamp || biome == .fernJungle) && roll < 0.35 { return .sailback }
             // The newer dinosaurs, each at home in its own kind of country.

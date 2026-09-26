@@ -36,6 +36,10 @@ extension GameSession {
             blocking = false
             if input.wasPressed(use) { onOpenQuestBook?() }
             return true
+        case TreasureMaps.item:
+            blocking = false
+            if input.wasPressed(use) { readTreasureMap() }
+            return true
         case WorldMap.item:
             blocking = false
             if input.wasPressed(use) {

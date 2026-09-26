@@ -38,6 +38,8 @@
     {"id": "sunken_treasure", "category": "Adventure", "title": "Sunken Treasure", "description": "Fish up treasure", "icon": "emerald", "type": "fish", "target": "treasure"},
     {"id": "hold_the_line", "category": "Adventure", "title": "Hold the Line", "description": "Block an attack with a shield", "icon": "shield", "type": "block"},
     {"id": "javelin", "category": "Adventure", "title": "Javelin", "description": "Throw a spear", "icon": "spear", "type": "shoot", "target": "spear"},
+    {"id": "x_marks_the_spot", "category": "Adventure", "title": "X Marks the Spot", "description": "Dig up buried treasure", "icon": "treasure_map", "type": "loot", "target": "buriedTreasure"},
+    {"id": "salvage", "category": "Adventure", "title": "Salvage", "description": "Loot a shipwreck", "icon": "planks", "type": "loot", "target": "shipwreck"},
     {"id": "deep_trouble", "category": "Adventure", "title": "Deep Trouble", "description": "Defeat the Mosasaurus guarding an ocean temple", "icon": "mosasaurus_tooth", "type": "kill", "target": "mosasaurus"},
     {"id": "four_seasons", "category": "Farming", "title": "Four Seasons", "description": "See every season come round", "icon": "wheat", "type": "season", "count": 4, "distinct": true},
     {"id": "shocking", "category": "Adventure", "title": "Shocking!", "description": "Get struck by lightning (and live)", "icon": "ember_lighter", "type": "struck"},

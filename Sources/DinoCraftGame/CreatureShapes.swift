@@ -41,6 +41,7 @@ enum CreatureShapes {
         case .egg: return egg(Breeding.kind(ofEgg: variant))
         case .armorStand: return armorStand(Decorations.armor(variant))
         case .mosasaurus: return mosasaurus()
+        case .crab: return crab()
         default: return nil
         }
     }
@@ -354,6 +355,27 @@ enum CreatureShapes {
         m.add(.wing(1), SIMD3(0.45, 0.35, -0.55), [b(0, -0.04, -0.22, 0.95, 0.04, 0.26, stripe)])
         m.add(.wing(-1), SIMD3(-0.45, 0.35, 0.7), [b(-0.7, -0.04, -0.18, 0, 0.04, 0.2, stripe)])
         m.add(.wing(1), SIMD3(0.45, 0.35, 0.7), [b(0, -0.04, -0.18, 0.7, 0.04, 0.2, stripe)])
+        return m.parts
+    }
+
+    /// A beach crab: a wide red shell, eyes on stalks, snapping claws and three legs a side.
+    static func crab() -> [ShapePart] {
+        var m = Model()
+        let shell: UInt32 = 0xB8342A, dark: UInt32 = 0x7E2018, light: UInt32 = 0xE0604A, belly: UInt32 = 0xE8C8A0
+        m.add(.body, .zero, [
+            b(-0.32, 0.14, -0.22, 0.32, 0.3, 0.2, shell),
+            b(-0.26, 0.3, -0.18, 0.26, 0.34, 0.16, light),
+            b(-0.3, 0.12, -0.2, 0.3, 0.14, 0.18, belly),
+            b(-0.1, 0.3, -0.26, -0.07, 0.42, -0.23, dark), b(0.07, 0.3, -0.26, 0.1, 0.42, -0.23, dark),   // eye stalks
+            b(-0.12, 0.42, -0.28, -0.05, 0.47, -0.21, 0x141414), b(0.05, 0.42, -0.28, 0.12, 0.47, -0.21, 0x141414),
+        ])
+        m.add(.wing(-1), SIMD3(-0.28, 0.22, -0.2), [b(-0.22, -0.04, -0.14, 0, 0.04, 0.02, shell), b(-0.3, -0.06, -0.26, -0.16, 0.08, -0.08, dark)])
+        m.add(.wing(1), SIMD3(0.28, 0.22, -0.2), [b(0, -0.04, -0.14, 0.22, 0.04, 0.02, shell), b(0.16, -0.06, -0.26, 0.3, 0.08, -0.08, dark)])
+        for (i, z) in [Float(-0.1), 0.02, 0.14].enumerated() {
+            let phase = Float(i) * 2.1
+            m.add(.leg(phase), SIMD3(-0.3, 0.16, z), [b(-0.2, -0.16, -0.02, 0, 0.02, 0.02, dark)])
+            m.add(.leg(phase + .pi), SIMD3(0.3, 0.16, z), [b(0, -0.16, -0.02, 0.2, 0.02, 0.02, dark)])
+        }
         return m.parts
     }
 

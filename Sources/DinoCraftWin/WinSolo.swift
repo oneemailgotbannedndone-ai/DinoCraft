@@ -974,6 +974,39 @@ final class WinSolo: CommandHost {
             s.player.pitch = -0.25
             return
         }
+        if options.demoScreen == "shipwreck" || options.demoScreen == "treasure" {
+            demoPlaced = true
+            if options.demoScreen == "treasure" {
+                // Automated check: read a treasure map; the paper map shows where the X is.
+                if let id = items.id(named: TreasureMaps.item) {
+                    s.inventory.slots[0] = ItemStack(item: id, count: 1)
+                    s.inventory.selected = 0
+                    s.readTreasureMap()
+                }
+                return
+            }
+            guard !seaDemoMoved else {
+                s.mobs.spawnWreckCrabs(s)
+                return
+            }
+            seaDemoMoved = true
+            demoPlaced = false
+            framesSinceReady = 0
+            let p = s.player.position
+            guard let w = (s.world.generator as? TerrainGenerator)?.structures(near: Int(p.x), z: Int(p.z), radius: 4000)
+                .first(where: { $0.kind == .shipwreck }) else {
+                demoPlaced = true
+                addChat(from: "", text: "Automated check: no shipwreck found")
+                return
+            }
+            s.player.gameMode = .creative
+            s.player.setFlying(true)
+            s.player.teleport(to: DVec3(Double(w.x) - 8, Double(w.y) + 6, Double(w.z) + 8))
+            s.player.yaw = -.pi / 4
+            s.player.pitch = -0.35
+            Log.info("Automated check: shipwreck at \(w.x), \(w.y), \(w.z)", category: "Game")
+            return
+        }
         if ["autumn", "winter", "fire", "temple"].contains(options.demoScreen ?? "") {
             demoPlaced = true
             let look = s.player.lookDirection

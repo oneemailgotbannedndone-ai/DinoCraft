@@ -68,8 +68,8 @@ enum Commands {
         Spec("setblock", "/setblock <x> <y> <z> <block>", "Place a block", args: coord3 + [.blocks]),
         Spec("fill", "/fill <x1> <y1> <z1> <x2> <y2> <z2> <block> [replace <block>]", "Fill a box (air clears)",
              args: coord3 + coord3 + [.blocks, .choices(["replace"]), .blocks]),
-        Spec("locate", "/locate <village|dungeon|ruin|desert_ruin|dig_site|volcano|ocean_temple|biome> [biome]", "Find the nearest structure or biome",
-             args: [.choices(["village", "dungeon", "ruin", "desert_ruin", "dig_site", "volcano", "ocean_temple", "biome"]), .biomes], readOnly: true),
+        Spec("locate", "/locate <village|dungeon|ruin|desert_ruin|dig_site|volcano|ocean_temple|shipwreck|biome> [biome]", "Find the nearest structure or biome",
+             args: [.choices(["village", "dungeon", "ruin", "desert_ruin", "dig_site", "volcano", "ocean_temple", "shipwreck", "biome"]), .biomes], readOnly: true),
         Spec("biome", "/biome", "Show which biome you're in", readOnly: true),
         Spec("coords", "/coords", "Show your position and facing", aliases: ["pos"], readOnly: true),
         Spec("list", "/list", "Show who's playing", readOnly: true),
@@ -388,7 +388,7 @@ enum Commands {
                 return reply("Only the Overworld can be searched.")
             }
             let px = Int(floor(s.player.position.x)), pz = Int(floor(s.player.position.z))
-            guard let what = choice(0, ["village", "dungeon", "ruin", "desert_ruin", "dig_site", "volcano", "ocean_temple", "biome"]) else { return reply("Usage: \(command.usage)") }
+            guard let what = choice(0, ["village", "dungeon", "ruin", "desert_ruin", "dig_site", "volcano", "ocean_temple", "shipwreck", "biome"]) else { return reply("Usage: \(command.usage)") }
             if what == "biome" {
                 guard rest.count >= 2, let biome = resolveBiome(rest.dropFirst().joined(separator: "_"), note: reply) else {
                     return reply("Which biome? \(biomeNames.joined(separator: ", "))")
@@ -415,6 +415,7 @@ enum Commands {
                 case "dig_site", "digsite", "fossils": kind = .digSite
                 case "volcano": kind = .volcano
                 case "ocean_temple", "temple": kind = .oceanTemple
+                case "shipwreck": kind = .shipwreck
                 default: kind = .desertRuin
                 }
                 found = generator.structures(near: px, z: pz, radius: 3000).first(where: { $0.kind == kind })

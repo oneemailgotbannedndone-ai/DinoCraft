@@ -169,6 +169,7 @@ public enum Blocks {
     public static let slateTiles: BlockID = 119
     public static let goldBlock: BlockID = 87
     public static let fire: BlockID = 321
+    public static let woolWhite: BlockID = 198
 
     /// Water, or a plant growing in it (you can drown there, and breaking the plant leaves water).
     @inlinable public static func holdsWater(_ id: BlockID, _ registry: BlockRegistry) -> Bool {
@@ -181,7 +182,7 @@ public enum Blocks {
         ("toon_leaves", toonLeaves), ("checker_block", checkerBlock), ("toonland_portal", toonlandPortal), ("deep_slate", deepSlate),
         ("kelp", kelp), ("seagrass", seagrass), ("coral_block", coralBlock), ("coral", coral), ("sea_lantern", seaLantern), ("enchanting_table", enchantingTable), ("fossil_deposit", fossilDeposit),
         ("display_case", displayCase), ("display_case_skull", displayCases[0]), ("display_case_fern", displayCases[4]), ("meteorite_ore", meteoriteOre),
-        ("marble_bricks", marbleBricks), ("slate_tiles", slateTiles), ("gold_block", goldBlock), ("fire", fire),
+        ("marble_bricks", marbleBricks), ("slate_tiles", slateTiles), ("gold_block", goldBlock), ("fire", fire), ("wool_white", woolWhite),
         ("terracotta", terracotta), ("dyed_clay_white", dyedClay[0]), ("dyed_clay_pink", dyedClay[9]),
         ("air", air), ("stone", stone), ("grass", grass), ("dirt", dirt), ("cobblestone", cobblestone),
         ("planks", planks), ("sand", sand), ("gravel", gravel), ("log", log), ("leaves", leaves),

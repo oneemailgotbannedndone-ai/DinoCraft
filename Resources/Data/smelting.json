@@ -113,6 +113,10 @@
       "result": "cooked_fish"
     },
     {
+      "input": "crab_claw",
+      "result": "cooked_crab_claw"
+    },
+    {
       "input": "kelp",
       "result": "dried_kelp"
     },

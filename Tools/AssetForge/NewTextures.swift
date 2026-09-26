@@ -190,6 +190,7 @@ enum NewTextures {
         if let magic = MagicTextures.item(name) { return magic }
         if let dig = DigTextures.item(name) { return dig }
         if let gadget = GadgetTextures.item(name) { return gadget }
+        if let sea = SeaTextures.item(name) { return sea }
         if let more = MoreTextures.item(name) { return more }
         let c = Canvas(S)
         switch name {

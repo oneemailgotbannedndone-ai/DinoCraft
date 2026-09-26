@@ -1,7 +1,7 @@
 import Foundation
 
 public enum StructureKind: String, Sendable, CaseIterable {
-    case dungeon, ruin, desertRuin, digSite, volcano, oceanTemple
+    case dungeon, ruin, desertRuin, digSite, volcano, oceanTemple, buriedTreasure, shipwreck
 
     public var displayName: String {
         switch self {
@@ -11,6 +11,8 @@ public enum StructureKind: String, Sendable, CaseIterable {
         case .digSite: return "Fossil Dig Site"
         case .volcano: return "Volcano"
         case .oceanTemple: return "Ocean Temple"
+        case .buriedTreasure: return "Buried Treasure"
+        case .shipwreck: return "Shipwreck"
         }
     }
 }
@@ -33,6 +35,8 @@ extension TerrainGenerator {
     static let structureReach = 10
     static let digCell = 208
     static let templeCell = 320
+    static let treasureCell = 144
+    static let wreckCell = 176
     static let volcanoCell = 288
     /// Blocks from a volcano's centre to the foot of its cone.
     public static let volcanoRadius = 26
@@ -113,7 +117,42 @@ extension TerrainGenerator {
         return StructureInfo(kind: .oceanTemple, x: x, y: info.height, z: z, seed: h)
     }
 
-    /// Dungeons, ruins, dig sites, volcanoes and ocean temples within `radius` blocks of (x, z), nearest first.
+    /// Buried treasure: a chest hidden under the sand of a beach (a treasure map leads to it).
+    public func buriedTreasure(inCell cx: Int, _ cz: Int) -> StructureInfo? {
+        let h = Hashing.hash(seed, Int32(cx), 29, Int32(cz), salt: 1010)
+        let cell = TerrainGenerator.treasureCell
+        // Try a few spots in the cell for a beach.
+        for k in 0..<6 {
+            let hk = Hashing.hash(h, Int32(k), 1, 2, salt: 1011)
+            let x = cx * cell + 8 + Int((hk >> 8) % UInt64(cell - 16))
+            let z = cz * cell + 8 + Int((hk >> 20) % UInt64(cell - 16))
+            let info = baseColumnInfo(x: x, z: z)
+            if info.biome == .beach, info.height >= TerrainGenerator.baseSeaLevel {
+                return StructureInfo(kind: .buriedTreasure, x: x, y: info.height, z: z, seed: hk)
+            }
+        }
+        return nil
+    }
+
+    /// A shipwreck: a broken wooden ship lying in shallow sea near the coast.
+    public func shipwreck(inCell cx: Int, _ cz: Int) -> StructureInfo? {
+        let h = Hashing.hash(seed, Int32(cx), 31, Int32(cz), salt: 1111)
+        guard Double(h >> 11) / Double(1 << 53) < 0.7 else { return nil }
+        let cell = TerrainGenerator.wreckCell
+        for k in 0..<5 {
+            let hk = Hashing.hash(h, Int32(k), 3, 4, salt: 1112)
+            let x = cx * cell + 12 + Int((hk >> 8) % UInt64(cell - 24))
+            let z = cz * cell + 12 + Int((hk >> 20) % UInt64(cell - 24))
+            let info = baseColumnInfo(x: x, z: z)
+            let depth = TerrainGenerator.baseSeaLevel - info.height
+            if info.biome == .ocean, depth >= 5, depth <= 14 {
+                return StructureInfo(kind: .shipwreck, x: x, y: info.height, z: z, seed: hk)
+            }
+        }
+        return nil
+    }
+
+    /// Dungeons, ruins, dig sites, volcanoes, temples, wrecks and treasure within `radius` blocks of (x, z), nearest first.
     func baseStructures(near x: Int, z: Int, radius: Int) -> [StructureInfo] {
         var reach = radius + TerrainGenerator.structureReach
         var out: [StructureInfo] = []
@@ -131,6 +170,8 @@ extension TerrainGenerator {
         scan(TerrainGenerator.ruinCell) { ruin(inCell: $0, $1) }
         scan(TerrainGenerator.digCell) { digSite(inCell: $0, $1) }
         scan(TerrainGenerator.templeCell) { oceanTemple(inCell: $0, $1) }
+        scan(TerrainGenerator.treasureCell) { buriedTreasure(inCell: $0, $1) }
+        scan(TerrainGenerator.wreckCell) { shipwreck(inCell: $0, $1) }
         reach = radius + TerrainGenerator.volcanoRadius + 2
         scan(TerrainGenerator.volcanoCell) { volcano(inCell: $0, $1) }
         return out.sorted { ($0.x - x) * ($0.x - x) + ($0.z - z) * ($0.z - z) < ($1.x - x) * ($1.x - x) + ($1.z - z) * ($1.z - z) }
@@ -153,6 +194,13 @@ extension TerrainGenerator {
             return []
         case .oceanTemple:
             return [(s.x, s.y + 1, s.z)]
+        case .buriedTreasure:
+            return [(s.x, s.y - 4, s.z)]
+        case .shipwreck:
+            // The captain's chest in the stern and the supply chest in the hold (see `buildShipwreck`).
+            let alongX = s.seed & 1 == 0
+            let (fx, fz) = alongX ? (1, 0) : (0, 1)
+            return [(s.x - fx * 5, s.y + 2, s.z - fz * 5), (s.x + fx * 2, s.y + 1, s.z + fz * 2)]
         }
     }
 
@@ -190,6 +238,8 @@ extension TerrainGenerator {
             case .digSite: buildDigSite(s, chunk: chunk, ox: ox, oz: oz)
             case .volcano: buildVolcano(s, chunk: chunk, ox: ox, oz: oz)
             case .oceanTemple: buildTemple(s, chunk: chunk, ox: ox, oz: oz)
+            case .buriedTreasure: buildTreasure(s, chunk: chunk, ox: ox, oz: oz)
+            case .shipwreck: buildShipwreck(s, chunk: chunk, ox: ox, oz: oz)
             }
         }
     }
@@ -429,5 +479,52 @@ extension TerrainGenerator {
         for (dx, dz) in [(-3, -3), (3, -3), (-3, 3), (3, 3)] { set(s.x + dx, y + 1, s.z + dz, Blocks.seaLantern) }
         let chest = chestPositions(s)[0]
         set(chest.x, chest.y, chest.z, Blocks.chest[2])
+    }
+
+    private func buildTreasure(_ s: StructureInfo, chunk: Chunk, ox: Int, oz: Int) {
+        let x = s.x, z = s.z
+        guard x >= ox, x < ox + 16, z >= oz, z < oz + 16 else { return }
+        let y = s.y - 4
+        guard y > 1 else { return }
+        chunk.setRaw(x - ox, y - 1, z - oz, Blocks.sandstone)
+        chunk.setRaw(x - ox, y, z - oz, Blocks.chest[0])
+    }
+
+    /// A wooden ship on the sea floor, listing a little, with holes in its hull, a broken mast and two chests.
+    private func buildShipwreck(_ s: StructureInfo, chunk: Chunk, ox: Int, oz: Int) {
+        func inChunk(_ x: Int, _ z: Int) -> Bool { x >= ox && x < ox + 16 && z >= oz && z < oz + 16 }
+        let alongX = s.seed & 1 == 0
+        func set(_ along: Int, _ across: Int, _ dy: Int, _ id: BlockID) {
+            let x = s.x + (alongX ? along : across), z = s.z + (alongX ? across : along), y = s.y + dy
+            guard inChunk(x, z), y > 0, y < TerrainGenerator.baseHeight else { return }
+            chunk.setRaw(x - ox, y, z - oz, id)
+        }
+        let hull = Blocks.planks, keel = Blocks.log
+        // Half-width of the hull along its length: pointed bow (+) and a squarer stern (-).
+        func halfWidth(_ a: Int) -> Int { a >= 5 ? max(0, 8 - a) : (a <= -5 ? 2 : 3) }
+        for a in -6...8 {
+            let w = halfWidth(a)
+            for c in -w...w {
+                set(a, c, 0, keel)                                  // bottom
+                for dy in 1...3 {
+                    let side = abs(c) == w
+                    let hole = Hashing.unit(seed, Int32(a), Int32(dy), Int32(c), salt: 1113) < 0.22
+                    if side { set(a, c, dy, hole ? Blocks.water : hull) } else { set(a, c, dy, Blocks.water) }
+                }
+            }
+            // A deck over the stern and a broken one amidships.
+            if a <= -3 { for c in -w...w { set(a, c, 3, hull) } }
+            else if a <= 3 && Hashing.unit(seed, Int32(a), 9, 0, salt: 1114) < 0.5 { for c in -w...w { set(a, c, 3, Blocks.planksSlab) } }
+        }
+        // The mast, snapped off, with a tatter of sail.
+        for dy in 1...7 { set(1, 0, dy, keel) }
+        set(1, 1, 6, Blocks.woolWhite)
+        set(1, 1, 5, Blocks.woolWhite)
+        set(1, -1, 7, Blocks.woolWhite)
+        let chests = chestPositions(s)
+        for (i, pos) in chests.enumerated() {
+            guard inChunk(pos.x, pos.z) else { continue }
+            chunk.setRaw(pos.x - ox, pos.y, pos.z - oz, Blocks.chest[i == 0 ? 2 : 1])
+        }
     }
 }

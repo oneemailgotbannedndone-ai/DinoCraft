@@ -10,7 +10,7 @@ enum CreatureKind: String, CaseIterable {
     case trikey, dodo, longneck, raptor, spitter, crawler, magmaRaptor, villager, stego, ankylo, rex, compy, ptero, parasaur,
          sailback, boneWalker, scorpion, pig, cow, sheep, chicken, pookpook, carnotaurus, allosaurus, baryonyx, troodon, spinosaurus,
          grumblesaurus, grinasaurus, cod, salmon, clownfish, blueTang,
-         pachy, iguanodon, therizino, gallimimus, oviraptor, microraptor, boat, egg, armorStand, mosasaurus
+         pachy, iguanodon, therizino, gallimimus, oviraptor, microraptor, boat, egg, armorStand, mosasaurus, crab
 }
 
 enum PartRole {

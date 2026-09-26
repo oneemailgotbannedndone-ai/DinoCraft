@@ -1,5 +1,13 @@
 DinoCraft - the Toonland update
 
+Shipwrecks, crabs and buried treasure
+- Shipwrecks lie in shallow seas near the coast: broken wooden hulls with a snapped mast, a captain's chest
+  and a supply chest. Crabs scuttle about their decks, and on sandy beaches. They nip if you get close,
+  and their claws are good to eat (cook them in a furnace).
+- Shipwreck chests often hold a Treasure Map. Right-click it: it fixes on the nearest buried treasure and
+  opens your map with a red X (or an arrow at the edge showing how far away it is). The treasure is buried a
+  few blocks under the sand of a beach, and it's worth the dig.
+
 Seasons, lightning fires and ocean temples
 - The year now turns: spring, summer, autumn and winter, six days each. Leaves and grass go fresh green in
   spring and gold and orange in autumn. In winter snow settles on treetops and grass, and rain falls as snow.

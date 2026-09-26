@@ -243,8 +243,17 @@ extension GameSession {
             case .volcano: add(st.x, st.z, "Volcano", 0xFF6A2A)
             case .ruin, .desertRuin: add(st.x, st.z, "Ruins", 0xC8B89A)
             case .oceanTemple: add(st.x, st.z, "Ocean Temple", 0x6AD8E8)
-            case .dungeon: break   // hidden underground
+            case .shipwreck: add(st.x, st.z, "Shipwreck", 0xA8783E)
+            case .dungeon, .buriedTreasure: break   // hidden (a treasure map shows the treasure)
             }
+        }
+        // Treasure maps you carry mark their X (at the edge of the map, pointing the way, when it's further off).
+        for target in treasureTargets() {
+            var dx = Float(Double(target.x) + 0.5 - p.x), dz = Float(Double(target.z) + 0.5 - p.z)
+            let far = max(abs(dx), abs(dz)), r = Float(radius) - 3
+            let distance = Int((dx * dx + dz * dz).squareRoot())
+            if far > r { dx *= r / far; dz *= r / far }
+            out.append(WorldMap.Landmark(dx: dx, dz: dz, label: far > r ? "X Treasure (\(distance) blocks)" : "X Treasure", color: 0xE53935))
         }
         return out
     }
