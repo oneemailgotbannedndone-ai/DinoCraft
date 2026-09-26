@@ -89,7 +89,7 @@ final class Renderer {
         for f in files { source += (try String(contentsOf: f, encoding: .utf8)) + "\n" }
         let options = MTLCompileOptions()
         options.languageVersion = .version3_0
-        if #available(macOS 15.0, *) { options.mathMode = .fast } else { options.fastMathEnabled = true }
+        if #available(iOS 18.0, *) { options.mathMode = .fast } else { options.fastMathEnabled = true }
         let lib: MTLLibrary
         do {
             lib = try device.makeLibrary(source: source, options: options)
@@ -225,7 +225,7 @@ final class Renderer {
         view.autoResizeDrawable = true
         view.enableSetNeedsDisplay = false
         view.isPaused = false
-        view.preferredFramesPerSecond = view.window?.screen?.maximumFramesPerSecond ?? 120
+        view.preferredFramesPerSecond = view.window?.screen.maximumFramesPerSecond ?? 60
     }
 }
 
